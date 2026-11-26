@@ -15,31 +15,34 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | Component | Represented by | State |
 |---|---|---|
 | A study, and starting one | `sf.py start`, which makes a study wherever `--study` points and binds a request by checksum when given one; the system trial's plan, `examples/stand-alone/system-trial` | built; no study is kept here, and the stand-alone example starts two on every run |
-| The procedure as a file | `factory/factory.yaml`, read by `sf.py status` and `scorecard`; the lock records its checksum | built |
-| Assistants | four roles (coordinating, analysis, review, curating); four task prompts below, three in Part A and one in Part B | prompts for part of the work; no prompt of its own for the review or the curating assistant; nothing is scheduled |
+| The factory as code | the definition tree `factory/`, rooted at `factory.yaml` (`docs/CREATE-A-FACTORY.md`); `tools/check_factory.py` validates it with three results and summarises a change; `sf.py status` and `scorecard` read it; the lock binds the tree's checksum, the declared models and the skills | built; the validator has 74 self-tests, each rule with a definition that breaks it |
+| The model behind each event | `--model` beside `--by` on every command; each agent's file declares a harness and a model | built: an agent's event with no model is refused, the model is under the log's hash, and `status` shows declared beside recorded. Declared, not proven |
+| Assistants | four roles (coordinating, analysis, review, curating), each a file `factory/agents/<name>/agent.md`; four task prompts below, three in Part A and one in Part B | prompts for part of the work; no prompt of its own for the review or the curating assistant; nothing is scheduled |
 | Consulting shared knowledge, ending early | the plan stage's search of the bundles (a prompt, in Part B); `sf.py close` with a citation | the early exits are built and exercised in the self-test; the search is an assistant's task |
 | Analysis plan | `analysis-plan.yaml`; `templates/analysis-plan.yaml`; `sf.py check-plan` (the plan check) | the system trial's plan passes the plan check, and so does the template as written (the study tool's self-test checks both) |
 | The method | `methods/gain/` (`gain.py`, `confront.py`) with `methods/built-in-pairing/`, the built-in method, as prototypes; a real study's method is landed as an attested computation in its own repository (Part B) | prototype |
 | Tests and the opening | `test_cases.py`, `known_answer_tests.py` (known-answer tests); working data; `sf.py rehearse`; `sf.py open-held-out`; the record of what has been opened | built; the system trial's known-answer tests, working data and rehearsal run on every run of the stand-alone example |
-| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 175 of 175 self-tests (`uv run tools/sf.py selftest`) |
+| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 189 of 189 self-tests (`uv run tools/sf.py selftest`) |
 | Review | `sf.py attach`, `review`; the findings checker (Part B) | built; wiring the checker is Part B |
 | Acts by people | `sf.py lock`, `void-unread`, `signature` | built; never yet used by a person. That a person made them is held by a protected branch, outside the tool |
 | Notes into shared knowledge | `sf.py note`, `curation-list`, `resolve`; the curating assistant | the three commands are built; the curating assistant is a role file, and nothing schedules it |
-| Process scorecard | `procedure.yaml`, `sf.py scorecard` | built; eight checks |
-| Blind test of the system | `system_trial.py blind-test` | built; its result on 200 cases, with the command, below |
-| Change log with predictions | `sf.py log-change`, `change-log.jsonl`, `sf.py check-log --change-log` | built; four records, two changes each with a prediction and its observed outcome, all written by the tool (the first pair from a practice run, historical, `records-2026-11`; the second pair from a scratch study that is not kept) |
-| Proposing changes to the procedure | a rule in `procedure.yaml` | written as a rule; no assistant does it |
+| Process scorecard | the deterministic scorers in `factory/scorers/`, `sf.py scorecard` | built; eight checks |
+| Judge scorers, and the outcome firewall | three judges in `factory/scorers/`; `tools/scorers.py` (which runs are sampled, the judging packet, a verdict read back); the validator's refusals | built up to the model call: 36 self-tests, among them that a packet made from an opened study holds nothing written after the opening. No judge has been run by a real model |
+| Blind test of the system | `system_trial.py blind-test`; as suites, `tools/benchmark.py` with `factory/benchmarks/` (a design set and an acceptance set, two configurations of the definition, a comparison stated in advance) | built; the blind test's result on 200 cases, with the command, below; the design suite compares the current definition with itself and finds no difference beyond noise (0 wrong verdicts in 12 paired runs under each) |
+| Change log with predictions | `sf.py log-change`, `change-log.jsonl`, `sf.py check-log --change-log` | built; six records, three changes each with a prediction and its observed outcome, all written by the tool (the first pair from a practice run, historical, `records-2026-11`; the second and third pairs from scratch studies that are not kept; the third is the change to a definition tree) |
+| Proposing changes to the procedure | a rule in `factory.yaml` (`measure.improving_the_procedure`); the `selfImprovement` flag on a scorer, which the validator refuses on anything that reads past an opening | written as a rule, with its gate built; no assistant does it and nothing reads the flag |
+| Automations | two declared in `factory/automations/` (a new data release, a finding past its date) | declared and validated; not wired: no trigger exists |
 | Scheduled re-test | `scheduled_retest:` in the analysis plan | written in the plan; not automated |
 | The request | `templates/request.md`, `kinds-of-question.yaml`; two worked requests in `examples/baton-rouge/`; `sf.py start --request` | binding the request by checksum is built; its fields are convention, and checking them is scheduled |
-| Exploratory study | `study_kinds` in the procedure | designed, not built |
-| One factory per capability | the `capability` block in `procedure.yaml`, filled in for the built-in example; a copy filled in for one discipline is in `examples/baton-rouge/capability.yaml` | declared; nothing has landed in any capability |
-| Where it runs | `compute/adapter.py`, `factory/runners/` | contract and local place built (34 of 34 conformance checks, and the test of that test passes); scheduler, cloud and MAAP written down, not built; not yet wired into the tests or the opening |
+| Exploring | `tools/explore.py`, beside the procedure and not a kind of study inside it (`docs/TWO-WAYS-OF-WORKING.md`) | built as a tool of its own |
+| One factory per capability | the `capability` block in `factory.yaml`, filled in for the built-in example; a copy filled in for one discipline is in `examples/baton-rouge/capability.yaml` | declared; nothing has landed in any capability |
+| Where it runs | `compute/adapter.py`, `factory/runners/` | contract and local runner built (34 of 34 conformance checks, and the test of that test passes); scheduler, cloud and MAAP written down, not built; not yet wired into the tests or the opening |
 
 ## What is built, and what it measured
 
 Every number in this section but those of its last paragraph is made by a command that runs today from a bare clone of this repository, with nothing beside it; README.md, under "Try it", has the commands in one place. No held-out data of any real record has been read, and neither the lock nor the steward's signature has been recorded by a person.
 
-**The study tool.** `uv run tools/sf.py selftest` passes 175 of 175. The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
+**The study tool.** `uv run tools/sf.py selftest` passes 189 of 189. The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
 
 **The blind test of the system.** Two hundred blind test cases go through the whole study tool, unattended:
 
@@ -196,9 +199,10 @@ C=my-science/factory/change-log.jsonl
 D=/tmp/STUDY-0000
 mkdir -p $D
 ME=human:YOU
+M=the-model-the-assistant-runs-as
 ```
 
-Two more variables, `LOCK` and `OPEN`, hold the two posted fingerprints. They are set in block 3 once the fingerprints exist, and the blocks after it set them again, because the steward may be in another shell by then.
+`M` is the name of the model the assistant runs as: every command an assistant runs carries `--model $M`, the tool writes it into the event, and a person's command carries none. It is declared, not proven. Two more variables, `LOCK` and `OPEN`, hold the two posted fingerprints. They are set in block 3 once the fingerprints exist, and the blocks after it set them again, because the steward may be in another shell by then.
 
 **1. An assistant: the tests, on a branch.**
 
@@ -209,10 +213,10 @@ sed -e 's/^study: .*/study: STUDY-0000/' \
   -e 's|\.\./\.\./\.\./methods|../../../science-factory/methods|' \
   $T/analysis-plan.yaml > $W/analysis-plan.yaml
 sf start --study $W --id STUDY-0000 \
-  --by agent:coordinating \
+  --by agent:coordinating --model $M \
   --question "In the blind test case, is the gain \
 that was put in within five percent of one?"
-sf log-change --study $W --by agent:coordinating \
+sf log-change --study $W --by agent:coordinating --model $M \
   --log $C \
   --problem "the factory has not run end to end \
 with a person's lock and signature" \
@@ -223,11 +227,11 @@ every stage." \
 answer confirms, and every scorecard check \
 passing. About one trial in eight is inconclusive."
 sf check-plan --study $W
-sf test known-answers --study $W --by agent:analysis
-sf test working-data --study $W --by agent:analysis
+sf test known-answers --study $W --by agent:analysis --model $M
+sf test working-data --study $W --by agent:analysis --model $M
 sf rehearse --study $W --id opening-path \
-  --by agent:analysis
-sf note --study $W --by agent:analysis \
+  --by agent:analysis --model $M
+sf note --study $W --by agent:analysis --model $M \
   --kind method \
   --about "the system trial: the notes path" \
   --text "Raised on purpose, so that the trial \
@@ -264,7 +268,7 @@ LOCK=LOCKSEQ:HASH
 g switch main
 g pull
 g switch -c system-trial-result
-sf open-held-out --study $W --by agent:coordinating
+sf open-held-out --study $W --by agent:coordinating --model $M
 #   post the fingerprint it prints on the tracking
 #   issue, then:
 OPEN=OPENSEQ:HASH
@@ -272,10 +276,10 @@ g add -A -- . ':(exclude)studies/*/sealed/*'
 g commit -m "STUDY-0000: the opening"
 #   the analysis assistant writes $D/writeup.md,
 #   from fields of receipts/held-out.json only
-sf attach --study $W --by agent:analysis \
+sf attach --study $W --by agent:analysis --model $M \
   --file $D/writeup.md
 #   a fresh review assistant writes $D/verdict.md
-sf review --study $W --by agent:review \
+sf review --study $W --by agent:review --model $M \
   --verdict approve --file $D/verdict.md
 sf check-log --study $W \
   --anchor $LOCK --anchor $OPEN --change-log $C
@@ -306,11 +310,11 @@ The signature prints `the steward's signature: signed` with the finding it names
 ```
 LOCK=LOCKSEQ:HASH
 OPEN=OPENSEQ:HASH
-sf resolve --study $W --by agent:curating \
+sf resolve --study $W --by agent:curating --model $M \
   --note NOTE-001 --disposition declined \
   --comment "raised on purpose; nothing to route"
 sf scorecard --study $W --anchor $LOCK --anchor $OPEN
-sf log-change --study $W --by agent:coordinating \
+sf log-change --study $W --by agent:coordinating --model $M \
   --log $C \
   --problem "the factory has not run end to end \
 with a person's lock and signature" \
@@ -322,7 +326,7 @@ answer confirms, and every scorecard check \
 passing. About one trial in eight is inconclusive." \
   --observed "The verdict was right and every \
 scorecard check passed."
-sf close --study $W --by agent:coordinating \
+sf close --study $W --by agent:coordinating --model $M \
   --outcome system-trial-accepted \
   --anchor $LOCK --anchor $OPEN
 sf status --study $W
@@ -348,7 +352,7 @@ sf signature --study $W --by $ME --decision declined \
 Then block 5 runs as written, with two changes: `--observed` says what happened, and the `close` line reads
 
 ```
-sf close --study $W --by agent:coordinating \
+sf close --study $W --by agent:coordinating --model $M \
   --outcome system-trial-declined
 ```
 
@@ -387,10 +391,10 @@ The last one follows the procedure as Part A did, with five differences that mat
 4. The opening and everything after it run from a fresh `git clone` of the merged lock, in a private repository, in a fresh container: never from a copy of the workspace where the method was built. It is run there by hand with `sf.py open-held-out`; nothing sends it through the job contract. The tool records, in the opening's event, the host, the user, and the commit of every repository the plan names and whether its work tree was clean. It does not record a container or lockfile digest; that is written into the pull request by hand. The known-answer tests and both rehearsals are run in that same container image before the lock, because a fresh container resolves the fetch's libraries anew.
 5. The result is delivered to the product's team before any public reference.
 
-A clean place for the opening answers the fourth limit. It does not answer the first: this study's data is public, and nothing but instruction and evidence keeps the analysis assistant from the withheld values at any point.
+A clean runner for the opening answers the fourth limit. It does not answer the first: this study's data is public, and nothing but instruction and evidence keeps the analysis assistant from the withheld values at any point.
 
 ```
-Do the plan stage for STUDY-0001 per procedure.yaml.
+Do the plan stage for STUDY-0001 per factory/factory.yaml.
 Search every installed bundle for findings,
 validity domains, dead-ends, field-states and
 gotchas bearing on a SWOT reach against a gauge;

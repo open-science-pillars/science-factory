@@ -1,6 +1,8 @@
 # Instructions for assistants working in this repository
 
-The roles of the science factory are the files in `assistants/`; read the one you were started as. Run every tool with `uv run`.
+The factory is defined in `factory/` (`factory.yaml` and the folders beside it; `docs/CREATE-A-FACTORY.md` says what each is). The roles are the files `factory/agents/<name>/agent.md`; read the one you were started as. Run every tool with `uv run`. Every command you run with `--by agent:<name>` also takes `--model`: the name of the model you run as. Say it truthfully; the log records it and nothing checks it.
+
+You do not edit anything in `factory/`: a change to the definition is a person's pull request, checked by `uv run tools/check_factory.py`. You never read the acceptance set of blind cases, a folder named `acceptance-cases`, or any file that holds its seed.
 
 <!-- OPENWIKI:START -->
 ## The wiki

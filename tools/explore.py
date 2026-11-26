@@ -1767,7 +1767,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
                                 "request_sha": sf.sha_file(out / "request.md"), "study_directory_from_exploration": study_dir})
     print(f"handed over ({WAY}): hand-over/request.md, hand-over/analysis-plan.stub.yaml, hand-over/hand-over.json.\n"
           f"Start the study with:\n  uv run tools/sf.py start --study {study_dir} --id {a.study_id} --question \"{stub['question']}\" "
-          "--request hand-over/request.md --by agent:<the coordinating assistant>\n(paths from the exploration directory)")
+          "--request hand-over/request.md --by agent:<the coordinating assistant> --model <the model it runs as>\n(paths from the exploration directory)")
 
 
 def study_problems(x: Exploration, study_dir: Path) -> list:
