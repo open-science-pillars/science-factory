@@ -27,12 +27,12 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | Notes into shared knowledge | `sf.py note`, `curation-list`, `resolve`; the curating assistant | the three commands are built; the curating assistant is a role file, and nothing schedules it |
 | Process scorecard | `procedure.yaml`, `sf.py scorecard` | built; eight checks |
 | Blind test of the system | `system_trial.py blind-test` | built; its result on 200 cases, with the command, below |
-| Change log with predictions | `sf.py log-change`, `change-log.jsonl`, `sf.py check-log --change-log` | built; two records, a prediction and its observed outcome, both written by the tool from a practice run (historical; `records-2026-11`) |
+| Change log with predictions | `sf.py log-change`, `change-log.jsonl`, `sf.py check-log --change-log` | built; four records, two changes each with a prediction and its observed outcome, all written by the tool (the first pair from a practice run, historical, `records-2026-11`; the second pair from a scratch study that is not kept) |
 | Proposing changes to the procedure | a rule in `procedure.yaml` | written as a rule; no assistant does it |
 | Scheduled re-test | `scheduled_retest:` in the analysis plan | written in the plan; not automated |
 | The request | `templates/request.md`, `kinds-of-question.yaml`; two worked requests in `examples/baton-rouge/`; `sf.py start --request` | binding the request by checksum is built; its fields are convention, and checking them is scheduled |
 | Exploratory study | `study_kinds` in the procedure | designed, not built |
-| One factory per capability | the `capability` block in `procedure.yaml`, filled in for one discipline as the worked example | declared; nothing has landed in any capability |
+| One factory per capability | the `capability` block in `procedure.yaml`, filled in for the built-in example; a copy filled in for one discipline is in `examples/baton-rouge/capability.yaml` | declared; nothing has landed in any capability |
 | Where it runs | `compute/adapter.py`, `compute/places.yaml` | contract and local place built (34 of 34 conformance checks, and the test of that test passes); scheduler, cloud and MAAP written down, not built; not yet wired into the tests or the opening |
 
 ## What is built, and what it measured

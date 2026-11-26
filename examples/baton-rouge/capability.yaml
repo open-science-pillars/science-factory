@@ -1,0 +1,11 @@
+# The `capability` block of factory/procedure.yaml, filled in for a real
+# capability: the hydrology capability of Open Science Pillars. To run this
+# demo as a factory of that capability, copy factory/procedure.yaml into the
+# capability's own repository and put this block in place of the built-in one.
+# The study tool does not read this block; it is for people.
+capability:
+  name: "the hydrology capability"
+  repositories: [hydrology]                    # a factory spanning several capabilities lists several
+  borrows: [core, nasa-daac-knowledge]         # read by this factory, never written by it
+  stewards: "the capability's code owners"
+  holds: {studies: "factory/studies/", record_of_openings: "factory/studies/openings.jsonl", change_log: "factory/change-log.jsonl"}

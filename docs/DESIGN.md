@@ -259,7 +259,7 @@ The intended arrangement is the simplest one that keeps every check the tool alr
 
 **Designed; nothing holds it yet.** One procedure per capability, changed by pull request in that capability's repository. One steward set per capability, from its code owners. One window, one opening across factories, which a record kept per factory cannot give.
 
-**Status.** Declared, not yet landed: `factory/procedure.yaml` carries a `capability` block filled in for one discipline, hydrology, as the worked example; the study tool lives in this repository, which needs no other; and a discipline's own studies, methods and record of what has been opened go in that discipline's repository, never here (README.md, "Why no runs are kept here"). OSP today has one roadmap and many repositories. The record of what has been opened across factories is not built and is named as a gap.
+**Status.** Declared, not yet landed: `factory/procedure.yaml` carries a `capability` block filled in for the built-in example, with a copy filled in for one discipline, hydrology, in `examples/baton-rouge/capability.yaml` as the worked example; the study tool lives in this repository, which needs no other; and a discipline's own studies, methods and record of what has been opened go in that discipline's repository, never here (README.md, "Why no runs are kept here"). OSP today has one roadmap and many repositories. The record of what has been opened across factories is not built and is named as a gap.
 
 ## What this is not
 
