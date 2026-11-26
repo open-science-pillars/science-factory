@@ -135,7 +135,7 @@ def skill_folders(root: Path) -> list:
 
 
 def rendered(root: Path) -> dict:
-    """Every file the runner owns under .claude/, by path from the repository, with its bytes."""
+    """Every file the harness owns under .claude/, by path from the repository, with its bytes."""
     out = {}
     for path in sorted((root / "factory" / "agents").glob("*/agent.md")):
         fm, body = load(path)

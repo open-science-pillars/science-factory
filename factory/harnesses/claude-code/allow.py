@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyyaml"]
 # ///
-"""allow: the decision a role's tool call gets under the Claude Code runner.
+"""allow: the decision a role's tool call gets under the Claude Code harness.
 
 Claude Code calls this before every tool call a role makes (a PreToolUse
 hook in the rendered `.claude/agents/<role>.md`). It reads the role file in
@@ -25,7 +25,7 @@ file allows and blocks everything else, with the reason.
            agent:<role> or agent:<role>-<anything>. A file or folder given
            to a command is checked as a read would be.
   Run      the same rule for a command already in words, run with no
-           shell (the by-hand runner): nothing is quoted, so a bracket in
+           shell (the by-hand harness): nothing is quoted, so a bracket in
            a value is only a bracket.
   Write,   only a path that matches one of the role's `writes` patterns,
   Edit     and never a file the tools keep: a log, the record of what has
@@ -353,7 +353,7 @@ def decide(role: str, call: dict, root: Path = ROOT) -> str | None:
     cwd = Path(call.get("cwd") or os.getcwd())
     if tool == "Bash":
         return bash_problem(str(given.get("command") or ""), role, fm, cwd, root)
-    if tool == "Run":  # a command already in words, run with no shell (the by-hand runner): the same rule, with nothing for a shell to read
+    if tool == "Run":  # a command already in words, run with no shell (the by-hand harness): the same rule, with nothing for a shell to read
         argv = given.get("argv")
         return argv_problem([str(w) for w in argv], role, fm, cwd, root) if isinstance(argv, list) and argv else "no command was given"
     if tool in WRITE_TOOLS:

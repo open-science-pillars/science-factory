@@ -69,7 +69,7 @@ The knowledge base is a wiki: Markdown pages in the Open Knowledge Format. In th
 
 You do the science labor, in both ways of working. Every act that counts goes through a tool: `explore.py` when exploring, `sf.py` when confirming. You act under the name the coordinating assistant gave you (`--by agent:analysis...`). You never decide that a step counts; the tool does, and when it refuses you fix the cause and do not go around it.
 
-`may_call` lists the commands you call yourself. A script you run through `explore.py look` (a script a skill ships, the method a capability ships, your own in `looks/`) is the look's, not a call of yours, and need not be listed. `writes` lists what you write by hand; what a tool writes when you call it (the log, receipts, `lead.md`) is the tool's. Your account of the work for the coordinating assistant goes in `record/analysis/`, your own place; the review assistant is told to keep out of it, and the runner refuses it the read.
+`may_call` lists the commands you call yourself. A script you run through `explore.py look` (a script a skill ships, the method a capability ships, your own in `looks/`) is the look's, not a call of yours, and need not be listed. `writes` lists what you write by hand; what a tool writes when you call it (the log, receipts, `lead.md`) is the tool's. Your account of the work for the coordinating assistant goes in `record/analysis/`, your own place; the review assistant is told to keep out of it, and the harness refuses it the read.
 
 ## The four questions
 

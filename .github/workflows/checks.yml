@@ -44,6 +44,14 @@ jobs:
         run: uv run tools/sf.py check-plan --study examples/stand-alone/system-trial
       - name: A short blind test of the system, on the built-in pairing step
         run: uv run methods/gain/system_trial.py blind-test --template examples/stand-alone/system-trial --n 20
+      # The blind test as a benchmark: the shipped design suite, six sealed cases twice each under two configurations
+      # of the definition (the current one, and the current one again), compared by the rule the suite states. The
+      # expected answer is `no difference beyond noise`; `not comparable` (exit 2) fails the step. The acceptance
+      # suite is not run here: its cases come from a seed that is not in the repository.
+      - name: The benchmark tool tests itself (the arithmetic, the acceptance cases, the refusals)
+        run: uv run tools/benchmark.py selftest
+      - name: The small benchmark suite, the definition against itself
+        run: uv run tools/benchmark.py run --suite factory/benchmarks/built-in-gain
       - name: The local runner passes the compute contract
         run: uv run compute/adapter.py conformance
       - name: The conformance test fails every deliberately wrong runner

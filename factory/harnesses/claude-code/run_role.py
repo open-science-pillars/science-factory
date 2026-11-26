@@ -98,7 +98,7 @@ def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> i
     failed = bool(out.get("is_error")) or done.returncode != 0
     Path(f"{record}.answer.md").write_text(answer + ("\n" if not answer.endswith("\n") else ""))
     Path(f"{record}.run.json").write_text(json.dumps({
-        "role": role, "runner": "claude-code", "started_from": f".claude/agents/{role}.md", "fresh_context": True,
+        "role": role, "harness": "claude-code", "started_from": f".claude/agents/{role}.md", "fresh_context": True,
         "models": models, "started": started, "finished": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "turns": out.get("num_turns"), "failed": failed, "claude_session": out.get("session_id")}, indent=1) + "\n")
     print(answer)

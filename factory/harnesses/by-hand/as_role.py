@@ -5,8 +5,8 @@
 # ///
 """as_role: run one command as a role, with no agent platform at all.
 
-The smallest runner. It checks one command against the role file with the
-same decision the Claude Code runner uses (factory/harnesses/claude-code/allow.py),
+The smallest harness. It checks one command against the role file with the
+same decision the Claude Code harness uses (factory/harnesses/claude-code/allow.py),
 runs it from the repository root when the role file allows it, and adds a
 line to a record: the role, the command, whether it was allowed, how it
 ended, and the checksum of what it printed.
@@ -15,8 +15,8 @@ What it holds and what it does not. It holds the role's commands: a
 command the role file does not allow is not run. It gives no fresh
 context, because it starts no assistant: whoever calls it, a person or one
 assistant playing several roles in turn, remembers everything. A review
-made through this runner is therefore not an independent review, and the
-record says which runner was used so that nobody reads it as one.
+made through this harness is therefore not an independent review, and the
+record says which harness was used so that nobody reads it as one.
 
 Usage:
   uv run factory/harnesses/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run tools/explore.py status --exploration X
@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent  # the repository: this file is in factory/harnesses/<harness>/
-sys.dont_write_bytecode = True  # the decision is loaded from allow.py beside the other runner; no bytecode folder is left there
+sys.dont_write_bytecode = True  # the decision is loaded from allow.py beside the other harness; no bytecode folder is left there
 
 
 def decision():
@@ -92,7 +92,7 @@ def main() -> int:
     a = ap.parse_args()
     decide = decision()
     argv = a.argv[1:] if a.argv and a.argv[0] == "--" else a.argv
-    line = {"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "runner": "by-hand", "role": a.role}
+    line = {"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "harness": "by-hand", "role": a.role}
     if a.write:
         why = decide(a.role, {"tool_name": "Write", "tool_input": {"file_path": a.write}, "cwd": str(ROOT)})
         line.update(write=a.write, allowed=why is None, blocked_because=why)

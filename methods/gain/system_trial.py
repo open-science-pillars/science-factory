@@ -278,6 +278,7 @@ def run_prepared(sf, base: Path, cases: list, tmp: Path, factory: Path | None = 
     ns = argparse.Namespace
     tmp = Path(tmp)
     definition = str(Path(factory).resolve()) if factory else None
+    tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "verdict.md").write_text("blind test harness: approve, automatically; not a review")
     (tmp / "finding.md").write_text("blind test harness: no finding is written; this file stands where one would be attached")
     out = []
