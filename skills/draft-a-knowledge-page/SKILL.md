@@ -11,8 +11,8 @@ What a piece of work learned about the data goes back into the shared knowledge 
 
 ## Before drafting
 
-1. **List what is open**: `uv run mvp/loops/explore.py curation-list --exploration <x>` writes `<x>/curation-list.json`; `uv run mvp/sf.py curation-list --study <s>` does the same for a study.
-2. **For each note, read what is known**: `uv run mvp/loops/knowledge.py about --question "<the note's subject as a question>" --wiki <wiki> --drafts <queue>`. Read the pages it lists.
+1. **List what is open**: `uv run tools/explore.py curation-list --exploration <x>` writes `<x>/curation-list.json`; `uv run tools/sf.py curation-list --study <s>` does the same for a study.
+2. **For each note, read what is known**: `uv run tools/knowledge.py about --question "<the note's subject as a question>" --wiki <wiki> --drafts <queue>`. Read the pages it lists.
 3. **Decide where the note belongs.**
    - The knowledge already says it: **link**. `resolve --disposition linked --ref <the page's path below the wiki>`. No page.
    - A signed page is stale or wrong: **link** it to that page and say in `--comment` what the steward should do. List it first in your account: a link prompts nobody.
@@ -42,13 +42,13 @@ The body: what happens (the mechanism, if known, and say when it is not), what w
 ## After drafting
 
 ```
-uv run mvp/loops/knowledge.py check-drafts --queue <queue> --wiki <wiki> [--checker <the organization's checker>]
+uv run tools/knowledge.py check-drafts --queue <queue> --wiki <wiki> [--checker <the organization's checker>]
 ```
 
 It applies the rules of the queue, runs the organization's own checker for its knowledge format when `--checker` names it, and writes the queue's index when everything passes. Fix what it refuses. Then record what became of each note:
 
 ```
-uv run mvp/loops/explore.py resolve --exploration <x> --by <you> --note NOTE-001 --disposition drafted --ref <queue path of the page>
+uv run tools/explore.py resolve --exploration <x> --by <you> --note NOTE-001 --disposition drafted --ref <queue path of the page>
 ```
 
 ## What this skill refuses

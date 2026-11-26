@@ -1,0 +1,85 @@
+# Kinds of question: what an analysis assistant offers when a request arrives.
+# For each kind: how people say it, the quantity estimated and the rule it becomes,
+# what the known-answer tests must contain, and where honest held-out data can come from.
+# `the_tool_today` says what exists today. The study tool judges any rule written as
+# conditions on numbers in a run receipt (templates/analysis-plan.yaml shows how). The
+# method, the known-answer test cases and the runner that scores them ship for one
+# claim only, a gain between two records; for every other kind they are yours to write.
+kinds:
+  - id: equivalence
+    people_say: ["is X within N of Y", "do these two agree", "is it good enough to replace"]
+    quantity_estimated: "a gain, offset or difference with an interval"
+    rule: "supported when the whole interval lies inside the difference that matters (the equivalence margin); refuted when it lies wholly outside"
+    known_answer_tests: ["the true value", "values right at the difference that matters, on both sides", "a value far from true", "the hard cases of the data"]
+    held_out_data: ["the next window", "sites never opened", "a new release"]
+    the_tool_today: "built for a gain between two records: the tool judges the rule, and the method, the test cases and their runner ship in methods/gain/ (gain.py, confront.py, test_cases.py, known_answer_tests.py). For any other equivalence the tool can judge the rule; the method, the test cases and their runner are yours to write"
+  - id: direction
+    people_say: ["did it go up", "is A bigger than B"]
+    quantity_estimated: "a signed difference with an interval"
+    rule: "supported when the interval excludes zero on the stated side by the smallest change that matters; refuted when the whole interval lies short of that smallest change"
+    known_answer_tests: ["no change", "the smallest change that matters", "hard cases"]
+    held_out_data: ["the next window", "an independent record"]
+    the_tool_today: "the tool can judge the rule; the method, the test cases and their runner are yours to write"
+  - id: trend
+    people_say: ["is it still rising", "can this record give a rate", "is the gap bigger than the errors"]
+    quantity_estimated: "a rate with an interval under a stated noise model"
+    rule: "as equivalence or direction, on the rate"
+    known_answer_tests: ["a known rate with red noise at the real sampling positions", "a step or a datum change", "sampling that moves over time"]
+    held_out_data: ["an independent instrument over the same years", "a later period long enough to move the rate (years, for a rate over decades)"]
+    the_tool_today: "the tool can judge the rule; the method, the test cases and their runner are yours to write"
+    note: "A request may honestly end as cannot tell. How likely that is comes from the known-answer tests, once a method exists to run them."
+  - id: difference-between-periods
+    people_say: ["did it change after year Y", "is this decade different"]
+    quantity_estimated: "a contrast between periods or groups with an interval"
+    rule: "direction, on the contrast"
+    known_answer_tests: ["the mean changed and the variance not", "the variance changed and the mean not", "a baseline artifact"]
+    held_out_data: ["a product never opened", "future years"]
+    the_tool_today: "the tool can judge the rule; the method, the test cases and their runner are yours to write"
+  - id: threshold-exceedance
+    people_say: ["does it trip our trigger on the same events", "misses matter more than false alarms"]
+    quantity_estimated: "hit, miss and false-alarm rates with intervals"
+    rule: "a rule on each rate, with the tolerable miss rate from the scientist who asked"
+    known_answer_tests: ["events put in just above and just below the trigger", "timing offsets"]
+    held_out_data: ["events not yet compared", "the next season"]
+    the_tool_today: "needs rule families (a rule on several rates at once), which the tool does not have; the method, the test cases and their runner are yours to write"
+  - id: closure
+    people_say: ["does the budget close", "which term eats the residual"]
+    quantity_estimated: "a residual relative to its combined uncertainty"
+    rule: "equivalence of the residual with zero at the stated difference that matters"
+    known_answer_tests: ["fluxes that close exactly on the real grid", "one known term dropped", "an unmetered loss put in"]
+    held_out_data: ["years a new release adds", "basins never opened"]
+    the_tool_today: "the tool can judge the rule; the method, the test cases and their runner are yours to write"
+    note: "On a state estimate, closure is an identity: check it in the tests and use up no opening of held-out data. Which term is to blame is attribution."
+  - id: ranking
+    people_say: ["which product is least bad", "which would have forecast better"]
+    quantity_estimated: "a paired difference in a score, with an interval"
+    rule: "direction on the paired difference, with a stated difference that matters for what counts as different"
+    known_answer_tests: ["a case where the baseline is optimal", "skill put into one method", "sites used to tune a method"]
+    held_out_data: ["sites or years no method was tuned on"]
+    the_tool_today: "for two methods the tool can judge the rule, and more than two needs rule families; the method, the test cases and their runner are yours to write"
+  - id: forecast-skill
+    people_say: ["does it beat persistence", "does this predictor add skill"]
+    quantity_estimated: "a skill score against a named baseline at stated leads"
+    rule: "direction on skill minus baseline"
+    known_answer_tests: ["red noise where persistence wins", "predictability put in at one lead"]
+    held_out_data: ["forecasts issued now and scored on months not yet observed"]
+    the_tool_today: "for one lead the tool can judge the rule, and several leads or regions at once need rule families; the method, the test cases and their runner are yours to write"
+  - id: attribution
+    people_say: ["which term is to blame", "is it the rating, the evaporation or seepage"]
+    quantity_estimated: "none yet"
+    rule: "none: this is exploration until it yields a claim of another kind"
+    known_answer_tests: ["a cause put in among the candidates, which the diagnostics must find"]
+    held_out_data: ["hold something out before exploring"]
+    the_tool_today: "needs the exploratory study, which is designed and not built"
+  - id: exploratory
+    people_say: ["no hypothesis yet, just poke at it", "dig around and tell me what is there"]
+    quantity_estimated: "none yet"
+    rule: "none: what it produces is a hypothesis card naming a kind of question, a difference that matters and the held-out data"
+    known_answer_tests: ["a feature put in that the diagnostics must find, so a blank result means something"]
+    held_out_data: ["whatever is held out before exploring starts"]
+    the_tool_today: "needs the exploratory study, which is designed and not built"
+questions_back:   # the analysis assistant asks these four and stops
+  - "What number would change what you do, and where does it come from?"
+  - "What have you already looked at?"
+  - "What will you do with each answer: holds, does not hold, cannot tell?"
+  - "By when, and who is on it?"

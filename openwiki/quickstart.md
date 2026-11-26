@@ -13,7 +13,7 @@ This wiki holds what is known about the small synthetic record that the stand-al
 - [compare-changes-not-levels.md](compare-changes-not-levels.md): a pitfall. The level difference between the sensors is mostly an unsurveyed offset.
 - [flagged-readings.md](flagged-readings.md): a pitfall. A degraded reading can steer a fitted gain.
 
-How to read it. Use the `openwiki_search` and `openwiki_read` tools when you have them; otherwise read these files, or run `uv run mvp/loops/knowledge.py about --question "..." --wiki openwiki`, which lists the pages that bear on a question with each page's status and who signed it.
+How to read it. Use the `openwiki_search` and `openwiki_read` tools when you have them; otherwise read these files, or run `uv run tools/knowledge.py about --question "..." --wiki openwiki`, which lists the pages that bear on a question with each page's status and who signed it.
 
 What a page is worth. Every page here is working memory at status draft. None is signed: a page is signed only when its own `verified` lines name a person, and only a person adds those. Use a draft, say that it is a draft, and check it against your data before leaning on it.
 

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 650" width="960" height="650" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
+  <title id="title">Two ways of working, and the wall between them</title>
+  <desc id="desc">On the left, exploring: read what is known, set data aside before any look, look as often as wanted with every look logged, record choices, and write up a lead that is reviewed. On the right, confirming: plan before the answer is seen, test on known answers, the lock by a person, open the held-out data once, review, and the steward's signature. A wall stands between the two. Two things cross it: a lead, handed over to start a plan, and the data that was set aside, which becomes the held-out data and is opened once.</desc>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="8.5" refY="4" orient="auto">
+      <path d="M 0 0 L 9 4 L 0 8 Z" fill="#374151"/>
+    </marker>
+    <marker id="arrow-back" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="0.5" refY="4" orient="auto">
+      <path d="M 9 0 L 0 4 L 9 8 Z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="650" fill="#FFFFFF"/>
+  <text x="230" y="34.0" text-anchor="middle" dy="0.35em" font-size="16" font-weight="600">Exploring: most of the work</text>
+  <text x="730" y="34.0" text-anchor="middle" dy="0.35em" font-size="16" font-weight="600">Confirming: one claim, stated in advance</text>
+  <rect x="50" y="70" width="360" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="230.0" y="97.0" text-anchor="middle" dy="0.35em" font-size="14">Read what is known</text>
+  <rect x="50" y="150" width="360" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="230.0" y="177.0" text-anchor="middle" dy="0.35em" font-size="14">Set data aside, before any look</text>
+  <rect x="50" y="230" width="360" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="230.0" y="248.0" text-anchor="middle" dy="0.35em" font-size="14">Look, as often as wanted;</text>
+  <text x="230.0" y="266.0" text-anchor="middle" dy="0.35em" font-size="14">every look is logged</text>
+  <rect x="50" y="310" width="360" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="230.0" y="337.0" text-anchor="middle" dy="0.35em" font-size="14">Record choices as they are made</text>
+  <rect x="50" y="390" width="360" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="230.0" y="417.0" text-anchor="middle" dy="0.35em" font-size="14">Write up a lead; it is reviewed</text>
+  <path d="M 230 124 L 230 150" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 230 204 L 230 230" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 230 284 L 230 310" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 230 364 L 230 390" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="550" y="70" width="360" height="46" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="730.0" y="93.0" text-anchor="middle" dy="0.35em" font-size="14">Plan, written before the answer is seen</text>
+  <rect x="550" y="140" width="360" height="46" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="730.0" y="163.0" text-anchor="middle" dy="0.35em" font-size="14">Test on known answers, repeated freely</text>
+  <rect x="550" y="210" width="360" height="46" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="730.0" y="233.0" text-anchor="middle" dy="0.35em" font-size="14">The lock, by a person</text>
+  <rect x="550" y="280" width="360" height="46" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="730.0" y="303.0" text-anchor="middle" dy="0.35em" font-size="14">Open the held-out data, once</text>
+  <rect x="550" y="350" width="360" height="46" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="730.0" y="373.0" text-anchor="middle" dy="0.35em" font-size="14">Review, by an assistant that did none of it</text>
+  <rect x="550" y="420" width="360" height="46" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="730.0" y="443.0" text-anchor="middle" dy="0.35em" font-size="14">The steward's signature</text>
+  <path d="M 730 116 L 730 140" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 730 186 L 730 210" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 730 256 L 730 280" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 730 326 L 730 350" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 730 396 L 730 420" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="474" y="126" width="12" height="368" rx="3" fill="#374151"/>
+  <text x="480" y="512.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">the wall</text>
+  <path d="M 410 417 L 446 417 L 446 93 L 550 93" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="480" y="56.0" text-anchor="middle" dy="0.35em" font-size="14">a lead, handed over</text>
+  <rect x="330" y="548" width="300" height="54" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="480.0" y="566.0" text-anchor="middle" dy="0.35em" font-size="14">The data that was set aside</text>
+  <text x="480.0" y="584.0" text-anchor="middle" dy="0.35em" font-size="14">becomes the held-out data</text>
+  <path d="M 50 177 L 24 177 L 24 575 L 330 575" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 630 575 L 936 575 L 936 303 L 910 303" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="30" y="612" width="28" height="18" rx="4" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="66" y="621.0" text-anchor="start" dy="0.35em" font-size="14">the factory's own parts</text>
+  <rect x="245" y="612" width="28" height="18" rx="4" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="281" y="621.0" text-anchor="start" dy="0.35em" font-size="14">an act by a person</text>
+  <rect x="430" y="612" width="28" height="18" rx="4" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="466" y="621.0" text-anchor="start" dy="0.35em" font-size="14">held-out data</text>
+</svg>

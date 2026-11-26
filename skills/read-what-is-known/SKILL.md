@@ -21,12 +21,12 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
 1. **Ask the tool, not your memory.** From the repository root:
 
    ```
-   uv run mvp/loops/knowledge.py about --question "<the question, in the scientist's words>" \
+   uv run tools/knowledge.py about --question "<the question, in the scientist's words>" \
      --wiki <the wiki directory, such as openwiki> [--wiki <another>] \
      [--drafts <the queue of drafted pages>]
    ```
 
-   Inside a started exploration use `uv run mvp/loops/explore.py known --exploration <dir> --by <you> --wiki ... [--drafts ...]`: it lists the same pages and writes what was listed into the exploration log. The first look is refused until this has run and a page is recorded as read.
+   Inside a started exploration use `uv run tools/explore.py known --exploration <dir> --by <you> --wiki ... [--drafts ...]`: it lists the same pages and writes what was listed into the exploration log. The first look is refused until this has run and a page is recorded as read.
 
    Add `--tag` for a product, a quantity or a place the question implies and does not say. Run it again with other words if the list looks thin. An empty list is a result: say so.
 
@@ -42,7 +42,7 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
    - what it **rules out**: something the question as asked would have you do that the page refuses;
    - what it **warns about**: a pitfall that makes a wrong answer look right.
 
-   Inside an exploration record each with `uv run mvp/loops/explore.py read --exploration <dir> --by <you> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole. The lead lists what was read, what was skimmed and what was listed and not read.
+   Inside an exploration record each with `uv run tools/explore.py read --exploration <dir> --by <you> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole. The lead lists what was read, what was skimmed and what was listed and not read.
 
 5. **Say what is missing.** If the question needs something the knowledge does not have, that is a note (`explore.py note --kind missing`, or `sf.py note`), not something to fill in from memory.
 

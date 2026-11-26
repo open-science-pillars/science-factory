@@ -9,7 +9,7 @@ A lead is something that looks true and is worth testing. It is right more often
 
 ## Steps
 
-1. **Check where you stand.** `uv run mvp/loops/explore.py status --exploration <x>`: looks, failures, refusals, choices, open notes.
+1. **Check where you stand.** `uv run tools/explore.py status --exploration <x>`: looks, failures, refusals, choices, open notes.
 
 2. **Write the lead file**, `<x>/lead.yaml`, from `lead-template.yaml` beside this skill. Seven keys are required and three more may be added.
    - `what_looks_true`: a short paragraph, with the numbers, their units, their counts, and the place and period they come from. Say "looks", not "is".
@@ -22,15 +22,15 @@ A lead is something that looks true and is worth testing. It is right more often
    - `pitfalls`: each pitfall met, with the knowledge page that names it (and whether that page is signed or a draft) or the note you raised.
    - `proposed_plan`: the stub for a confirming study. `question` is one sentence ending in a question mark, about the data that was set aside. `quantity_estimated` is one quantity. `difference_that_matters` is the scientist's number if the request gives one; if it does not, write that nobody has stated one and what you would propose, as a proposal. `rule_sketch` says what result would support the idea, what would refute it, and that anything else is inconclusive. Add `hard_cases` (what the known-answer tests must include, from the pitfalls) and `what_this_could_not_show`. Other keys of your own are allowed in the stub (`prerequisites`, for what must be in the knowledge before a plan can be written) and are rendered as they are. Ask of the rule: can it fail, and can it be met by throwing observations away? A rule on a share of kept observations needs a floor on how many are kept.
 
-3. **Record it.** `uv run mvp/loops/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml`. The tool adds what you cannot be trusted to remember: the count of looks, failures and refusals, the comparisons the looks declared, the full record of each choice and when it was written down, the order of looks and choices, what was read and what was listed and not read, what was set aside and what is in neither. It writes `lead.md` and `lead.json`.
+3. **Record it.** `uv run tools/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml`. The tool adds what you cannot be trusted to remember: the count of looks, failures and refusals, the comparisons the looks declared, the full record of each choice and when it was written down, the order of looks and choices, what was read and what was listed and not read, what was set aside and what is in neither. It writes `lead.md` and `lead.json`.
 
 4. **Hand it back for review, and answer the review.** For each hole: look again, revise the lead and record a new version, or keep the hole in the lead as a stated limit.
 
    **When to end.** After `explore.py lead`, do not call `end`: status names the review assistant, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again. Call `end --outcome lead` only when the latest lead has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
 
-   The command, when its time comes: `uv run mvp/loops/explore.py end --exploration <x> --by <you> --outcome lead --summary "<one sentence>"`.
+   The command, when its time comes: `uv run tools/explore.py end --exploration <x> --by <you> --outcome lead --summary "<one sentence>"`.
 
-5. **Put a slip of wording right without a new version.** `uv run mvp/loops/explore.py correct --exploration <x> --by <you> --old "<the words as they stand>" --new "<the words to put there>" --why "<why>"`. The old words must stand in the lead exactly once, no number may change, and the lead then shows the old and the new words under "Corrections of wording". Bring `lead.yaml` in line by hand so a later version starts from the corrected words. Anything that changes a number or what the lead claims is a new version.
+5. **Put a slip of wording right without a new version.** `uv run tools/explore.py correct --exploration <x> --by <you> --old "<the words as they stand>" --new "<the words to put there>" --why "<why>"`. The old words must stand in the lead exactly once, no number may change, and the lead then shows the old and the new words under "Corrections of wording". Bring `lead.yaml` in line by hand so a later version starts from the corrected words. Anything that changes a number or what the lead claims is a new version.
 
 ## What this skill refuses
 

@@ -19,7 +19,7 @@ hooks:
 
 You are the review assistant of a science factory. You act under the name `agent:review` (or `agent:review-<suffix>` when the coordinating assistant gives you one) in every `--by`. Run every command from the repository root. Each tool call you make is checked against your role file before it runs, and what the file does not allow is blocked.
 
-**You may call:** `uv run mvp/loops/explore.py status`, `uv run mvp/loops/explore.py check-log`, `uv run mvp/loops/explore.py recheck`, `uv run mvp/loops/explore.py review`, `uv run mvp/loops/knowledge.py about`, `uv run mvp/loops/knowledge.py check-drafts`, `uv run mvp/sf.py status`, `uv run mvp/sf.py check-log`, `uv run mvp/sf.py check-plan`, `uv run mvp/sf.py scorecard`, `uv run mvp/sf.py review`, `uv run mvp/sf.py note`.
+**You may call:** `uv run tools/explore.py status`, `uv run tools/explore.py check-log`, `uv run tools/explore.py recheck`, `uv run tools/explore.py review`, `uv run tools/knowledge.py about`, `uv run tools/knowledge.py check-drafts`, `uv run tools/sf.py status`, `uv run tools/sf.py check-log`, `uv run tools/sf.py check-plan`, `uv run tools/sf.py scorecard`, `uv run tools/sf.py review`, `uv run tools/sf.py note`.
 
 **Skills:** `review-work`, `read-what-is-known`.
 

@@ -2,14 +2,14 @@
 name: curating
 purpose: "Turns notes and leads into drafted knowledge pages for the steward's queue; never signs."
 may_call:
-  - "mvp/loops/explore.py status"
-  - "mvp/loops/explore.py curation-list"
-  - "mvp/loops/explore.py resolve"
-  - "mvp/sf.py status"
-  - "mvp/sf.py curation-list"
-  - "mvp/sf.py resolve"
-  - "mvp/loops/knowledge.py about"
-  - "mvp/loops/knowledge.py check-drafts"
+  - "tools/explore.py status"
+  - "tools/explore.py curation-list"
+  - "tools/explore.py resolve"
+  - "tools/sf.py status"
+  - "tools/sf.py curation-list"
+  - "tools/sf.py resolve"
+  - "tools/knowledge.py about"
+  - "tools/knowledge.py check-drafts"
   - "skill:draft-a-knowledge-page"
   - "skill:read-what-is-known"
 must_never_see:

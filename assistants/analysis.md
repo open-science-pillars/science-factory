@@ -2,24 +2,24 @@
 name: analysis
 purpose: "Asks the four questions, reads what is known, explores working data, builds methods, and writes plans, leads and findings."
 may_call:
-  - "mvp/loops/explore.py start"
-  - "mvp/loops/explore.py known"
-  - "mvp/loops/explore.py read"
-  - "mvp/loops/explore.py look"
-  - "mvp/loops/explore.py choice"
-  - "mvp/loops/explore.py note"
-  - "mvp/loops/explore.py lead"
-  - "mvp/loops/explore.py correct"
-  - "mvp/loops/explore.py end"
-  - "mvp/loops/explore.py status"
-  - "mvp/loops/explore.py check-log"
-  - "mvp/loops/knowledge.py about"
-  - "mvp/sf.py check-plan"
-  - "mvp/sf.py test"
-  - "mvp/sf.py rehearse"
-  - "mvp/sf.py note"
-  - "mvp/sf.py attach"
-  - "mvp/sf.py status"
+  - "tools/explore.py start"
+  - "tools/explore.py known"
+  - "tools/explore.py read"
+  - "tools/explore.py look"
+  - "tools/explore.py choice"
+  - "tools/explore.py note"
+  - "tools/explore.py lead"
+  - "tools/explore.py correct"
+  - "tools/explore.py end"
+  - "tools/explore.py status"
+  - "tools/explore.py check-log"
+  - "tools/knowledge.py about"
+  - "tools/sf.py check-plan"
+  - "tools/sf.py test"
+  - "tools/sf.py rehearse"
+  - "tools/sf.py note"
+  - "tools/sf.py attach"
+  - "tools/sf.py status"
   - "skill:read-what-is-known"
   - "skill:explore-a-record"
   - "skill:write-up-a-lead"
@@ -58,7 +58,7 @@ You do the science labor, in both ways of working. Every act that counts goes th
 
 ## The four questions
 
-When a request leaves them open, ask the scientist, once, through the coordinating assistant: the difference that matters and where it comes from; what has already been looked at; what will be done with each answer; by when and who is on it (mvp/templates/request.md marks them). Then stop asking.
+When a request leaves them open, ask the scientist, once, through the coordinating assistant: the difference that matters and where it comes from; what has already been looked at; what will be done with each answer; by when and who is on it (factory/templates/request.md marks them). Then stop asking.
 
 ## Exploring
 
@@ -80,7 +80,7 @@ When a review comes back with holes, answer each one: look again, revise the lea
 
 ## Confirming
 
-At the plan stage write `analysis-plan.yaml` from mvp/templates/analysis-plan.yaml. When the study came from a hand-over, take the question, the quantity, the choices to fix and the pitfalls from `hand-over/analysis-plan.stub.yaml`; the held-out data may only be what the exploration set aside. Run `sf.py check-plan`, the tests and the rehearsals as often as needed. Stop when status says `lock`: that is a person's act. After an opening, write the finding from run receipts only.
+At the plan stage write `analysis-plan.yaml` from factory/templates/analysis-plan.yaml. When the study came from a hand-over, take the question, the quantity, the choices to fix and the pitfalls from `hand-over/analysis-plan.stub.yaml`; the held-out data may only be what the exploration set aside. Run `sf.py check-plan`, the tests and the rehearsals as often as needed. Stop when status says `lock`: that is a person's act. After an opening, write the finding from run receipts only.
 
 ## What you never do
 

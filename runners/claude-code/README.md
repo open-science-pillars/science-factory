@@ -10,7 +10,7 @@ A runner starts the right role with the right tools. This one does it with Claud
 
 The rendered files are committed, so the repository works when opened in Claude Code: start the coordinating role with `claude --agent coordinating`, or one role at a time with `run_role.py`. After changing a role or a skill, run `uv run runners/claude-code/render.py` and commit both.
 
-Each rendered role points to the knowledge base as a wiki (`openwiki/` in this repository), because its role file does, and is given the two read-only wiki tools, `openwiki_search` and `openwiki_read`, from the server `.mcp.json` names `openwiki`. By default that is this package's own read-only server (`mvp/loops/wiki_server.py`); to use the OpenWiki tool's server, change the one entry in `render.py` and render again. The per-call check lets a role use those two tools from any server and no other tool of any server.
+Each rendered role points to the knowledge base as a wiki (`openwiki/` in this repository), because its role file does, and is given the two read-only wiki tools, `openwiki_search` and `openwiki_read`, from the server `.mcp.json` names `openwiki`. By default that is this package's own read-only server (`tools/wiki_server.py`); to use the OpenWiki tool's server, change the one entry in `render.py` and render again. The per-call check lets a role use those two tools from any server and no other tool of any server.
 
 ## What this runner really enforces, and what stays instruction
 
@@ -21,7 +21,7 @@ Each rendered role points to the knowledge base as a wiki (`openwiki/` in this r
 
 **Enforced by `allow.py`, when Claude Code calls the hook.**
 
-- The role's commands. Bash may run one thing: `uv run mvp/<tool>.py <command>` for a command in the role's `may_call`, with no pipes, chains, redirections, substitutions or variables. So no role can run the lock or the signature, the review role cannot run a look, and only the review role can record a review.
+- The role's commands. Bash may run one thing: `uv run tools/<tool>.py <command>` for a command in the role's `may_call`, with no pipes, chains, redirections, substitutions or variables. So no role can run the lock or the signature, the review role cannot run a look, and only the review role can record a review.
 - The role's name. A `--by` must be `agent:<role>` or `agent:<role>-<suffix>`, so a role cannot act under another role's name or a person's.
 - Where the role writes. Write and Edit only on paths matching the role's `writes`, and never on a log, the record of what has been opened, a receipt, a recorded lead or verdict, a role, a skill, a tool or the rendered files.
 - Reading a path that an exploration beside it set aside or a study's plan holds out is blocked for Read, Grep and Glob.

@@ -13,7 +13,7 @@ If you did any part of this work, or were given the reasoning of the assistant t
 
 ## 1. The record
 
-- An exploration: `uv run mvp/loops/explore.py check-log --exploration <x>` and `status`. A study: `uv run mvp/sf.py check-log --study <s>`, `status`, `scorecard`.
+- An exploration: `uv run tools/explore.py check-log --exploration <x>` and `status`. A study: `uv run tools/sf.py check-log --study <s>`, `status`, `scorecard`.
 - If the record does not check out, that is the first hole. Do not review numbers that rest on it.
 
 ## 2. What is known, read independently
@@ -27,7 +27,7 @@ Use the `read-what-is-known` skill on the question before reading what the work 
 
 ## 3. Every number against a receipt
 
-For each number in the lead, the plan or the finding: find it in a look's output (`receipts/LOOK-00N.out.txt`) or a run receipt. A number that is in none is a hole. A number that is rounded so it reads better than the receipt is a hole. For an exploration, `uv run mvp/loops/explore.py recheck --exploration <x> --look LOOK-00N` runs a logged look again in a copy and says whether the output is identical; recheck the looks the lead rests on.
+For each number in the lead, the plan or the finding: find it in a look's output (`receipts/LOOK-00N.out.txt`) or a run receipt. A number that is in none is a hole. A number that is rounded so it reads better than the receipt is a hole. For an exploration, `uv run tools/explore.py recheck --exploration <x> --look LOOK-00N` runs a logged look again in a copy and says whether the output is identical; recheck the looks the lead rests on.
 
 ## 4. The reasoning
 
@@ -49,15 +49,15 @@ Ask of an exploration's lead:
 
 Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives.
 
-Ask of a queue of drafts: `uv run mvp/loops/knowledge.py check-drafts --queue <q> --wiki <w>` passes; each statement is in its source; one case's numbers are not stated as general; nothing reads as signed; a disagreement with a signed page is declared as `contradicts`.
+Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --wiki <w>` passes; each statement is in its source; one case's numbers are not stated as general; nothing reads as signed; a disagreement with a signed page is declared as `contradicts`.
 
 ## 5. Write it and record it
 
 Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Put gaps in the knowledge itself, as against holes in the work, under a heading "For the steward". Then record the verdict with the tool:
 
 ```
-uv run mvp/loops/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md
-uv run mvp/sf.py review --study <s> --by <you> --verdict block --file <s>/review/<name>.md
+uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md
+uv run tools/sf.py review --study <s> --by <you> --verdict block --file <s>/review/<name>.md
 ```
 
 `no-holes-found` and `approve` say that you looked and found none, and the file still says what you checked.

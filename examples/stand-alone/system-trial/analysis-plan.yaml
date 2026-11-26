@@ -1,0 +1,115 @@
+# Analysis plan for the system trial that runs from this repository alone.
+# It is studies/STUDY-0000 with one thing changed: the two records are paired
+# by this repository's own pairing step (methods/built-in-pairing) where
+# STUDY-0000 uses the script the hydrology capability ships. Same gain
+# method, same rule, same quality screen; the held-out record is a test case
+# the access gate generates and seals at the opening. It is a template: the
+# blind test of the system copies it into throwaway folders, and nothing is
+# ever started in this folder. Every key here is explained in
+# factory/templates/analysis-plan.yaml.
+study: SYSTEM-TRIAL-BUILT-IN
+study_kind: system_trial    # its held-out data is made at its own opening; it closes only as system-trial-accepted or system-trial-declined
+question: "In the blind test case, is the gain that was put in within five percent of one?"
+claim_class: variability
+quantity_estimated: >
+  The gain of one synthetic record against the other: the coefficient on
+  the second record's elevation when the first record's elevation is
+  regressed on it and on time across paired passes, after the quality
+  screen, with a 95 percent sampling interval under a lag-1 model of the
+  residuals.
+
+roots:                      # relative to this study directory
+  gain: ../../../methods/gain
+  pairing: ../../../methods/built-in-pairing
+
+code:
+  - "{pairing}/pair_records.py"
+  - "{gain}/gain.py"
+  - "{gain}/confront.py"
+  - "{gain}/test_cases.py"
+  - "{gain}/system_trial.py"
+
+data:
+  working: "Known-answer test cases with published seeds: all already seen. No real record is read anywhere in this study."
+  held_out:
+    # The case does not exist until the opening. Its dates are the synthetic year every test case is built in.
+    # Because this is a system trial, the record of what has been opened stores each trial's sealed case as its
+    # own subject, so a second trial beside this one is not exploratory.
+    window: {start: "2031-01-01", end: "2031-12-31"}
+    pair: {reach_id: SYNTHETIC, gauge: SYNTHETIC, case: "a blind test case, sealed at the opening"}
+    withheld_values: [synthetic satellite elevations, the gain that was put in]
+    path: data/blind_test_case.json      # what the locked analysis is given: no trace of what was put in
+
+tests:
+  known-answers:
+    command: ["{python}", "{gain}/known_answer_tests.py",
+              "--executor", "{pairing}/pair_records.py",
+              "--plan", "{study}/analysis-plan.yaml",
+              "--cases", "2000", "--difference-that-matters", "0.05", "--screen-reach-q", "2",
+              "--out", "{study}/receipts/known-answers.json"]
+    receipt: receipts/known-answers.json
+  working-data:   # working data for a system trial is itself synthetic: no real record is touched
+    command: ["{python}", "{gain}/system_trial.py", "working-data",
+              "--executor", "{pairing}/pair_records.py",
+              "--case", "{study}/working-data/working_data_case.json",
+              "--out", "{study}/receipts/working-data.json"]
+    receipt: receipts/working-data.json
+    writes: [working-data/working_data_case.json]     # the case this test generates for itself (published seed 2, gain 1.00)
+  held-out:
+    # The seal writes two files: the data, and the answer in a file the command below is never passed. The
+    # answer file sits in this study: that the locked code never opens it is read in the code at the lock.
+    # The tool does not enforce it, which is a stated limit (system_trial.py, under `seal`).
+    fetch: ["{python}", "{gain}/system_trial.py", "seal", "--out", "{study}/data/blind_test_case.json",
+            "--answer", "{study}/sealed/blind_test_answer.json"]
+    command: ["{python}", "{gain}/confront.py",
+              "--executor", "{pairing}/pair_records.py",
+              "--inputs", "{study}/data/blind_test_case.json",
+              "--screen-reach-q", "2", "--refusal-is-a-result", "--out", "{study}/receipts/held-out.json"]
+    receipt: receipts/held-out.json
+    writes: [sealed/blind_test_answer.json]           # read only by `system_trial.py verdict`, after the steward has decided
+
+rehearsals:
+  - id: opening-path
+    why: "the sealing step and the opening's command have run once, on a test case that is not the sealed one"
+    steps:
+      - ["{python}", "{gain}/system_trial.py", "seal", "--rehearsal", "--out", "{study}/rehearsal/rehearsal_case.json",
+         "--answer", "{study}/rehearsal/rehearsal_answer.json"]
+      - ["{python}", "{gain}/confront.py",
+         "--executor", "{pairing}/pair_records.py",
+         "--inputs", "{study}/rehearsal/rehearsal_case.json",
+         "--screen-reach-q", "2", "--out", "{study}/receipts/rehearsal-opening-path.json"]
+    receipt: receipts/rehearsal-opening-path.json
+    writes: [rehearsal/rehearsal_case.json, rehearsal/rehearsal_answer.json]
+
+rules:
+  - id: gain-equivalence
+    role: primary
+    statement: "The gain is within five percent of one."
+    supported_if:
+      - {field: gain.ci_low, op: ">=", value: 0.95}
+      - {field: gain.ci_high, op: "<=", value: 1.05}
+    refuted_if:
+      - [{field: gain.ci_high, op: "<", value: 0.95}]
+      - [{field: gain.ci_low, op: ">", value: 1.05}]
+    # anything else is inconclusive; inconclusive is a result and is final for this window
+    power_evidence:
+      path: rules.gain-equivalence
+      require:     # the criteria the known-answer tests must meet before the lock; the tool requires the four marked
+        - {field: coverage_when_true, op: ">=", value: 0.90}             # required
+        - {field: coverage_min_over_hard_cases, op: ">=", value: 0.90}
+        - {field: false_confirm_at_edge_max, op: "<=", value: 0.05}      # required
+        - {field: false_refute_at_edge_max, op: "<=", value: 0.05}       # required
+        - {field: power_to_support_when_true, op: ">=", value: 0.80}
+        - {field: power_to_refute_when_false, op: ">=", value: 0.80}     # required
+        - {field: false_confirm_when_false, op: "<=", value: 0.01}
+        - {field: processing_change_refused_rate, op: ">=", value: 1.0}
+
+openings_allowed: {held-out: 1}
+
+independence: "The blind test case is generated from operating-system entropy by the access gate at the opening; nothing in the method has seen it, and the method is never given what was put in."
+
+overturn: "Nothing: this is a system trial. A wrong verdict is a defect in the factory: it is written to the study log by `system_trial.py verdict`, the trial is not accepted, and a note is raised."
+
+limitations:
+  - "A known-answer test case is as kind as its generator; the beyond-limits cases in the known-answer receipt list what the generator can put in that the method does not survive."
+  - "This qualifies the study tool and the method on a pairing step written for this purpose. It says nothing about any real record, any provider's product, or the pairing script of any capability."

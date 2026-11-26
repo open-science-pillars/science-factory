@@ -9,7 +9,58 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  core:
+    # Everything here runs from this repository alone: no other repository is checked out beside it.
+    name: from this repository alone
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: The study tool tests itself
+        run: uv run tools/sf.py selftest
+      - name: The pairing step of this repository's own tests itself
+        run: uv run methods/built-in-pairing/pair_records.py --selftest
+      - name: The plan of the system trial that runs from this repository alone is complete
+        run: uv run tools/sf.py check-plan --study examples/stand-alone/system-trial
+      - name: A short blind test of the system, on the built-in pairing step
+        run: uv run methods/gain/system_trial.py blind-test --template examples/stand-alone/system-trial --n 20
+      - name: The table of moved files is borne out by the files, and the one record that can be replayed without the checkouts says what it said
+        run: |
+          uv run tools/check_old_records.py
+          uv run tools/check_old_records.py --selftest
+      - name: The local place passes the compute contract
+        run: uv run compute/adapter.py conformance
+      - name: The conformance test fails every deliberately wrong place
+        run: uv run compute/adapter.py conformance --self-check
+      - name: The exploring tool, the knowledge helpers and the checks
+        run: |
+          uv run tools/explore.py selftest
+          uv run tools/knowledge.py selftest
+          uv run tools/wiki_server.py --selftest
+          uv run tools/check_roles.py
+          uv run tools/check_roles.py --selftest
+          uv run runners/claude-code/render.py --check
+          uv run runners/claude-code/render.py --selftest
+          uv run runners/claude-code/allow.py --selftest
+          uv run runners/claude-code/run_role.py --selftest
+          uv run runners/by-hand/as_role.py --selftest
+          uv run skills/explore-a-record/scripts/describe_record.py --selftest
+          uv run skills/explore-a-record/scripts/plot_xy.py --selftest
+      - name: The stand-alone example, end to end
+        run: uv run examples/stand-alone/run.py
+      - name: The stand-alone example again, with a setting that makes the launcher warn on standard error
+        # uv prints a deprecation warning for this variable on every call; the example once read that warning as part of
+        # a tool's answer and crashed. One of its own steps tests the same thing without depending on the launcher.
+        env:
+          UV_NATIVE_TLS: "true"
+        run: uv run examples/stand-alone/run.py
+
+  with-hydrology:
+    # The checks that use the hydrology capability's own pairing script, its knowledge and the organization's
+    # checker. They prove what they proved before the built-in pairing step existed: nothing here was made
+    # to pass by it.
+    name: with the hydrology capability beside it
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -29,76 +80,25 @@ jobs:
           ref: c04ae2e156ca8672c7724254a2c738bd252e9de6
           path: nasa-daac-knowledge
       - uses: astral-sh/setup-uv@v5
-      - name: The study tool tests itself
-        run: uv run science-factory/mvp/sf.py selftest
-      - name: The local place passes the compute contract
-        run: uv run science-factory/mvp/compute/adapter.py conformance
-      - name: The conformance test fails every deliberately wrong place
-        run: uv run science-factory/mvp/compute/adapter.py conformance --self-check
       - name: Both analysis plans are complete
         run: |
-          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0000
-          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0001
-      - name: A short blind test of the system
-        run: uv run science-factory/mvp/system_trial.py blind-test --template science-factory/mvp/studies/STUDY-0000 --n 20
-      - name: The exploring tool tests itself
-        run: uv run science-factory/mvp/loops/explore.py selftest
+          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0000
+          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0001
+      - name: A short blind test of the system, on the hydrology capability's pairing script
+        run: uv run science-factory/methods/gain/system_trial.py blind-test --template science-factory/studies/STUDY-0000 --n 20
+      - name: The records made before the layout changed still say what they said, to the study tool that made them
+        run: uv run science-factory/tools/check_old_records.py
+      - name: On ten test cases the built-in pairing step and the hydrology script give the same pairs and scores
+        run: uv run science-factory/methods/built-in-pairing/pair_records.py --selftest --compare-with hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py
       - name: The knowledge helpers test themselves, with the organization's checker
-        run: uv run science-factory/mvp/loops/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
-      - name: The role files and the procedure say the same thing
-        run: |
-          uv run science-factory/assistants/check_roles.py
-          uv run science-factory/assistants/check_roles.py --selftest
-      - name: The files rendered for Claude Code have not drifted from the role and skill files
-        run: |
-          uv run science-factory/runners/claude-code/render.py --check
-          uv run science-factory/runners/claude-code/render.py --selftest
-      - name: The check on a role's tool calls, and the role launcher, test themselves
-        run: |
-          uv run science-factory/runners/claude-code/allow.py --selftest
-          uv run science-factory/runners/claude-code/run_role.py --selftest
-          uv run science-factory/runners/by-hand/as_role.py --selftest
-      - name: The scripts the exploring skill ships test themselves
-        run: |
-          uv run science-factory/skills/explore-a-record/scripts/describe_record.py --selftest
-          uv run science-factory/skills/explore-a-record/scripts/plot_xy.py --selftest
+        run: uv run science-factory/tools/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
       - name: The demo's drafted knowledge, from both runs, still passes the queue's rules and the organization's checker
         run: |
-          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
-          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
       - name: The demo's exploration logs, from both runs, still check out on the tool as it now is
         run: |
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002
-
-  stand-alone:
-    # Everything added with the assistants and the two loops runs from this repository alone.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: The exploring tool, the knowledge helpers and the checks, with no other repository beside them
-        run: |
-          uv run mvp/loops/explore.py selftest
-          uv run mvp/loops/knowledge.py selftest
-          uv run mvp/loops/wiki_server.py --selftest
-          uv run assistants/check_roles.py
-          uv run assistants/check_roles.py --selftest
-          uv run runners/claude-code/render.py --check
-          uv run runners/claude-code/render.py --selftest
-          uv run runners/claude-code/allow.py --selftest
-          uv run runners/claude-code/run_role.py --selftest
-          uv run runners/by-hand/as_role.py --selftest
-          uv run skills/explore-a-record/scripts/describe_record.py --selftest
-          uv run skills/explore-a-record/scripts/plot_xy.py --selftest
-      - name: The stand-alone example, end to end
-        run: uv run examples/stand-alone/run.py
-      - name: The stand-alone example again, with a setting that makes the launcher warn on standard error
-        # uv prints a deprecation warning for this variable on every call; the example once read that warning as part of
-        # a tool's answer and crashed. One of its own steps tests the same thing without depending on the launcher.
-        env:
-          UV_NATIVE_TLS: "true"
-        run: uv run examples/stand-alone/run.py
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002

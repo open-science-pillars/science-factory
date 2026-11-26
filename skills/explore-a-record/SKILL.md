@@ -5,7 +5,7 @@ description: "Explore a record freely without spending the data a later test wil
 
 # Explore a record
 
-Exploring is looking to find out what is there. It is most of the work and nothing in it is locked. The one rule is to say that it was exploring, and the tool (`mvp/loops/explore.py`) makes that easy: it keeps the log, counts what was tried, keeps the figures and holds the fence. This skill is the procedure. It carries no facts about any dataset.
+Exploring is looking to find out what is there. It is most of the work and nothing in it is locked. The one rule is to say that it was exploring, and the tool (`tools/explore.py`) makes that easy: it keeps the log, counts what was tried, keeps the figures and holds the fence. This skill is the procedure. It carries no facts about any dataset.
 
 Run every command from the repository root. `<x>` is the exploration's directory, by convention `<work>/explorations/<ID>`; the confirming studies and the record of what has been opened sit beside it in `<work>/studies/`.
 
@@ -19,10 +19,10 @@ Use the `read-what-is-known` skill with `knowledge.py about`, and read the pages
 
 ## 2. Set data aside, before any look
 
-Read the request for what has already been seen and what could be held out, and choose one of the ways TWO-WAYS-OF-WORKING.md lists: a later period, a period of contrasting conditions, sites never opened, a new release, a different instrument or record, forecasts scored later. Prefer what a later confirming study would most plausibly want, and think about what the question is for: a question about whether a method travels wants other sites set aside, not only a later period at the same site.
+Read the request for what has already been seen and what could be held out, and choose one of the ways docs/TWO-WAYS-OF-WORKING.md lists: a later period, a period of contrasting conditions, sites never opened, a new release, a different instrument or record, forecasts scored later. Prefer what a later confirming study would most plausibly want, and think about what the question is for: a question about whether a method travels wants other sites set aside, not only a later period at the same site.
 
 ```
-uv run mvp/loops/explore.py start --exploration <x> --id <ID> --by <you> \
+uv run tools/explore.py start --exploration <x> --id <ID> --by <you> \
   --question "<one sentence ending in a question mark>" --request <the request file> \
   --subject <key=value,key=value: the thing the data is about> \
   --how "a later period" --set-aside-window <START:END, or START: to keep it open> \
@@ -39,8 +39,8 @@ From here on you do not fetch, read, plot or ask about what was set aside, by an
 ## 3. Record what was read
 
 ```
-uv run mvp/loops/explore.py known --exploration <x> --by <you> --wiki <the wiki> [--drafts <the queue>]
-uv run mvp/loops/explore.py read --exploration <x> --by <you> --concept <the path as `known` printed it> \
+uv run tools/explore.py known --exploration <x> --by <you> --wiki <the wiki> [--drafts <the queue>]
+uv run tools/explore.py read --exploration <x> --by <you> --concept <the path as `known` printed it> \
   --takes "<what this page rules in, rules out or warns about here>" [--depth skimmed]
 ```
 
@@ -51,7 +51,7 @@ The first look is refused until `known` has run and at least one page is recorde
 A look is one script, run through the tool, with a reason:
 
 ```
-uv run mvp/loops/explore.py look --exploration <x> --by <you> --why "<what this look is trying to find out>" \
+uv run tools/explore.py look --exploration <x> --by <you> --why "<what this look is trying to find out>" \
   -- uv run looks/<script>.py <arguments>
 ```
 
@@ -71,7 +71,7 @@ uv run mvp/loops/explore.py look --exploration <x> --by <you> --why "<what this 
 Every time you pick one way over another (which observations to drop, which tolerance, which model form, which terms in a fit, which period to show), record it then:
 
 ```
-uv run mvp/loops/explore.py choice --exploration <x> --by <you> --choice "<what you chose>" \
+uv run tools/explore.py choice --exploration <x> --by <you> --choice "<what you chose>" \
   --alternative "<another way>" --alternative "<another>" --rests-on "<what it rests on>" --look LOOK-00N
 ```
 
@@ -84,7 +84,7 @@ When you can, run the alternative as a look too, so the lead can say how much th
 Anything missing, wrong or stale in the data or the knowledge, and any dead end:
 
 ```
-uv run mvp/loops/explore.py note --exploration <x> --by <you> --kind <missing|wrong|stale|contradiction|method|dead-end> \
+uv run tools/explore.py note --exploration <x> --by <you> --kind <missing|wrong|stale|contradiction|method|dead-end> \
   --about "<the product, field or page>" --text "<what, with numbers>" --evidence receipts/LOOK-00N.json
 ```
 
@@ -94,7 +94,7 @@ Check first whether the knowledge already says it; a pitfall the knowledge names
 
 **When to end.** After `explore.py lead`, do not call `end`: status names the review assistant, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again. Call `end --outcome lead` only when the latest lead has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
 
-An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run mvp/loops/explore.py status --exploration <x>` says where it stands and who is next.
+An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run tools/explore.py status --exploration <x>` says where it stands and who is next.
 
 ## What this skill refuses
 
