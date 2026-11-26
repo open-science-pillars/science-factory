@@ -1,0 +1,22 @@
+# A lead file. Copy it to <exploration>/lead.yaml, fill every key, then:
+#   uv run mvp/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml
+# The tool adds the count of looks, the full record of each choice, what was read and what was set aside.
+what_looks_true: >
+  One or two sentences with numbers, units, counts, place and period. "Looks", not "is".
+  Where it does not hold, as plainly as where it does.
+how_it_was_found: >
+  The path taken, including what was tried first and dropped.
+evidence: [LOOK-001]          # the looks every number here comes from; each ran without failing
+choices_that_would_change_it:
+  - {choice: CHOICE-001, how: "what the answer becomes the other way, with the number if the alternative was run; say so if it was not"}
+choices_that_would_not:
+  - {choice: CHOICE-002, why: "why the other way gives the same answer, with the look that showed it"}
+pitfalls:
+  - "the pitfall, and the knowledge page that names it (signed, unsigned or a draft) or the note raised"
+proposed_plan:
+  question: "One sentence about the data that was set aside, ending in a question mark?"
+  quantity_estimated: "one quantity, with how it is estimated"
+  difference_that_matters: "the scientist's number, or: nobody has stated one; proposed here, for the scientist to decide"
+  rule_sketch: "what would support the idea, what would refute it; anything else is inconclusive"
+  hard_cases: "what the known-answer tests must include, from the pitfalls"
+  what_this_could_not_show: "what a result either way would leave open"
