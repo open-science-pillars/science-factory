@@ -1,6 +1,6 @@
 # Science Factory
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-26 · concept, design, tested tools, and a build plan in two parts. Not a product of any employer or of any organization discussed in it.**
+*Part of Open Science Pillars, a personal open-source project.*
 
 A science factory is a procedure and a set of tools for testing a scientific claim honestly: the plan is written down and locked before the data is opened (pre-registered, to those who use the word), with assistants (always AI agents) doing the labor of exploring, review and drafting knowledge, and an experiment they cannot argue with deciding what survives. This repository is the factory and nothing else. It says what a science factory is, designs it, builds and tests the parts that run no language model, defines the assistants as files, and keeps the reviews made of all of it. It stands on its own: nothing in it needs another repository, and it keeps no runs. No study has run to a finding yet.
 
@@ -34,7 +34,7 @@ The first ends with `selftest: PASS (175 of 175)` in about half a minute: the st
 
 ## Why no runs are kept here
 
-This repository is the factory, not what the factory makes. A study log names the code it ran by checksum, so a record kept beside tools that go on changing stops matching them, and keeping old records checkable had started to shape the tools. So every run is made fresh: the examples ship their inputs and their recipes, and each number these documents cite either comes with the command that reproduces it today from this repository alone, or is marked as historical. The records that were here until November 2026 (two practice runs, a blind test, and a demo on real data run twice) are at the branch `records-2026-11` of this repository, with the tools as they stood then, and a historical number points there.
+This repository is the factory, not what the factory makes. A study log names the code it ran by checksum, so a record kept beside tools that go on changing stops matching them, and keeping old records checkable had started to shape the tools. So every run is made fresh: the examples ship their inputs and their recipes, and each number these documents cite either comes with the command that reproduces it today from this repository alone, or is marked as historical. The records that were here until November 2026 (two practice runs, a blind test, and a demo on real data run twice) are at the branch `records-2026-11` of this repository (commit `ad0c459`, which is also in the history of `main`, so the records stay reachable whatever becomes of the branch), with the tools as they stood then, and a historical number points there.
 
 **Where your own studies go.** A real study belongs in the repository where the science lives, beside its data and its methods, where its lock can be committed, reviewed and merged on a protected branch. The study tool creates a study wherever `--study` points, by convention in a folder called `studies/`, with the record of what has been opened beside it (`studies/openings.jsonl`); the exploring tool does the same in `explorations/`. In this repository those folders, and `knowledge-queue/` and `record/`, are ignored by git, so that a run made here to try the tools is never committed by accident.
 
