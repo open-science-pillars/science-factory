@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "id": "LOOK-003",
+ "why": "The same with every pass kept, as the second draft page advises giving both",
+ "argv": [
+  "uv",
+  "run",
+  "looks/width.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--mode",
+  "relation"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/width.py",
+  "sha256": "997a6300139529c89de65be491f0b3ced2a61a5858850754ec21b69d05200640"
+ },
+ "inputs": [
+  {
+   "word": "looks/width.py",
+   "sha256": "997a6300139529c89de65be491f0b3ced2a61a5858850754ec21b69d05200640",
+   "bytes": 4114
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-003.out.txt",
+  "sha256": "75a0eb3175455287546a362c60519cf614b0e18c8162604891193f4126ffbb8a"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:54:41Z",
+ "by": "agent:analysis-0002"
+}

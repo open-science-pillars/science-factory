@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-001",
+ "at": "2026-11-26T05:45:00Z",
+ "by": "agent:analysis-0001",
+ "kind": "missing",
+ "about": "SWOT RiverSP reach_q at this reach (knowledge: datasets/swot-river-lake.md)",
+ "text": "Seen while exploring calendar 2024 at reach 74210000331 against USGS-07374000, Version D, 50 pairs within 15 minutes. The three passes with reach_q 2 all fall at low stage (gauge 1.47 to 3.51 m of a 1.47 to 10.33 m range); their departures from the median level difference have a spread of 0.798 m against 0.162 m for the 47 passes with reach_q 1, and one (2024-10-30, the lowest stage of the year) is 1.776 m low. The product's stated uncertainty for that pass is 0.095 m, the median, so wse_u does not warn of it. The dataset concept says reach_q is a categorical gate and does not say what happens to a comparison when it is not applied. Unflagged passes at low stage are fine (lowest third of stage, 15 pairs, spread 0.078 m), so it is the flag and not low water that marks them.",
+ "evidence": {
+  "path": "receipts/LOOK-005.json",
+  "sha256": "3a47f8711b5c38a5b8274cdb6632180d4ee01da590be62d0a9f19d0c05792126"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

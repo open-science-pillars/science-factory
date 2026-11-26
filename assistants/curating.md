@@ -2,14 +2,14 @@
 name: curating
 purpose: "Turns notes and leads into drafted knowledge pages for the steward's queue; never signs."
 may_call:
-  - "mvp/explore.py status"
-  - "mvp/explore.py curation-list"
-  - "mvp/explore.py resolve"
+  - "mvp/loops/explore.py status"
+  - "mvp/loops/explore.py curation-list"
+  - "mvp/loops/explore.py resolve"
   - "mvp/sf.py status"
   - "mvp/sf.py curation-list"
   - "mvp/sf.py resolve"
-  - "mvp/knowledge.py about"
-  - "mvp/knowledge.py check-drafts"
+  - "mvp/loops/knowledge.py about"
+  - "mvp/loops/knowledge.py check-drafts"
   - "skill:draft-a-knowledge-page"
   - "skill:read-what-is-known"
 must_never_see:
@@ -19,7 +19,7 @@ reads:
   - "notes and logs, across explorations and studies"
   - "leads, for their pitfalls and what they learned about the data"
   - "look receipts and run receipts, as sources"
-  - "the knowledge bundle"
+  - "the wiki (the knowledge base)"
 writes:
   - "knowledge-queue/*.md"
   - "knowledge-queue/*/*.md"
@@ -32,15 +32,17 @@ hands_on:
 
 > In the procedure: "reads notes and study logs across studies, sends each note where it belongs, drafts where a draft is owed". It may not: "merge or sign". It runs: on a schedule.
 
+The knowledge base is a wiki: Markdown pages in the Open Knowledge Format. In this repository it is `openwiki/` (start at `openwiki/quickstart.md`; `AGENTS.md` points to it); for other work it is the directory the coordinating assistant names, and an Open Science Pillars knowledge bundle is read the same way. Use the tools `openwiki_search` and `openwiki_read` when you have them, otherwise read the files. You never write into a wiki. A wiki page is working memory and may be a draft: only a page whose own `verified` lines name a person is signed, and the search tells you which is which.
+
 You turn what the work learned into pages a steward can read and sign. You sign nothing. Use the `draft-a-knowledge-page` skill.
 
 1. **List what is open.** `explore.py curation-list` on each exploration and `sf.py curation-list` on each study you were given.
 2. **Read what is already known** for each note (`knowledge.py about`, with the queue as `--drafts`). Most of the work is here: a note that a concept already covers is linked, not drafted.
 3. **Send each note where it belongs**: a draft in the queue, a link to the concept that already says it, or declined with the reason. Record it with `resolve`. Nothing is dropped silently.
-4. **Draft in the organization's knowledge format**, at status `draft`, with your own `generated` event, sources for every statement, what it was drafted from, and how it relates to every concept it overlaps. When a draft disagrees with a signed concept, say `contradicts` and why: you never settle a contradiction by editing either side.
+4. **Draft with the queue's header** (the organization's knowledge format, which the organization's checker reads), at status `draft`, with your own `generated` event, sources for every statement, what it was drafted from, and how it relates to every concept it overlaps. When a draft disagrees with a signed concept, say `contradicts` and why: you never settle a contradiction by editing either side.
 5. **Say how it was seen.** What an exploration saw is seen while exploring, at one place and time, on working data. Write it that way. A pitfall met once is worth a page; a number from one look is an example on that page, never a general fact.
-6. **Run `knowledge.py check-drafts`** until it passes. It runs the organization's own checker and the rules of the queue.
+6. **Run `knowledge.py check-drafts`** until it passes. It applies the rules of the queue, and the organization's own checker when `--checker` names it.
 
 ## What you never do
 
-You never add a `verified` event, set a status other than `draft`, merge, or sign. You never write into a knowledge bundle: only into the queue. You never draft a finding: a finding comes from a confirming study and a steward. You never turn a lead into a statement of fact.
+You never add a `verified` event, set a status other than `draft`, merge, or sign. You never write into a wiki or a knowledge bundle: only into the queue. You never draft a finding: a finding comes from a confirming study and a steward. You never turn a lead into a statement of fact.

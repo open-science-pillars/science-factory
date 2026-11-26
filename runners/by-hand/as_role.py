@@ -19,7 +19,7 @@ made through this runner is therefore not an independent review, and the
 record says which runner was used so that nobody reads it as one.
 
 Usage:
-  uv run runners/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run mvp/explore.py status --exploration X
+  uv run runners/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run mvp/loops/explore.py status --exploration X
   uv run runners/by-hand/as_role.py --role review --record DIR/commands.jsonl --write PATH   (asks only whether the role may write PATH)
 """
 import argparse

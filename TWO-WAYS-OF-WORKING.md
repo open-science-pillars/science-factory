@@ -4,7 +4,7 @@
 
 A scientist works in two ways, and most days in the first. **Exploring** is looking at data to find out what is there. **Confirming** is testing one claim that was stated before the data that tests it was seen. Methodologists call them hypothesis-generating and hypothesis-testing research. Both are real science. The trouble starts only when a result found the first way is reported as if it had come from the second.
 
-Status, plainly. The factory has built the confirming way: five stages, a study tool, tests. The exploring way is used throughout the practice runs but has no stages or tool support of its own yet; what is written about it here is the design.
+Status, plainly. The factory has built the confirming way: five stages, a study tool, tests. The exploring way now has a tool of its own, `mvp/loops/explore.py`, which makes the four steps below hold without a language model, and a section further down says how. It has been run end to end on a synthetic record and once on real data by one assistant playing every role; it has not yet been used by a scientist.
 
 ## Exploring: most of the work
 
@@ -25,6 +25,19 @@ The one rule for exploring is to say that it was exploring. The factory's part i
 2. **Explore freely.** On working data, and on synthetic data with a known answer, as often as wanted. Review and revision run in both directions, as in software.
 3. **Write down the lead and the choices.** What looks true, how it was found, what was tried on the way, and which choices would change the answer if made differently.
 4. **Hand the lead to the confirming way,** or stop. A lead that is not worth a test is still worth recording, and so is a method that did not work.
+
+## How the exploring tool holds the four steps
+
+An exploration is a directory, like a study, with a log that is only added to and is chained the same way as the study log.
+
+| Step | What the tool does | What it cannot do |
+|---|---|---|
+| Set data aside first | `explore.py start` refuses to start until what is held out is named (a window, sites, a release, by one of the ways in the table below). It writes it to the record of what has been opened, beside the studies, and writes the data to be explored there as explored, in the form the study tool already reads. | Stop a script reading public data from somewhere the command does not name. |
+| Explore freely | `explore.py look` runs any script as often as wanted and logs what was run, the data by checksum and what came out. A look that names what was set aside (a path, a site, a release, a date in the window, a data file whose times fall in it) is refused, and the refusal is logged. The first look is refused until the knowledge has been listed. | See inside a running script, or read times kept as numbers. |
+| Write down the lead and the choices | `explore.py choice` records each choice with its alternatives and what it rests on. `explore.py lead` takes the count of looks from the log, refuses a lead that leaves a recorded choice unplaced or quotes a decimal number found in none of the looks it cites, and stamps it as a lead and not a finding. A review assistant that did none of the exploring picks holes in it. | Know whether a choice was made and never recorded. The review assistant reads the scripts for that. |
+| Hand over, or stop | `explore.py end` takes a lead, a note, a method or a stop. `explore.py hand-over` writes what `sf.py start` needs. `explore.py check-study` refuses a study whose held-out data is not inside what was set aside or touches what was explored; and because the explored data is in the record, the study tool itself marks such a study exploratory. | Start the study or lock it. Those are the coordinating assistant's and people's. |
+
+Everything the tool writes says "exploring" on it, and it has no command that signs.
 
 ## Confirming: when a claim is to be signed
 

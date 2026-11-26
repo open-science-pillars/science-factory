@@ -1,5 +1,5 @@
 # A lead file. Copy it to <exploration>/lead.yaml, fill every key, then:
-#   uv run mvp/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml
+#   uv run mvp/loops/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml
 # The tool adds the count of looks, the full record of each choice, what was read and what was set aside.
 what_looks_true: >
   One or two sentences with numbers, units, counts, place and period. "Looks", not "is".

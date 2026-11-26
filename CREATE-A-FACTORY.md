@@ -18,6 +18,12 @@ Status, plainly. The files and the tool described here exist and are tested. The
 | `change-log.jsonl` | every change to the factory, with what it was predicted to do and what it did | people; written by the study tool |
 | `sf.py`, `system_trial.py`, `compute/` | the machinery, shared by every factory | you run them |
 | `templates/` | the request, the analysis plan, the kinds of question, bringing a workflow in | you copy them |
+| `assistants/<role>.md` | one file for each role: what it may call, must never see, reads, writes and hands on, then its instructions | a runner; `assistants/check_roles.py` against the procedure |
+| `skills/<name>/SKILL.md` | a procedure a role follows, with any script beside it; no facts about a dataset | the assistants |
+| `explorations/EXPLORATION-0001/` | one exploration: its log, what it set aside, its looks and receipts, its notes, its lead | the exploring tool (`explore.py`) |
+| a wiki (`openwiki/`, or a knowledge bundle's directory) | the knowledge base: Markdown pages in the Open Knowledge Format, read as files or through `openwiki_search` and `openwiki_read`; `AGENTS.md` points to it | the assistants; `knowledge.py about` |
+| `knowledge-queue/` | drafted pages waiting for the steward; none signed | `knowledge.py check-drafts`; the steward |
+| `explore.py`, `knowledge.py`, `runners/` | more machinery, shared by every factory | you run them |
 
 One factory per capability. The machinery lives in this repository. Each capability keeps its own procedure, studies, record of openings and change log in its own repository, under its own stewards, because the method under test and the knowledge it rests on are the capability's.
 
@@ -29,6 +35,8 @@ One factory per capability. The machinery lives in this repository. Each capabil
 4. **Accept the factory before you trust it.** Run the system trial (PLAN.md, Part A) in your repository: the whole procedure on a blind test case whose answer nobody in the workspace knows until after the opening. Accept the factory only on a right verdict. An inconclusive trial is closed and another is run.
 5. **Run a first study.** A scientist fills in `templates/request.md`. The analysis assistant asks the four questions in `templates/kinds-of-question.yaml` and writes the plan from `templates/analysis-plan.yaml`. What is yours to write for a new method: the method's script, test cases with known answers for it, and a runner that reports the required criteria. Then, in order: `sf.py start`, `check-plan`, `test known-answers`, `test working-data`, `rehearse`, the lock by people, `open-held-out`, `attach`, `review`, the steward's `signature`, `resolve` for each note, `close`.
 6. **Put the checks in your pipeline.** On every pull request: `sf.py selftest`, `sf.py check-plan` on each study, and a short `system_trial.py blind-test`.
+7. **Give it players.** Copy `assistants/` and `skills/` and change the instructions to suit your capability; keep the front matter true, because the runner enforces it and `assistants/check_roles.py` compares it with your procedure. Render them for your platform (`runners/claude-code/render.py` for Claude Code) and commit what it writes. Point the role files at your knowledge base: a directory of Markdown pages. Add to your pipeline `explore.py selftest`, `knowledge.py selftest`, `check_roles.py` and `render.py --check`.
+8. **Explore before you confirm.** Most requests are not yet claims. The coordinating assistant sends those to an exploration (`explore.py start`, which sets data aside first), and only a lead that survives a review is handed to a study (`explore.py hand-over`, then `sf.py start`).
 
 ## The procedure file, key by key
 
@@ -47,6 +55,8 @@ Checks a stage may name: `started`, `plan-complete`, `tests-pass`, `rehearsals-p
 Kinds a scorecard check may have: `log-checks-out`, `not-exploratory`, `openings-within-allowed`, `no-failed-opening`, `lock-committed-before-opening`, `review-recorded`, `acts-recorded-by-people`, `notes-on-curation-list`.
 
 The lock records the procedure file's checksum, and `status` and `scorecard` say so when the file they read is not the one that was locked.
+
+**The roles, as files.** The procedure's `assistants` block says in a sentence what each assistant does, may not do and never sees. The role files in `assistants/` say the same thing in a form a runner can enforce, and quote the block word for word; `assistants/check_roles.py` fails when either changes without the other, when a role may call the lock or the signature, when the review role may call anything that does the work, or when a stage's command is missing from the role the procedure gives the stage to.
 
 **Read by people.** These blocks state the factory's design. The tool does not read or enforce them, and each says in its own words what does hold it: `factory`, `version`, `product`, `capability`, `study_kinds`, `request`, `where_it_runs`, `people`, `assistants`, `separations`, `rules_for_people`, and under `measure` the blind test and how the procedure is improved.
 
@@ -68,7 +78,8 @@ A change to the factory is a pull request. Before it is tried, `sf.py log-change
 |---|---|---|
 | work sources | a scientist's request; also a new data release, a reprocessing, a finding that expires | translated |
 | automations | triggers that start a study or run tests; they never lock, open or sign | translated; not built |
-| a foreman, one conversation per work item | the coordinating assistant, one study log per study | kept |
+| a foreman, one conversation per work item | the coordinating assistant, one log per study or exploration | kept; defined in `assistants/coordinating.md` |
+| agent definitions in the platform's settings | role files in `assistants/`, rendered for a platform and checked for drift | changed: the platform's files are output, never the source |
 | triage | Ask: the four questions back, and a search for what already answers it | translated |
 | a spec that a person approves | the analysis plan | changed, see below |
 | implement, with evidence a person can look at | build the method and test it on known answers; the evidence is run receipts | translated |
@@ -85,4 +96,4 @@ What a software factory has no place for, and this one keeps: held-out data and 
 
 ## Not built yet
 
-A command that sets a factory up in a capability's repository. The request as an issue form that the factory reports back to. Triggers for a data release and for an expiring finding. The lock and the signature as pull requests that carry a generated summary of the evidence. A page of studies by stage. The blind test used to compare two versions of a procedure. The model behind each stage recorded in the study log. A loop for exploring, with data set aside first. Studies that keep watching as data arrives (see `proposals/watching-studies.md`). Places to run other than this machine.
+A command that sets a factory up in a capability's repository. The request as an issue form that the factory reports back to. Triggers for a data release and for an expiring finding. The lock and the signature as pull requests that carry a generated summary of the evidence. A page of studies by stage. The blind test used to compare two versions of a procedure. The model behind each stage recorded in the study log (the Claude Code launcher records it beside each role's answer, not in the log). A run of the roles by a platform: the roles, the skills and one runner exist, and the runner has not been run against its platform. A schedule for the curating assistant. Studies that keep watching as data arrives (see `proposals/watching-studies.md`). Places to run other than this machine.

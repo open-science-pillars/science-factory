@@ -1,0 +1,40 @@
+{
+ "way": "exploring",
+ "id": "LOOK-017",
+ "why": "The gain at 60 minutes with the flag screen, to see whether the pairing choice moves it",
+ "argv": [
+  "uv",
+  "run",
+  "looks/gain.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--exclude-flag-at-or-above",
+  "2",
+  "--tolerance",
+  "60"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/gain.py",
+  "sha256": "f20664726cc8587df0fa609250c36de200ca4b5a98f72062dd196d89c0b4f5c5"
+ },
+ "inputs": [
+  {
+   "word": "looks/gain.py",
+   "sha256": "f20664726cc8587df0fa609250c36de200ca4b5a98f72062dd196d89c0b4f5c5",
+   "bytes": 3610
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-017.out.txt",
+  "sha256": "96a91c88f9a6df0996f583e0b4bde4769730993e0160c1d937e51ad023a03dc2"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:43:58Z",
+ "by": "agent:analysis-0001"
+}

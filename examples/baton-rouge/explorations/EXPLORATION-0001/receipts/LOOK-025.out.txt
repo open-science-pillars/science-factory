@@ -1,0 +1,6 @@
+[exploring: output of LOOK-025]
+tolerance 15 min: 50 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
+  2024-01-01T10:59:06Z  reach_q 2  gauge 1.61 m (rank 2 of 50 from the lowest)  departure -0.080 m  dark_frac 0.247  wse_u 0.098 m
+  2024-10-30T22:43:57Z  reach_q 2  gauge 1.47 m (rank 1 of 50 from the lowest)  departure -1.776 m  dark_frac 0.020  wse_u 0.095 m
+  2024-11-30T07:00:23Z  reach_q 2  gauge 3.51 m (rank 22 of 50 from the lowest)  departure -0.084 m  dark_frac 0.020  wse_u 0.096 m
+unflagged pairs: n=47, median +0.008 m, mean +0.028 m, sd 0.164 m (sample), min -0.178, max +0.947

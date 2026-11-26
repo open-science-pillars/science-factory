@@ -5,41 +5,75 @@
 # ///
 """knowledge: the two deterministic helpers of the knowledge loop.
 
-The organization's signed knowledge bundles are the long-term memory. This
-tool adds no store. It reads a bundle before work starts and checks drafted
-pages after, and it runs no language model: the assistants do the reading
-and the drafting, and a steward signs.
+A knowledge base is reached as a wiki: a directory of Markdown pages that
+assistants read as files, or through the two read-only tools
+`openwiki_search` and `openwiki_read` (wiki_server.py, beside this file,
+serves them from the search below). This tool adds no store and runs no
+language model: the assistants do the reading and the drafting, and a
+person signs.
 
-  about          before work: list the concepts that bear on a question, by
-                 tags, title, description, dataset and links, each with its
-                 status and who signed it, so the work starts from what is
-                 known, pitfalls included. With --drafts it also lists the
-                 pages waiting in a queue, marked as drafts and not signed.
-  check-drafts   after work: run the organization's own checker
-                 (check_okf_v02.py) on a queue of drafted pages and apply
-                 the rules of a queue. A draft is refused when it is not at
-                 status draft, carries any `verified` event, has no sources,
-                 does not say what it was drafted from, is a finding, or
-                 bears on the same subject as a concept already in the
-                 bundle without saying how it relates to it. Writes the
-                 queue's index for the steward.
-  selftest       the tool tests itself
+  about          before work: list the pages that bear on a question, each
+                 with its status and who signed it, so the work starts from
+                 what is known, pitfalls included. With --drafts it also
+                 lists the pages waiting in a queue, marked as drafts. A
+                 page is listed when it shares two or more words with the
+                 question and scores near the best match (a word most of
+                 the wiki uses counts for little), when a listed page links
+                 to it, or when it is filed against a listed page. A page
+                 with tags is matched on its tags, name, title and
+                 description; a plain page on its name, title and text.
+  check-drafts   after work: apply the rules of a queue to drafted pages. A
+                 draft is refused when it is not at status draft, carries
+                 any signature, has no sources, does not say what it was
+                 drafted from, is a finding, or bears on the same subject as
+                 a page already in the wiki without saying how it relates to
+                 it. With --checker it also runs the organization's own
+                 checker for its knowledge format (check_okf_v02.py) on the
+                 queue and refuses what that refuses. Writes the queue's
+                 index for the steward.
+  import         copy the pages of another knowledge base into a wiki
+                 directory, byte for byte, and write beside them where each
+                 came from, its checksum, its status and who signed it.
+  selftest       the tool tests itself (with --checker, the parts that need
+                 the organization's checker too)
 
-What "signed" means here: a concept carries a `verified` event by a person
-(`by: human:...`), the organization's rule. Only the organization's signing
-tool writes one. Nothing in this package does, and a draft that arrives
-with one is refused.
+A wiki page is working memory, and may be a draft. What counts as signed
+is decided by the page's own signature lines, which only a person adds:
+either a `verified` event by a person in the page's front matter (the
+Open Science Pillars knowledge format), or a line in the page of the form
+`Signed-by: human:<id>, <date>`. Nothing in this package writes either,
+and a draft that arrives with one is refused. A page's status is its
+front matter `status`, or a line `Status: <word>`, or nothing.
+
+Which part of this is whose. The wiki's form is OpenWiki's, which is
+the Open Knowledge Format v0.2 that the Open Science Pillars bundles also
+use: a directory (`openwiki/` in a repository) of Markdown pages, each
+with front matter carrying a non-empty `type` and, where present,
+`generated`, `sources`, `verified`, `status` and `stale_after`; `index.md`
+and `log.md` reserved; `quickstart.md` to start from; `INSTRUCTIONS.md`
+the owner's brief; and files whose names begin with a dot, which belong to
+the tool that manages the wiki and are neither read nor written here.
+This follows the OpenWiki repository's README as it was read on 2026-11-25
+and relayed to the assistant that built this; it was not run against the
+OpenWiki tool. This tool reads that form and is forgiving beyond it: a
+page with no front matter is still read, as working memory. What is this
+project's own, laid on top: the matching rules, the rule that only a page
+signed by a person is established, the queue of drafts outside the wiki
+(assistants never write into the wiki), the `Signed-by` line for a page
+without front matter, and the import.
 
 What the overlap check is, and is not. It finds a draft that shares a name,
-a title, or several specific tags with a concept in the bundle. It cannot
-read meaning, so it cannot find a contradiction: it makes the draft say how
-it relates to each concept it overlaps (extends, narrows, corrects or
-contradicts it), and a draft that says `contradicts` is listed first for
-the steward. A draft that would only repeat a concept (`duplicates`) is
-refused: the note is linked to the concept instead.
+a title, or several specific tags with a page in the wiki. It cannot read
+meaning, so it cannot find a contradiction: it makes the draft say how it
+relates to each page it overlaps (extends, narrows, corrects or contradicts
+it, or stands beside it: the same subject, another point, no conflict), and
+a draft that says `contradicts` is listed first for the steward. A draft
+that would only repeat a page (`duplicates`) is refused: the note is linked
+to the page instead.
 
-Usage: knowledge.py about --question "..." --bundle DIR [--drafts DIR]
-       knowledge.py check-drafts --queue DIR --bundle DIR [--checker FILE]
+Usage: knowledge.py about --question "..." --wiki DIR [--drafts DIR]
+       knowledge.py check-drafts --queue DIR --wiki DIR [--checker FILE]
+       knowledge.py import --from DIR --to DIR
        knowledge.py selftest [--checker FILE]
 """
 import sys
@@ -53,6 +87,7 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
+import math  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
@@ -62,17 +97,20 @@ from pathlib import Path  # noqa: E402
 import yaml  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-CHECKER = HERE.parent.parent / "nasa-daac-knowledge" / "tools" / "check_okf_v02.py"  # beside the package, as in README.md
-NOT_CONCEPTS = ("index.md", "log.md", "DIGEST.md")
+NOT_CONCEPTS = ("index.md", "log.md", "DIGEST.md", "README.md", "INSTRUCTIONS.md")  # reserved documents, not pages
+HEADING = re.compile(r"^#\s+(.+?)\s*$", re.M)
+SIGNED_LINE = re.compile(r"^Signed-by:\s*(human:[A-Za-z0-9_.@/-]+)(?:[,\s]+(\S+))?", re.M)
+STATUS_LINE = re.compile(r"^Status:\s*([A-Za-z-]+)", re.M)
 WORD = re.compile(r"[a-z0-9]+")
 STOP = set("""a about above after again all also an and any are as at be because been before being below between both but by can could
 did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its
 just me more most my no nor not now of off on once only or other our out over own same she should so some such than that the
 their them then there these they this those through to too under until up very was we well were what when where which while who
 whom why will with would you your much many good bad""".split())
-RELATIONS = ("extends", "narrows", "corrects", "contradicts", "duplicates")
+RELATIONS = ("extends", "narrows", "corrects", "contradicts", "beside", "duplicates")
 MD_PATH = re.compile(r"[\w./-]+\.md")
 GENERIC_SHARE = 0.25   # a tag carried by more than this share of a bundle says nothing about a subject
+KEEP_SHARE = 0.3       # a page is listed when it scores at least this share of the best match
 SHARED_TAGS = 3        # this many specific tags in common is the same subject
 
 
@@ -105,10 +143,26 @@ def events_of(fm: dict) -> list:
     return [e for e in (v if isinstance(v, list) else [v] if v else []) if isinstance(e, dict)]
 
 
-def signed_by(fm: dict) -> tuple:
-    """(signed?, the people who signed). Signed means a `verified` event by a person."""
-    people = [str(e["by"]) for e in events_of(fm) if str(e.get("by", "")).startswith("human:")]
+def signed_by(fm: dict, body: str = "") -> tuple:
+    """(signed?, the people who signed). Signed means the page's own signature lines name a person: a
+    `verified` event by a person in its front matter, or a `Signed-by: human:<id>` line in the page."""
+    people = [str(e["by"]) for e in events_of(fm or {}) if str(e.get("by", "")).startswith("human:")]
+    people += [m.group(1) for m in SIGNED_LINE.finditer(body or "")]
     return bool(people), people
+
+
+def status_of(fm: dict, body: str = ""):
+    if (fm or {}).get("status"):
+        return fm["status"]
+    m = STATUS_LINE.search(body or "")
+    return m.group(1) if m else None
+
+
+def title_of(p: Path, fm: dict, body: str) -> str:
+    if (fm or {}).get("title"):
+        return str(fm["title"])
+    m = HEADING.search(body or "")
+    return m.group(1) if m else p.stem.replace("-", " ")
 
 
 def words(text) -> set:
@@ -116,14 +170,13 @@ def words(text) -> set:
 
 
 def concepts(root: Path) -> list:
-    """Every concept under a bundle or a queue: (path, front matter, body)."""
+    """Every page under a wiki or a queue: (path, front matter or an empty mapping, body). A page needs no front matter."""
     out = []
     for p in sorted(Path(root).rglob("*.md")):
-        if p.name in NOT_CONCEPTS:
+        if p.name in NOT_CONCEPTS or any(part.startswith(".") for part in p.relative_to(root).parts):
             continue
         fm, body = front_matter(p)
-        if fm is not None:
-            out.append((p, fm, body))
+        out.append((p, fm or {}, body))
     return out
 
 
@@ -134,8 +187,13 @@ def shown(root: Path, p: Path) -> str:
 
 
 def tags_of(fm: dict) -> set:
-    t = fm.get("tags")
+    t = (fm or {}).get("tags")
     return {str(x).casefold() for x in t} if isinstance(t, list) else set()
+
+
+def subject_of(p: Path, fm: dict, body: str) -> set:
+    """What a page is about, for the overlap check: its tags, or for a plain page the words of its title."""
+    return tags_of(fm) or words(title_of(p, fm, body))
 
 
 def links_of(p: Path, fm: dict, body: str, root: Path) -> set:
@@ -163,16 +221,19 @@ def about(question: str, bundles: list, drafts: list | None = None, tags: list |
             raise Refused(f"{root} is not a directory")
         entries = concepts(root)
         by_path = {p.resolve(): (p, fm, body) for p, fm, body in entries}
+        fields = {p.resolve(): (("tags", tags_of(fm), 3), ("name", words(p.stem.replace("-", " ")), 2), ("title", words(title_of(p, fm, body)), 2),
+                                ("description", words(fm.get("description")), 1),
+                                ("text", set() if tags_of(fm) else words(body), 1)) for p, fm, body in entries}
+        seen_in = {w: sum(1 for f in fields.values() if any(w in got for _, got, _ in f)) for w in asked}
+        rare = {w: math.log((len(entries) + 1) / (n + 1)) + 0.1 for w, n in seen_in.items()}  # a word half the bundle uses says little
         hits = {}
-        for p, fm, body in entries:
-            why = []
-            for label, got, weight in (("tags", tags_of(fm) & asked, 3), ("name", words(p.stem.replace("-", " ")) & asked, 2),
-                                       ("title", words(fm.get("title")) & asked, 2), ("description", words(fm.get("description")) & asked, 1)):
-                if got:
-                    why.append((label, sorted(got), weight * len(got)))
-            score = sum(w for _, _, w in why)
-            if score >= 4:
-                hits[p.resolve()] = (score, "; ".join(f"{label}: {', '.join(got)}" for label, got, _ in why))
+        for q, f in fields.items():
+            why = [(label, sorted(got & asked), weight * sum(rare[w] for w in got & asked)) for label, got, weight in f if got & asked]
+            distinct = set().union(*[set(got) for _, got, _ in why]) if why else set()
+            if len(distinct) >= min(2, len(asked)):  # one shared word is a coincidence; two is a subject
+                hits[q] = (round(sum(w for _, _, w in why), 2), "; ".join(f"{label}: {', '.join(got)}" for label, got, _ in why))
+        best = max((v[0] for v in hits.values()), default=0)
+        hits = {q: v for q, v in hits.items() if v[0] >= KEEP_SHARE * best}
         top = dict(sorted(hits.items(), key=lambda kv: (-kv[1][0], str(kv[0])))[:limit])
         linked = {}
         for q in top:
@@ -180,12 +241,17 @@ def about(question: str, bundles: list, drafts: list | None = None, tags: list |
             for target in links_of(p, fm, body, root):
                 if target in by_path and target not in top:
                     linked.setdefault(target, (0, f"linked from {p.name}"))
+        for p, fm, body in entries:  # a pitfall filed against a dataset in play bears on the question whatever its words
+            ref = str(fm.get("dataset") or "")
+            target = (p.parent / ref).resolve() if ref else None
+            if target in top and p.resolve() not in top:
+                linked.setdefault(p.resolve(), (0, f"its dataset is {target.name}"))
         for q, (score, why) in {**top, **linked}.items():
-            p, fm, _ = by_path[q]
-            signed, people = signed_by(fm)
+            p, fm, body = by_path[q]
+            signed, people = signed_by(fm, body)
             at = next((str(e.get("at")) for e in events_of(fm) if str(e.get("by", "")).startswith("human:")), None)
-            found.append({"path": shown(root, p), "file": str(p.resolve()), "sha256": sha_file(p), "type": fm.get("type"),
-                          "title": fm.get("title"), "status": fm.get("status"), "signed": signed, "signed_by": people, "signed_at": at,
+            found.append({"path": shown(root, p), "file": str(p.resolve()), "sha256": sha_file(p), "type": fm.get("type") or "page",
+                          "title": title_of(p, fm, body), "status": status_of(fm, body), "signed": signed, "signed_by": people, "signed_at": at,
                           "generated_by": (fm.get("generated") or {}).get("by") if isinstance(fm.get("generated"), dict) else None,
                           "severity": fm.get("severity"), "stale_after": str(fm.get("stale_after")) if fm.get("stale_after") else None,
                           "in_queue": queued, "score": score,
@@ -199,13 +265,13 @@ def trust(c: dict) -> str:
         return f"DRAFT IN THE QUEUE, NOT SIGNED (status {c['status']}; drafted by {c['generated_by']}): use it as a draft and say so"
     if c["signed"]:
         return f"SIGNED by {', '.join(c['signed_by'])}" + (f" at {c['signed_at']}" if c["signed_at"] else "") + f"; status {c['status']}"
-    return f"NOT SIGNED (status {c['status']}; written by {c['generated_by']})"
+    return f"NOT SIGNED: working memory (status {c['status'] or 'not stated'}; written by {c['generated_by'] or 'not stated'})"
 
 
 def render(found: list) -> str:
     if not found:
-        return "nothing in the knowledge bears on this question by tags, name, title or description. That is a result: say so, and raise a note if something should be there."
-    out = [f"{len(found)} concept(s) bear on the question. Read each before looking at data.", ""]
+        return "nothing in the knowledge bears on this question by tags, name, title, description or text. That is a result: say so, and raise a note if something should be there."
+    out = [f"{len(found)} page(s) bear on the question. Read each before looking at data.", ""]
     for i, c in enumerate(found, 1):
         out += [f"{i}. {c['path']}  [{c['type']}" + (f", severity {c['severity']}" if c["severity"] else "") + "]",
                 f"   {trust(c)}", f"   {c['title']}", f"   bears on the question by {c['why']}", f"   file: {c['file']}", ""]
@@ -221,16 +287,16 @@ def cmd_about(a) -> int:
 # ---- the queue of drafts --------------------------------------------------
 def overlaps(draft: tuple, bundle_entries: list, generic: set) -> list:
     """The bundle concepts a draft bears on the same subject as, each with why."""
-    p, fm, _ = draft
-    mine, title = tags_of(fm) - generic, " ".join(sorted(words(fm.get("title"))))
+    p, fm, body = draft
+    mine, title = subject_of(p, fm, body) - generic, " ".join(sorted(words(fm.get("title"))))
     out = []
-    for q, other, _ in bundle_entries:
-        theirs = tags_of(other) - generic
+    for q, other, other_body in bundle_entries:
+        theirs = subject_of(q, other, other_body) - generic
         shared = mine & theirs
         why = None
         if q.stem == p.stem:
             why = "the same file name"
-        elif title and title == " ".join(sorted(words(other.get("title")))):
+        elif title and title == " ".join(sorted(words(title_of(q, other, other_body)))):
             why = "the same title"
         elif len(shared) >= SHARED_TAGS or (len(shared) >= 2 and len(shared) / max(1, len(mine | theirs)) >= 0.5):
             why = "shared tags: " + ", ".join(sorted(shared))
@@ -245,8 +311,8 @@ def draft_problems(draft: tuple, queue: Path, bundles: list, bundle_entries: dic
     name, problems = p.relative_to(queue).as_posix(), []
     if fm.get("status") != "draft":
         problems.append(f"{name}: status is `{fm.get('status')}`; a page in the queue is at status draft until a steward signs it")
-    if "verified" in fm:
-        problems.append(f"{name}: it carries a `verified` event. No assistant signs: only the steward's signing tool adds one, after the merge")
+    if any(re.search(r"verif|sign", str(k), re.I) for k in fm) or re.search(r"^Signed-by:", body, re.I | re.M):
+        problems.append(f"{name}: it carries a signature (a `verified` event or a `Signed-by` line). No assistant signs: only a person adds one, after the merge")
     gen = fm.get("generated")
     if not isinstance(gen, dict) or not str(gen.get("by") or "").strip() or not gen.get("at"):
         problems.append(f"{name}: `generated` says who drafted it and when ({{by: ..., at: ...}})")
@@ -283,38 +349,39 @@ def draft_problems(draft: tuple, queue: Path, bundles: list, bundle_entries: dic
         over += overlaps(draft, bundle_entries[b], generic[b])
     for q, other, why in over:
         if q.resolve() not in relations:
-            signed, people = signed_by(other)
+            signed, people = signed_by(other, next((b_ for q_, _, b_ in sum(bundle_entries.values(), []) if q_ == q), ""))
             problems.append(f"{name}: it bears on the same subject as {shown(next(b for b in bundles if q.resolve().is_relative_to(b.resolve())), q)} "
-                            f"({'signed by ' + ', '.join(people) if signed else 'not signed, status ' + str(other.get('status'))}; {why}) and does "
-                            "not say how it relates to it. Add a `relates_to` entry: extends, narrows, corrects or contradicts")
+                            f"({'signed by ' + ', '.join(people) if signed else 'not signed'}; {why}) and does "
+                            "not say how it relates to it. Add a `relates_to` entry: extends, narrows, corrects, contradicts or beside")
     return problems, relations, over
 
 
-def check_drafts(queue: Path, bundles: list, checker: Path) -> tuple:
+def check_drafts(queue: Path, bundles: list, checker: Path | None = None) -> tuple:
     """(problems, the queue as a mapping). Nothing is written when there is a problem."""
     queue, bundles = Path(queue).resolve(), [Path(b).resolve() for b in bundles]
     if not queue.is_dir():
         raise Refused(f"the queue {queue} is not a directory")
-    if not Path(checker).is_file():
-        raise Refused(f"the organization's checker is not at {checker}; name it with --checker (it is tools/check_okf_v02.py in nasa-daac-knowledge)")
-    problems = []
-    run = subprocess.run([sys.executable, "-I", str(checker), str(queue)], capture_output=True, text=True)
-    report = run.stdout.strip().splitlines()
-    if run.returncode != 0:
-        problems += ["the organization's checker: " + ln for ln in report if re.match(r"^[EF]\d", ln)] or [
-            "the organization's checker failed: " + (run.stderr.strip() or run.stdout.strip())[-300:]]
+    if checker is not None and not Path(checker).is_file():
+        raise Refused(f"the organization's checker is not at {checker} (it is tools/check_okf_v02.py in nasa-daac-knowledge)")
+    problems, report = [], []
+    if checker is not None:
+        run = subprocess.run([sys.executable, "-I", str(checker), str(queue)], capture_output=True, text=True)
+        report = run.stdout.strip().splitlines()
+        if run.returncode != 0:
+            problems += ["the organization's checker: " + ln for ln in report if re.match(r"^[EF]\d", ln)] or [
+                "the organization's checker failed: " + (run.stderr.strip() or run.stdout.strip())[-300:]]
     for p in sorted(queue.rglob("*.md")):
         if p.name not in NOT_CONCEPTS and front_matter(p)[0] is None:
-            problems.append(f"{p.relative_to(queue).as_posix()}: no front matter that parses; the queue holds concepts only")
-    drafts = concepts(queue)
+            problems.append(f"{p.relative_to(queue).as_posix()}: no front matter that parses; a drafted page carries the queue's header")
+    drafts = [d for d in concepts(queue) if d[1]]
     bundle_entries = {b: concepts(b) for b in bundles}
     generic = {}
     for b, entries in bundle_entries.items():
         counts = {}
-        for _, fm, _ in entries:
-            for t in tags_of(fm):
+        for q_, fm, b_ in entries:
+            for t in subject_of(q_, fm, b_):
                 counts[t] = counts.get(t, 0) + 1
-        generic[b] = {t for t, n in counts.items() if n > GENERIC_SHARE * max(1, len(entries))}
+        generic[b] = {t for t, n in counts.items() if n > max(2, GENERIC_SHARE * len(entries))}  # in a small wiki nothing is generic
     listing, seen = [], {}
     for d in drafts:
         probs, relations, _ = draft_problems(d, queue, bundles, bundle_entries, generic)
@@ -330,8 +397,8 @@ def check_drafts(queue: Path, bundles: list, checker: Path) -> tuple:
                         "relates_to": [{"concept": r["concept"], "relation": r["relation"], "why": r["why"]} for r in relations.values()],
                         "contradicts_a_concept": any(r["relation"] == "contradicts" for r in relations.values())})
     listing.sort(key=lambda d: (not d["contradicts_a_concept"], d["path"]))
-    return problems, {"for": "the steward", "drafts": listing, "signed": 0, "checker": {"file": Path(checker).name, "sha256": sha_file(Path(checker)),
-                                                                                        "last_line": report[-1] if report else ""},
+    return problems, {"for": "the steward", "drafts": listing, "signed": 0, "checker": ({"file": Path(checker).name, "sha256": sha_file(Path(checker)), "last_line": report[-1] if report else ""}
+                                                                            if checker is not None else None),
                       "says": "every page here is a draft. None is signed, and no assistant signs: a steward reads each, merges it "
                               "into the bundle by pull request, and signs with the organization's signing tool"}
 
@@ -348,7 +415,7 @@ def write_queue(queue: Path, q: dict) -> None:
 
 
 def cmd_check_drafts(a) -> int:
-    problems, q = check_drafts(Path(a.queue), [Path(b) for b in a.bundle], Path(a.checker))
+    problems, q = check_drafts(Path(a.queue), [Path(b) for b in a.bundle], Path(a.checker) if a.checker else None)
     for p in problems:
         print("check-drafts:", p)
     if problems:
@@ -356,19 +423,47 @@ def cmd_check_drafts(a) -> int:
     write_queue(Path(a.queue).resolve(), q)
     print(f"check-drafts: PASS. {len(q['drafts'])} draft(s) in the queue for the steward, none signed"
           + (f", {sum(d['contradicts_a_concept'] for d in q['drafts'])} of them say they contradict a concept in the bundle"
-             if any(d["contradicts_a_concept"] for d in q["drafts"]) else "") + f". The organization's checker: {q['checker']['last_line']}")
+             if any(d["contradicts_a_concept"] for d in q["drafts"]) else "")
+          + (f". The organization's checker: {q['checker']['last_line']}" if q["checker"] else ". The organization's checker was not run (no --checker)"))
+    return 0
+
+
+def import_pages(source: Path, wiki: Path) -> list:
+    """Copy every page of another knowledge base into a wiki directory, unchanged, and record where each came
+    from. The pages keep their own signature lines, so what is signed there is signed here and nothing else is."""
+    source, wiki = Path(source).resolve(), Path(wiki).resolve()
+    if not source.is_dir():
+        raise Refused(f"{source} is not a directory")
+    out = []
+    for p, fm, body in concepts(source):
+        rel = p.relative_to(source)
+        dest = wiki / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(p, dest)
+        signed, people = signed_by(fm, body)
+        out.append({"page": rel.as_posix(), "from": shown(source, p), "sha256": sha_file(p), "status": status_of(fm, body),
+                    "signed": signed, "signed_by": people})
+    (wiki / "imported.json").write_text(json.dumps({"from": f"{source.parent.name}/{source.name}", "pages": out,
+                                                    "says": "copied unchanged; each page's own signature lines decide what is signed"}, indent=1) + "\n")
+    return out
+
+
+def cmd_import(a) -> int:
+    pages = import_pages(Path(a.source), Path(a.to))
+    print(f"imported {len(pages)} page(s), {sum(p['signed'] for p in pages)} of them signed by a person where they came from; "
+          f"imported.json says where each came from")
     return 0
 
 
 # ---- the self-test --------------------------------------------------------
-def selftest(checker: Path) -> int:
+def selftest(checker: Path | None) -> int:
     results = []
 
     def ok(name: str, cond) -> None:
         results.append((name, bool(cond)))
 
-    if not Path(checker).is_file():
-        print(f"selftest: FAIL (the organization's checker is not at {checker}; name it with --checker)")
+    if checker is not None and not Path(checker).is_file():
+        print(f"selftest: FAIL (the organization's checker is not at {checker})")
         return 1
     tmp = Path(tempfile.mkdtemp(prefix="knowledge-selftest-")).resolve()
     try:
@@ -391,7 +486,7 @@ def selftest(checker: Path) -> int:
         concept("gotchas/datum.md", "A satellite elevation and a gauge are on different datums", "swot, datum, gauge, elevation, hydrology",
                 "dataset: ../datasets/reach-product.md\n")
         concept("gotchas/soil.md", "Soil moisture radar loss", "smap, radar, hydrology", signed)
-        concept("gotchas/machine.md", "Gauge stage is provisional", "gauge, provisional, stage, hydrology", "verified: { by: process:ci, at: 2026-01-02T00:00:00Z }\n")
+        concept("gotchas/machine.md", "River gauge stage is provisional", "gauge, provisional, stage, hydrology", "verified: { by: process:ci, at: 2026-01-02T00:00:00Z }\n")
 
         found = about("How well does SWOT river height follow the gauge?", [bundle])
         paths = [c["path"] for c in found]
@@ -424,9 +519,9 @@ def selftest(checker: Path) -> int:
             return check_drafts(queue, [bundle], checker)[0]
 
         d = draft()
-        ok("a complete draft passes, and the organization's checker ran on it", problems() == [])
+        ok("a complete draft passes" + (", and the organization's checker ran on it" if checker else ""), problems() == [])
         q = check_drafts(queue, [bundle], checker)[1]
-        ok("the queue lists the draft as not signed", q["drafts"][0]["signed"] is False and q["signed"] == 0 and "conformant" in q["checker"]["last_line"])
+        ok("the queue lists the draft as not signed", q["drafts"][0]["signed"] is False and q["signed"] == 0 and (checker is None or "conformant" in q["checker"]["last_line"]))
         draft(status="stable")
         ok("a draft marked stable is refused", any("status is `stable`" in p for p in problems()))
         draft(verified={"by": "human:someone", "at": "2026-11-25T00:00:00Z"})
@@ -437,7 +532,7 @@ def selftest(checker: Path) -> int:
         ok("a draft without sources is refused", any("no sources" in p for p in problems()))
         draft(sources=[{"id": "look", "title": "no resource"}])
         ok("a draft whose source names no resource is refused, by this tool and by the organization's checker",
-           any("no sources" in p for p in problems()) and any("organization's checker: E7" in p for p in problems()))
+           any("no sources" in p for p in problems()) and (checker is None or any("organization's checker: E7" in p for p in problems())))
         draft(drafted_from=None)
         ok("a draft that does not say what it was drafted from is refused", any("drafted_from" in p for p in problems()))
         draft(seen_while=None, body="A claim.[^look]\n\n[^look]: the look")
@@ -449,7 +544,11 @@ def selftest(checker: Path) -> int:
         draft(status="verified")
         ok("a status outside the format is refused", any("status is `verified`" in p for p in problems()))
         draft(spheres=None)
-        ok("a draft the organization's checker fails is refused with the checker's own line", any("organization's checker: E10" in p for p in problems()))
+        if checker:
+            ok("a draft the organization's checker fails is refused with the checker's own line", any("organization's checker: E10" in p for p in problems()))
+        else:
+            ok("without the organization's checker the queue's own rules still run, and say the checker was not run",
+               problems() == [] and check_drafts(queue, [bundle], None)[1]["checker"] is None)
         draft(tags=["swot", "datum", "gauge", "elevation"])
         ok("a draft on the same subject as a bundle concept, without saying so, is refused", any("same subject as hydro/knowledge/gotchas/datum.md" in p for p in problems()))
         draft(tags=["swot", "datum", "gauge", "elevation"], relates_to=[{"concept": "gotchas/datum.md", "relation": "extends", "why": "adds the river case"}])
@@ -477,19 +576,51 @@ def selftest(checker: Path) -> int:
         ok("a page in the queue that is not a concept is refused", any("no front matter" in p for p in problems()))
         (queue / "notes.md").unlink()
         ok("check-drafts refuses and writes no index when there is a problem",
-           (draft(status="stable") and _refuses(cmd_check_drafts, argparse.Namespace(queue=str(queue), bundle=[str(bundle)], checker=str(checker)))
+           (draft(status="stable") and _refuses(cmd_check_drafts, argparse.Namespace(queue=str(queue), bundle=[str(bundle)], checker=str(checker) if checker else None))
             and not (queue / "index.md").exists()))
         draft()
         import contextlib
         import io
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_check_drafts(argparse.Namespace(queue=str(queue), bundle=[str(bundle)], checker=str(checker)))
+            cmd_check_drafts(argparse.Namespace(queue=str(queue), bundle=[str(bundle)], checker=str(checker) if checker else None))
         ok("check-drafts writes the queue's index for the steward, and the queue still passes with it there",
            "not signed" in (queue / "index.md").read_text() and problems() == [])
         both = about("Where do passes flagged degraded sit, by stage?", [bundle], [queue])
         ok("about lists a queued draft as a draft that is not signed",
            any(c["in_queue"] and "DRAFT IN THE QUEUE, NOT SIGNED" in trust(c) for c in both))
-        ok("check-drafts refuses when the organization's checker is missing", _refuses(check_drafts, queue, [bundle], tmp / "no-checker.py"))
+        ok("check-drafts refuses when a checker is named and is not there", _refuses(check_drafts, queue, [bundle], tmp / "no-checker.py"))
+        draft(body="Seen while exploring.[^look]\n\nSigned-by: human:someone, 2026-11-25\n\n[^look]: the look")
+        ok("a draft with a `Signed-by` line is refused", any("carries a signature" in p for p in problems()))
+        draft(Verified_by="human:someone")
+        ok("a draft with a signature under another spelling of the key is refused", any("carries a signature" in p for p in problems()))
+        draft()
+        # a wiki of plain Markdown pages: no front matter, no layout
+        wiki = tmp / "plainwiki"
+        wiki.mkdir()
+        (wiki / "tide-gauge-drift.md").write_text("# The harbour tide gauge drifts in summer\n\nThe harbour gauge reads high in warm months. Compare changes, not levels.\n\nSee [the sensor page](sensor.md).\n")
+        (wiki / "sensor.md").write_text("# The pressure sensor\n\nStatus: reviewed\nSigned-by: human:toy-steward, 2026-01-02\n\nA pressure sensor on the quay.\n")
+        (wiki / "cooking.md").write_text("# Soup\n\nOnions, then stock.\n")
+        plain = about("Does the harbour tide gauge drift in warm months?", [wiki])
+        names = {c["path"].rsplit("/", 1)[1]: c for c in plain}
+        ok("about reads a wiki of plain Markdown pages with no front matter", "tide-gauge-drift.md" in names and "cooking.md" not in names)
+        ok("a plain page takes its title from its first heading and is working memory, not signed",
+           names["tide-gauge-drift.md"]["title"] == "The harbour tide gauge drifts in summer" and not names["tide-gauge-drift.md"]["signed"]
+           and "working memory" in trust(names["tide-gauge-drift.md"]))
+        ok("a plain page reached by a link is listed, and its own `Signed-by` line by a person makes it signed",
+           "sensor.md" in names and names["sensor.md"]["signed_by"] == ["human:toy-steward"] and names["sensor.md"]["status"] == "reviewed")
+        draft(title="The harbour tide gauge drifts in summer", tags=["tide", "harbour"])
+        ok("a draft with the title of a plain wiki page is refused until it says how it relates",
+           any("same subject as" in p and "tide-gauge-drift.md" in p for p in check_drafts(queue, [wiki], None)[0]))
+        draft()
+        got = import_pages(bundle, tmp / "imported")
+        by_page = {g["page"]: g for g in got}
+        ok("import copies pages unchanged and keeps where each came from, its status and who signed it",
+           (tmp / "imported/gotchas/datum.md").read_bytes() == (bundle / "gotchas/datum.md").read_bytes()
+           and by_page["recipes/river-gauge-confrontation.md"]["signed_by"] == ["human:toy-steward"] and not by_page["gotchas/datum.md"]["signed"]
+           and json.loads((tmp / "imported/imported.json").read_text())["pages"][0]["from"].startswith("hydro/knowledge/"))
+        ok("an imported wiki answers the same question with the same pages",
+           {c["path"].rsplit("/", 1)[1] for c in about("How well does SWOT river height follow the gauge?", [tmp / "imported"])}
+           == {c["path"].rsplit("/", 1)[1] for c in found})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
@@ -512,7 +643,8 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("about")
     p.add_argument("--question", required=True)
-    p.add_argument("--bundle", action="append", required=True, type=Path, help="a knowledge bundle directory; repeatable")
+    p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, type=Path,
+                   help="a wiki: a directory of Markdown pages (an Open Science Pillars knowledge bundle is one); repeatable")
     p.add_argument("--drafts", action="append", default=None, type=Path, help="a queue of drafted pages; repeatable")
     p.add_argument("--tag", action="append", default=None, help="a tag to search by as well; repeatable")
     p.add_argument("--limit", type=int, default=12)
@@ -520,15 +652,19 @@ def main() -> int:
     p.set_defaults(fn=cmd_about)
     p = sub.add_parser("check-drafts")
     p.add_argument("--queue", required=True)
-    p.add_argument("--bundle", action="append", required=True, help="the bundle the drafts would join; repeatable")
-    p.add_argument("--checker", default=str(CHECKER), help="the organization's checker (default: nasa-daac-knowledge beside this package)")
+    p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, help="the wiki the drafts would join; repeatable")
+    p.add_argument("--checker", default=None, help="the organization's checker for its knowledge format (tools/check_okf_v02.py in nasa-daac-knowledge); run when named")
     p.set_defaults(fn=cmd_check_drafts)
     p = sub.add_parser("selftest")
-    p.add_argument("--checker", default=str(CHECKER))
+    p.add_argument("--checker", default=None)
+    p = sub.add_parser("import")
+    p.add_argument("--from", dest="source", required=True, help="the knowledge base to copy pages from")
+    p.add_argument("--to", required=True, help="the wiki directory to copy them into")
+    p.set_defaults(fn=cmd_import)
     a = ap.parse_args()
     try:
         if a.cmd == "selftest":
-            return selftest(Path(a.checker))
+            return selftest(Path(a.checker) if a.checker else None)
         return a.fn(a)
     except Refused as r:
         print(f"REFUSED: {r}", file=sys.stderr)

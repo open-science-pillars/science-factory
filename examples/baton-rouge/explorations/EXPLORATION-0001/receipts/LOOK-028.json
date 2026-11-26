@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "id": "LOOK-028",
+ "why": "After the review: by flag, sample spreads",
+ "argv": [
+  "uv",
+  "run",
+  "looks/pairs_v2.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--mode",
+  "by-flag"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/pairs_v2.py",
+  "sha256": "aaf06cba1d6cd82ff53b620e1899ad2c74c2ae64ef2d0cce27b8a2bf71b9c461"
+ },
+ "inputs": [
+  {
+   "word": "looks/pairs_v2.py",
+   "sha256": "aaf06cba1d6cd82ff53b620e1899ad2c74c2ae64ef2d0cce27b8a2bf71b9c461",
+   "bytes": 7226
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-028.out.txt",
+  "sha256": "e38b4ee6b130d46b9a5cd6e3868b1452878c701f03dec1035885d17eb909d3c3"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:47:23Z",
+ "by": "agent:analysis-0001"
+}

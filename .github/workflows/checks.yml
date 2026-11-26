@@ -41,3 +41,42 @@ jobs:
           uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0001
       - name: A short blind test of the system
         run: uv run science-factory/mvp/system_trial.py blind-test --template science-factory/mvp/studies/STUDY-0000 --n 20
+      - name: The exploring tool tests itself
+        run: uv run science-factory/mvp/loops/explore.py selftest
+      - name: The knowledge helpers test themselves, with the organization's checker
+        run: uv run science-factory/mvp/loops/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
+      - name: The role files and the procedure say the same thing
+        run: |
+          uv run science-factory/assistants/check_roles.py
+          uv run science-factory/assistants/check_roles.py --selftest
+      - name: The files rendered for Claude Code have not drifted from the role and skill files
+        run: |
+          uv run science-factory/runners/claude-code/render.py --check
+          uv run science-factory/runners/claude-code/render.py --selftest
+      - name: The check on a role's tool calls, and the role launcher, test themselves
+        run: |
+          uv run science-factory/runners/claude-code/allow.py --selftest
+          uv run science-factory/runners/claude-code/run_role.py --selftest
+      - name: The demo's drafted knowledge still passes the queue's rules and the organization's checker
+        run: >
+          uv run science-factory/mvp/loops/knowledge.py check-drafts
+          --queue science-factory/examples/baton-rouge/knowledge-queue
+          --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+
+  stand-alone:
+    # Everything added with the assistants and the two loops runs from this repository alone.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: The exploring tool, the knowledge helpers and the checks, with no other repository beside them
+        run: |
+          uv run mvp/loops/explore.py selftest
+          uv run mvp/loops/knowledge.py selftest
+          uv run mvp/loops/wiki_server.py --selftest
+          uv run assistants/check_roles.py
+          uv run runners/claude-code/render.py --check
+          uv run runners/claude-code/allow.py --selftest
+      - name: The stand-alone example, end to end
+        run: uv run examples/stand-alone/run.py

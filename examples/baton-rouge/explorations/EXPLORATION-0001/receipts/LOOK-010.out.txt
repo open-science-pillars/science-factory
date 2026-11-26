@@ -1,0 +1,4 @@
+[exploring: output of LOOK-010]
+tolerance 15 min: 50 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
+gauge rising since the pass before: n=22, median +0.001 m, mean +0.039 m, sd 0.213 m, min -0.158, max +0.947
+gauge falling since the pass before: n=27, median +0.001 m, mean -0.052 m, sd 0.351 m, min -1.776, max +0.228

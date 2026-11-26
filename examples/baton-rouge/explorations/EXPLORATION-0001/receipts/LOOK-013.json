@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "id": "LOOK-013",
+ "why": "Changes between consecutive pairs, all pairs: the recipe's quantities by my own script, to see that I pair as the recipe does",
+ "argv": [
+  "uv",
+  "run",
+  "looks/pairs.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--mode",
+  "changes"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/pairs.py",
+  "sha256": "3e3e6a0eb94332f6ff50b193d2d3d3ce77e944b0b33e57ede8c25483b504acf2"
+ },
+ "inputs": [
+  {
+   "word": "looks/pairs.py",
+   "sha256": "3e3e6a0eb94332f6ff50b193d2d3d3ce77e944b0b33e57ede8c25483b504acf2",
+   "bytes": 6465
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-013.out.txt",
+  "sha256": "4a0e996e1426492db10642e03faa81c413513da40441a4e2ee493e45e12890ce"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:43:56Z",
+ "by": "agent:analysis-0001"
+}

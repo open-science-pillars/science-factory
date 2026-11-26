@@ -6,7 +6,7 @@ A science factory is an assisted study pipeline in which the plan is written dow
 
 ## Two ways of working
 
-A scientist works in two ways. **Exploring** is most of the work: looking at data to find out what is there, trying, looking again, revising. **Confirming** is testing one claim, stated in advance, on data nobody has opened. This package builds the confirming way. The exploring way is designed and not yet built; it is described first and at more length in `TWO-WAYS-OF-WORKING.md`, with the wall that keeps the two apart. Everything below is the confirming way.
+A scientist works in two ways. **Exploring** is most of the work: looking at data to find out what is there, trying, looking again, revising. **Confirming** is testing one claim, stated in advance, on data nobody has opened. This package builds both. The confirming way came first and is most of what follows. The exploring way now has a tool of its own (`mvp/loops/explore.py`), the assistants are defined as files, and what is learned goes back to a knowledge base through a queue of drafts; `TWO-WAYS-OF-WORKING.md` describes the two ways and the wall between them, and "The assistants and the two loops" below says what was added and what it does not yet do.
 
 ## What it is
 
@@ -42,7 +42,65 @@ Two acts belong to people: **the lock**, between Test and Open, and **the stewar
 | `CREATE-A-FACTORY.md` | how to define a factory of your own as files: a quickstart, the procedure file key by key, and how it compares with a software factory |
 | `proposals/watching-studies.md` | proposed, not built: studies that keep watching as data arrives, and choices that expire |
 | `roadmap-initiative.yaml` | the plan as one initiative and ten deliverables, in the organization's roadmap form |
-| `mvp/` | the study tool, the procedure, the method prototypes, two studies not yet started, the practice runs |
+| `mvp/` | the study tool, the exploring tool, the knowledge helpers, the procedure, the method prototypes, two studies not yet started, the practice runs |
+| `assistants/`, `skills/`, `runners/`, `openwiki/`, `examples/` | the assistants as files, their skills, the runners, the wiki, and two examples; see "The assistants and the two loops" |
+| `reviews/ASSISTANTS-AND-EXPLORING.md` | the review register for the assistants and the two loops: one round by the builder, two independent rounds owed |
+
+## The assistants and the two loops
+
+Added on 2026-11-26. Before it, the package was a rulebook and a referee with no players.
+
+**Four layers, each resting on the one below.** The referee: `mvp/sf.py` and its checks, with no language model. Roles as files: `assistants/`, one Markdown file for each of the coordinating, analysis, review and curating assistants, in a form no agent platform owns. The knowledge: a wiki of Markdown pages, read before work and drafted for after it; a person signs. A runner: `runners/claude-code/` starts a role with its tools as a Claude Code subagent, and `runners/by-hand/` checks one command at a time. Two rules run through all four: an assistant never decides whether a step counts, a tool does; and nothing a role needs lives only in a platform's settings.
+
+| Where | What it is |
+|---|---|
+| `assistants/` | the four roles as files (what each may call, must never see, reads, writes and hands on), and `check_roles.py`, which fails when they and the procedure's `assistants` block disagree |
+| `skills/` | five skills, procedure only: `read-what-is-known`, `explore-a-record`, `write-up-a-lead`, `draft-a-knowledge-page`, `review-work` |
+| `mvp/loops/explore.py` | the exploring tool: data is set aside first, every look is logged, choices are recorded, and it ends in a lead, a note, a method or a stop |
+| `mvp/loops/knowledge.py` | the knowledge helpers: list the pages that bear on a question with who signed each; check a queue of drafts; import pages from another knowledge base |
+| `mvp/loops/wiki_server.py` | a read-only server for a wiki directory with the two tool names OpenWiki uses, `openwiki_search` and `openwiki_read` |
+| `openwiki/`, `AGENTS.md` | this repository's knowledge base, a wiki in OpenWiki's form, for the stand-alone example; and the pointer to it |
+| `runners/` | the Claude Code runner (rendered roles and skills with a drift check, a check on every tool call, a launcher that keeps the record) and the by-hand runner |
+| `.claude/`, `.mcp.json` | the rendered files Claude Code reads; never edited by hand |
+| `examples/stand-alone/` | the two loops end to end on a synthetic record with a known answer; runs from a fresh clone |
+| `examples/baton-rouge/` | a demo on real data and knowledge from the hydrology capability, with the whole record kept |
+| `reviews/ASSISTANTS-AND-EXPLORING.md` | what was attacked in this part, what changed, what remains |
+
+**Why `mvp/loops/`.** The study tool counts every Python file beside a plan's code as part of that code. A new file in `mvp/` would therefore change the code identity of the practice runs and of both studies, so the two new tools sit one folder down, where the study tool does not look.
+
+**Try this part.** From the repository, with nothing beside it:
+
+```
+uv run mvp/loops/explore.py selftest
+uv run mvp/loops/knowledge.py selftest
+uv run mvp/loops/wiki_server.py --selftest
+uv run assistants/check_roles.py
+uv run assistants/check_roles.py --selftest
+uv run runners/claude-code/render.py --check
+uv run runners/claude-code/render.py --selftest
+uv run runners/claude-code/allow.py --selftest
+uv run runners/claude-code/run_role.py --selftest
+uv run examples/stand-alone/run.py
+```
+
+They end with `PASS (109 of 109)`, `PASS (44 of 44)`, `PASS (12 of 12)`, `check-roles: PASS (4 roles; ...)`, `PASS (20 of 20)`, `render --check: PASS (13 rendered files)`, `PASS (11 of 11)`, `PASS (57 of 57)`, `PASS (6 of 6)` and `stand-alone example: PASS (21 of 21 steps)`.
+
+**The knowledge base is a wiki, in OpenWiki's form.** A repository's wiki lives in `openwiki/`: Markdown pages in the Open Knowledge Format v0.2 (front matter with a non-empty `type`, and where present `generated`, `sources`, `verified`, `status`, `stale_after`), with `index.md` and `log.md` reserved, `quickstart.md` as the place to start, and `INSTRUCTIONS.md` as the owner's brief. That is the same format the Open Science Pillars bundles use, so a bundle is read through the same door by naming its directory (or copied in with `knowledge.py import`, which keeps where each page came from, its status and who signed it). `AGENTS.md` at the top of the repository carries the pointer to the wiki between `OPENWIKI:START` and `OPENWIKI:END` markers, and each role file repeats it.
+
+Assistants read the wiki in two ways, and the `read-what-is-known` skill says which: through the read-only tools `openwiki_search` and `openwiki_read` when they have them, otherwise as files, starting at `openwiki/quickstart.md`. `mvp/loops/wiki_server.py` is a small read-only server of this project's own that offers exactly those two tool names over the Model Context Protocol and nothing that writes, so the OpenWiki tool's server or this one can be used without changing a role's instructions; `.mcp.json` names it. `knowledge.py about` is the search behind it.
+
+Assistants do not write into `openwiki/`. The curating assistant drafts into a queue outside the wiki, in the same format, and a page enters the wiki only when a person accepts it. The factory's own rule sits on top: a wiki page is working memory and may be a draft, and what counts as signed is decided by the page's own `verified` lines, which only a person adds.
+
+This follows the OpenWiki repository's README as it was read on 2026-11-25 and relayed to the assistant that built this part, which had no network and did not read it itself. It was not run against the OpenWiki tool, which is an npm package that could not be installed here. Where this project guessed: the exact form of the marker lines in `AGENTS.md`, the arguments and result shape of the two tools, and whether `quickstart.md` carries front matter (here it does). The organization's own checker passes every page of `openwiki/` and stops only at `INSTRUCTIONS.md`, a reserved file it does not know.
+
+**Where this part stands, plainly.**
+
+- *Built and tested here:* the exploring tool, the knowledge helpers, the wiki server, the role check, the renderer, the per-call check and the launcher, by their own self-tests, and the two loops end to end on the stand-alone example.
+- *Run once, by one assistant playing every role:* the demo in `examples/baton-rouge`. The roles were held to their commands by the by-hand runner. There was no second assistant, so the reviews in it are not independent and no role had a fresh context. Its page says so first.
+- *Not exercised:* anything against the OpenWiki tool; and the Claude Code runner against Claude Code. The build environment could not start an assistant. The rendered files, the hook and the launcher are tested as scripts only.
+- *Not done:* the two independent reviews this part was meant to have (an attacker and a working hydrologist). The builder attacked its own tools and closed eleven findings; `reviews/ASSISTANTS-AND-EXPLORING.md` records that and sets out the two reviews still owed.
+- *Still instruction and not enforcement:* that a script run as a look reads nothing its command does not name (the network, a path built while running); that a role started outside its rendered file keeps to its role; that the coordinating role passes the review role nothing the analysis role said; who is behind a typed name.
+- *Left as it was:* `mvp/procedure.yaml` still calls the exploratory kind of study designed and not built. It was not edited, because `sf.py status` prints the procedure's checksum and the practice runs must report what they reported. The exploring loop is the tool described here, beside the procedure and not a kind of study inside it.
 
 ## What is in `mvp/`
 
@@ -126,7 +184,7 @@ Then PLAN.md, Part A.
 
 **Not done, by environment.** Anything that needs the provider's network: the rehearsal of the opening path and the fetch of observation metadata for the first real study.
 
-**Not built.** The assistants: the package holds four task prompts (in PLAN.md) and no assistant, no prompt of its own for the review or the curating assistant, and no schedule for the curating assistant. The exploratory study. The checks on the request's fields, and the answer to "can this be answered by the date?" before a method exists. The scientist's own approval at the lock (the tool records one person). The record of what has been opened across factories (the record is one file beside one set of studies). Every place to run but the local one, and any call from the study tool to the job contract: the tool runs its own commands on the machine it is on. A place where the analysis assistant has no route to the withheld values. An assistant that proposes changes to the procedure, and the adoption rule for such changes. The automation of the scheduled re-test. The blind test of the system with assistants in the loop.
+**Not built.** A schedule for the curating assistant, and any run of the assistants by a platform (the roles are files and one runner is rendered, see "The assistants and the two loops"). The exploratory kind of study inside the procedure (the exploring loop is a tool beside it). The checks on the request's fields, and the answer to "can this be answered by the date?" before a method exists. The scientist's own approval at the lock (the tool records one person). The record of what has been opened across factories (the record is one file beside one set of studies). Every place to run but the local one, and any call from the study tool to the job contract: the tool runs its own commands on the machine it is on. A place where the analysis assistant has no route to the withheld values. An assistant that proposes changes to the procedure, and the adoption rule for such changes. The automation of the scheduled re-test. The blind test of the system with assistants in the loop.
 
 **The four limits the study tool states at the top of its file, and what answers each.**
 

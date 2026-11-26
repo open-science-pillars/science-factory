@@ -1,0 +1,5 @@
+[exploring: output of LOOK-008]
+tolerance 15 min: 50 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
+lowest third of dark_frac (0.009 to 0.016): n=16, median +0.010 m, mean -0.004 m, sd 0.072 m, min -0.158, max +0.093
+middle third (0.016 to 0.025): n=16, median -0.032 m, mean -0.128 m, sd 0.434 m, min -1.776, max +0.133
+highest third (0.026 to 0.692): n=18, median +0.017 m, mean +0.083 m, sd 0.232 m, min -0.151, max +0.947

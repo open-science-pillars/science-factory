@@ -1,0 +1,37 @@
+{
+ "way": "exploring",
+ "exploration": "EXPLORATION-0002",
+ "set_aside": {
+  "how": "a later period",
+  "subject": {
+   "reach_id": "74210000331",
+   "gauge": "USGS-07374000",
+   "collection": "SWOT_L2_HR_RiverSP_reach_D"
+  },
+  "window": {
+   "start": "2025-04-28",
+   "end": "9999-12-31",
+   "open_ended": true
+  },
+  "sites": [],
+  "releases": [],
+  "paths": [],
+  "time_keys": [
+   "time",
+   "t",
+   "date",
+   "datetime",
+   "timestamp"
+  ],
+  "why": "The same boundary as EXPLORATION-0001 and for the same reason: the signed knowledge places the start of forward processing there, the request says nothing after 2024 has been looked at, and the record of what has been opened already holds that window as set aside for this pair. Keeping one boundary means a later test of either lead finds the same data unopened.",
+  "working": {
+   "description": "Calendar 2024, the committed fixture swot_gauge_baton_rouge_2024.json: the width_m field of the 52 Version D passes and the gauge readings around each",
+   "window": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+   }
+  }
+ },
+ "started": "0:74755cd04b1e55c366a0a6594dcb964af2ab05d8ef4a39591b99ff59b32f4418",
+ "says": "what this exploration does not look at; a look that names it is refused"
+}

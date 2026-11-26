@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-003",
+ "at": "2026-11-26T05:45:01Z",
+ "by": "agent:analysis-0001",
+ "kind": "method",
+ "about": "knowledge: recipes/swot-gauge-confrontation.md, the worked example for Baton Rouge 2024",
+ "text": "Seen while exploring. The recipe's worked example scores all 50 pairs: change correlation +0.9567 and change RMSD 0.3823 m, which it reads as about four times the product's stated precision. Recomputed here identically (LOOK-013). With the three passes flagged reach_q 2 left out, the same scores are +0.9896 and 0.1859 m on 46 changes (LOOK-014). So most of the disagreement the worked example reports is three flagged passes, and the recipe has no step that says to apply the product's quality gate before scoring.",
+ "evidence": {
+  "path": "receipts/LOOK-014.json",
+  "sha256": "7cd6096f8eadbf9dcbd0f15d5a8c927b55e16c2838a68ccffc584ae613b5c208"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

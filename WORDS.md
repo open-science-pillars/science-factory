@@ -291,6 +291,32 @@ Names that stay: `rehearsal.run`, `review.verdict`, `finding.attached`; `claim_c
 
 New in the third review round, with no earlier name: the event `trial.verdict`; the scorecard check `lock-committed`; the plan keys `study_kind`, `writes` and `power_evidence.waived`; the options `start --request` and `--asked-by`, `lock --procedure`, `check-log --change-log`, `close --anchor`, `system_trial.py seal --answer` and `--harness`, `system_trial.py verdict --by`, and `adapter.py conformance --place`; the file `mvp/templates/analysis-plan.yaml`.
 
+## Words added with the assistants and the two loops
+
+Added on 2026-11-26, with no earlier form. One line each.
+
+| Word | What it means here |
+|---|---|
+| **exploration** | one question looked into freely: a directory with its own log, like a study, kept by the exploring tool (`explore.py`); it ends in a lead, a note, a method or a stop |
+| **set aside** | named as not to be looked at, before anything is looked at; what an exploration sets aside is what a later study may hold out |
+| **look** | one script run on working data through the exploring tool, logged with its data by checksum and what came out; the earlier vocabulary's "look" (opening the held-out data) is not this |
+| **lead** | something that looks true and is worth testing: what, how it was found, how many looks, which choices would change it, and a proposed plan; never a finding |
+| **choice** | a decision made while exploring, recorded with its alternatives and what it rests on |
+| **fence** | what keeps set-aside data out of an exploration: the checks the exploring tool makes on a look, and the record a later study respects |
+| **spoiled** | said of an exploration that set-aside data reached; it can end only as a stop |
+| **hand-over** | what an exploration writes so that the study tool can start a confirming study from its lead |
+| **recheck** | running a logged look again, in a copy, to see that it gives the same output |
+| **role** | one assistant's job as a file in `assistants/`: what it may call, must never see, reads, writes and hands on |
+| **skill** | a written procedure a role follows, with any script beside it; it carries no facts about a dataset |
+| **runner** | what starts a role with its tools on some platform; the role does not depend on it |
+| **rendered** | written out from the role and skill files into the files a platform reads; never edited by hand |
+| **wiki** | a knowledge base as a directory of Markdown pages in the Open Knowledge Format (`openwiki/` in a repository), read as files or through the two read-only tools `openwiki_search` and `openwiki_read` |
+| **working memory** | what a wiki page is until a person signs it |
+| **signed** (of a page) | its own signature lines name a person; only a person adds them |
+| **draft** | a page an assistant wrote for the queue; at status draft, with sources, never signed |
+| **queue** | the folder of drafts waiting for the steward, beside the work and outside the wiki |
+| **beside** (of a draft) | on the same subject as a page, making another point, in conflict with nothing |
+
 ## What was applied
 
 Applied everywhere a reader or a user can meet a word: the front door (README.md), the design (DESIGN.md, which replaces the separate concept and architecture documents), the build plan (PLAN.md), the templates, both studies and their analysis plans, the procedure file, the method scripts, and the study tool, inside and out (commands, options, messages, statuses, the names of its self-test checks and its own code).

@@ -1,0 +1,39 @@
+{
+ "way": "exploring",
+ "id": "LOOK-020",
+ "why": "What interval does the package's gain method give with the flag screen, allowing for correlation in time",
+ "argv": [
+  "uv",
+  "run",
+  "looks/show.py",
+  "confront-screened.json",
+  "screen",
+  "gain",
+  "gain_by_stage_half"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/show.py",
+  "sha256": "4539d132bf2fb22c819e357846d9e8ef266259d8c6cb5dc1885ac85c484406ae"
+ },
+ "inputs": [
+  {
+   "word": "looks/show.py",
+   "sha256": "4539d132bf2fb22c819e357846d9e8ef266259d8c6cb5dc1885ac85c484406ae",
+   "bytes": 372
+  },
+  {
+   "word": "confront-screened.json",
+   "sha256": "757d615b2a36c9cfedebc475239097c7e93d3700df40cde3d83e1b5fb2dc3053",
+   "bytes": 2383
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-020.out.txt",
+  "sha256": "5215d278b08223986475dc7f35ff010ee5482dfc10daa4a2a589e1d4b06ebd25"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:44:33Z",
+ "by": "agent:analysis-0001"
+}

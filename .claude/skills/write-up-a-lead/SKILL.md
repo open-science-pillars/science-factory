@@ -9,7 +9,7 @@ A lead is something that looks true and is worth testing. It is right more often
 
 ## Steps
 
-1. **Check where you stand.** `uv run mvp/explore.py status --exploration <x>`: looks, failures, refusals, choices, open notes.
+1. **Check where you stand.** `uv run mvp/loops/explore.py status --exploration <x>`: looks, failures, refusals, choices, open notes.
 
 2. **Write the lead file**, `<x>/lead.yaml`, from `lead-template.yaml` beside this skill. Every key is required.
    - `what_looks_true`: one or two sentences, with the numbers, their units, their counts, and the place and period they come from. Say "looks", not "is". Say where it does not hold as plainly as where it does.
@@ -19,11 +19,11 @@ A lead is something that looks true and is worth testing. It is right more often
    - `pitfalls`: each pitfall met, with the knowledge page that names it (and whether that page is signed or a draft) or the note you raised.
    - `proposed_plan`: the stub for a confirming study. `question` is one sentence ending in a question mark, about the data that was set aside. `quantity_estimated` is one quantity. `difference_that_matters` is the scientist's number if the request gives one; if it does not, write that nobody has stated one and what you would propose, as a proposal. `rule_sketch` says what result would support the idea, what would refute it, and that anything else is inconclusive. Add `hard_cases` (what the known-answer tests must include, from the pitfalls) and `what_this_could_not_show`.
 
-3. **Record it.** `uv run mvp/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml`. The tool adds what you cannot be trusted to remember: the count of looks, failures and refusals, the full record of each choice, what was read, what was set aside. It writes `lead.md` and `lead.json`.
+3. **Record it.** `uv run mvp/loops/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml`. The tool adds what you cannot be trusted to remember: the count of looks, failures and refusals, the full record of each choice, what was read, what was set aside. It writes `lead.md` and `lead.json`.
 
 4. **Hand it back for review.** Status now names the review assistant. Do not end the exploration yet.
 
-5. **Answer the review.** For each hole: look again, revise the lead and record a new version, or keep the hole in the lead as a stated limit. Then `uv run mvp/explore.py end --exploration <x> --by <you> --outcome lead --summary "<one sentence>"`. A revised lead is reviewed again before it can be handed over.
+5. **Answer the review.** For each hole: look again, revise the lead and record a new version, or keep the hole in the lead as a stated limit. Then `uv run mvp/loops/explore.py end --exploration <x> --by <you> --outcome lead --summary "<one sentence>"`. A revised lead is reviewed again before it can be handed over.
 
 ## What this skill refuses
 

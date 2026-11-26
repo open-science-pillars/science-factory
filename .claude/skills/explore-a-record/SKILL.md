@@ -5,7 +5,7 @@ description: "Explore a record freely without spending the data a later test wil
 
 # Explore a record
 
-Exploring is looking to find out what is there. It is most of the work and nothing in it is locked. The one rule is to say that it was exploring, and the tool (`mvp/explore.py`) makes that easy: it keeps the log, counts what was tried and holds the fence. This skill is the procedure. It carries no facts about any dataset.
+Exploring is looking to find out what is there. It is most of the work and nothing in it is locked. The one rule is to say that it was exploring, and the tool (`mvp/loops/explore.py`) makes that easy: it keeps the log, counts what was tried and holds the fence. This skill is the procedure. It carries no facts about any dataset.
 
 Run every command from the repository root. `<x>` is the exploration's directory, by convention `<work>/explorations/<ID>`; the confirming studies and the record of what has been opened sit beside it in `<work>/studies/`.
 
@@ -14,7 +14,7 @@ Run every command from the repository root. `<x>` is the exploration's directory
 Before anything is looked at, decide what will not be looked at. Read the request for what has already been seen and what could be held out, and choose one of the ways TWO-WAYS-OF-WORKING.md lists: a later period, a period of contrasting conditions, sites never opened, a new release, a different instrument or record, forecasts scored later. Prefer the one that a later confirming study would most plausibly want.
 
 ```
-uv run mvp/explore.py start --exploration <x> --id <ID> --by <you> \
+uv run mvp/loops/explore.py start --exploration <x> --id <ID> --by <you> \
   --question "<one sentence ending in a question mark>" --request <the request file> \
   --subject <key=value,key=value: the thing the data is about, as a plan's `pair` will say it> \
   --how "a later period" --set-aside-window <START:END, or START: to keep it open> \
@@ -35,7 +35,7 @@ Use the `read-what-is-known` skill with `explore.py known` and `explore.py read`
 A look is one script, run through the tool, with a reason:
 
 ```
-uv run mvp/explore.py look --exploration <x> --by <you> --why "<what this look is trying to find out>" \
+uv run mvp/loops/explore.py look --exploration <x> --by <you> --why "<what this look is trying to find out>" \
   -- uv run looks/<script>.py <arguments>
 ```
 
@@ -51,7 +51,7 @@ uv run mvp/explore.py look --exploration <x> --by <you> --why "<what this look i
 Every time you pick one way over another after looking (which passes to drop, which tolerance, which model, which period to show), record it then, not at the end:
 
 ```
-uv run mvp/explore.py choice --exploration <x> --by <you> --choice "<what you chose>" \
+uv run mvp/loops/explore.py choice --exploration <x> --by <you> --choice "<what you chose>" \
   --alternative "<another way>" --alternative "<another>" --rests-on "<what it rests on>" --look LOOK-00N
 ```
 
@@ -62,7 +62,7 @@ When you can, run the alternative as a look too, so the lead can say how much th
 Anything missing, wrong or stale in the data or the knowledge, and any dead end:
 
 ```
-uv run mvp/explore.py note --exploration <x> --by <you> --kind <missing|wrong|stale|contradiction|method|dead-end> \
+uv run mvp/loops/explore.py note --exploration <x> --by <you> --kind <missing|wrong|stale|contradiction|method|dead-end> \
   --about "<the product, field or page>" --text "<what, with numbers>" --evidence receipts/LOOK-00N.json
 ```
 
@@ -70,7 +70,7 @@ Check first whether the knowledge already says it; a pitfall the knowledge names
 
 ## 6. End
 
-An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run mvp/explore.py status --exploration <x>` says where it stands and who is next.
+An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run mvp/loops/explore.py status --exploration <x>` says where it stands and who is next.
 
 ## What this skill refuses
 

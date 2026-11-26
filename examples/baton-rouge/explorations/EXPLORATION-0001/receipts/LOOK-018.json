@@ -1,0 +1,40 @@
+{
+ "way": "exploring",
+ "id": "LOOK-018",
+ "why": "The gain with the flag screen and the one high dark fraction pass also left out",
+ "argv": [
+  "uv",
+  "run",
+  "looks/gain.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--exclude-flag-at-or-above",
+  "2",
+  "--exclude-dark-above",
+  "0.5"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/gain.py",
+  "sha256": "f20664726cc8587df0fa609250c36de200ca4b5a98f72062dd196d89c0b4f5c5"
+ },
+ "inputs": [
+  {
+   "word": "looks/gain.py",
+   "sha256": "f20664726cc8587df0fa609250c36de200ca4b5a98f72062dd196d89c0b4f5c5",
+   "bytes": 3610
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-018.out.txt",
+  "sha256": "b4e8b1be3e455e787a90de50e13ff76ee1780b6d93c0a09c135b5d0dac2c25e3"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:43:58Z",
+ "by": "agent:analysis-0001"
+}

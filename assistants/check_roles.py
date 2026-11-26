@@ -46,13 +46,13 @@ import yaml
 
 KEYS = ("name", "purpose", "may_call", "must_never_see", "reads", "writes", "hands_on")
 ACTS_OF_PEOPLE = ("mvp/sf.py lock", "mvp/sf.py signature", "mvp/sf.py void-unread")
-DOES_THE_WORK = ("mvp/explore.py start", "mvp/explore.py look", "mvp/explore.py choice", "mvp/explore.py lead", "mvp/explore.py end",
+DOES_THE_WORK = ("mvp/loops/explore.py start", "mvp/loops/explore.py look", "mvp/loops/explore.py choice", "mvp/loops/explore.py lead", "mvp/loops/explore.py end",
                  "mvp/sf.py start", "mvp/sf.py test", "mvp/sf.py rehearse", "mvp/sf.py attach", "mvp/sf.py open-held-out")
 ONLY = {  # a command and the one role that may call it
-    "mvp/explore.py review": "review", "mvp/sf.py review": "review",
-    "mvp/explore.py resolve": "curating", "mvp/sf.py resolve": "curating",
-    "mvp/explore.py start": "analysis", "mvp/explore.py look": "analysis", "mvp/explore.py lead": "analysis",
-    "mvp/explore.py hand-over": "coordinating", "mvp/sf.py open-held-out": "coordinating",
+    "mvp/loops/explore.py review": "review", "mvp/sf.py review": "review",
+    "mvp/loops/explore.py resolve": "curating", "mvp/sf.py resolve": "curating",
+    "mvp/loops/explore.py start": "analysis", "mvp/loops/explore.py look": "analysis", "mvp/loops/explore.py lead": "analysis",
+    "mvp/loops/explore.py hand-over": "coordinating", "mvp/sf.py open-held-out": "coordinating",
 }
 STAGE_COMMANDS = {  # the stage of the procedure, the role named in `done_by`, the command that stage needs
     ("ask", "coordinating"): ["mvp/sf.py start"],
@@ -143,7 +143,7 @@ def problems(root: Path) -> list:
                 parts = c.split()
                 tool = root / parts[0] if parts else root
                 if len(parts) != 2 or not parts[0].startswith("mvp/") or not tool.is_file():
-                    p.append(f"{where}: may_call entry `{c}` is not `mvp/<tool>.py <command>`, `skill:<name>` or `role:<name>`")
+                    p.append(f"{where}: may_call entry `{c}` is not `mvp/.../<tool>.py <command>`, `skill:<name>` or `role:<name>`")
                     continue
                 if parts[0] not in tools:
                     tools[parts[0]] = commands_of(tool)
@@ -196,9 +196,9 @@ def selftest(root: Path) -> int:
             d = tmp / name
             for sub in ("assistants", "skills"):
                 shutil.copytree(root / sub, d / sub)
-            (d / "mvp").mkdir()
-            for f in (root / "mvp").glob("*.py"):
-                shutil.copyfile(f, d / "mvp" / f.name)
+            (d / "mvp" / "loops").mkdir(parents=True)
+            for f in list((root / "mvp").glob("*.py")) + list((root / "mvp" / "loops").glob("*.py")):
+                shutil.copyfile(f, d / f.relative_to(root))
             shutil.copyfile(root / "mvp" / "procedure.yaml", d / "mvp" / "procedure.yaml")
             return d
 
@@ -233,13 +233,13 @@ def selftest(root: Path) -> int:
              "an act of people")
         case("a role may call the signature", lambda d: edit(d, "assistants/curating.md", '  - "mvp/sf.py resolve"', '  - "mvp/sf.py resolve"\n  - "mvp/sf.py signature"'),
              "an act of people")
-        case("the review role may run a look", lambda d: edit(d, "assistants/review.md", '  - "mvp/explore.py recheck"', '  - "mvp/explore.py look"'),
+        case("the review role may run a look", lambda d: edit(d, "assistants/review.md", '  - "mvp/loops/explore.py recheck"', '  - "mvp/loops/explore.py look"'),
              "does the work it is there to check")
-        case("the analysis role may record a review", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/explore.py lead"', '  - "mvp/explore.py lead"\n  - "mvp/explore.py review"'),
+        case("the analysis role may record a review", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/loops/explore.py lead"', '  - "mvp/loops/explore.py lead"\n  - "mvp/loops/explore.py review"'),
              "only the review assistant may call")
-        case("the analysis role may make the hand-over", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/explore.py lead"', '  - "mvp/explore.py lead"\n  - "mvp/explore.py hand-over"'),
+        case("the analysis role may make the hand-over", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/loops/explore.py lead"', '  - "mvp/loops/explore.py lead"\n  - "mvp/loops/explore.py hand-over"'),
              "only the coordinating assistant may call")
-        case("a role names a command the tool does not have", lambda d: edit(d, "assistants/analysis.md", '"mvp/explore.py choice"', '"mvp/explore.py decide"'),
+        case("a role names a command the tool does not have", lambda d: edit(d, "assistants/analysis.md", '"mvp/loops/explore.py choice"', '"mvp/loops/explore.py decide"'),
              "has no command `decide`")
         case("a role names a skill that does not exist", lambda d: edit(d, "assistants/analysis.md", '"skill:explore-a-record"', '"skill:explore-everything"'),
              "SKILL.md does not exist")

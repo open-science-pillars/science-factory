@@ -1,0 +1,5 @@
+[exploring: output of LOOK-026]
+tolerance 15 min: 50 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
+level difference (satellite minus gauge, contains an uncited datum offset): n=50, median -0.231 m, mean -0.243 m, sd 0.301 m (sample), min -2.007, max +0.716
+gauge stage range over the pairs: 1.47 to 10.33 m
+pairing offset: max 14.3 min

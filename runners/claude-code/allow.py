@@ -23,6 +23,8 @@ file allows and blocks everything else, with the reason.
   Read,    anything except a path that an exploration beside it set aside
   Grep,    or that a study's plan beside it holds out.
   Glob
+  wiki     the two read-only wiki tools, openwiki_search and openwiki_read,
+           from any server; no other tool of any server.
   Skill    only a skill in the role's `may_call`.
   Agent    only a role in the role's `may_call` (the coordinating role).
   other    blocked.
@@ -56,6 +58,7 @@ KEPT_BY_THE_TOOLS = ("*-log.jsonl", "openings.jsonl", "set-aside.json", "lead.js
 KEPT_FOLDERS = ("receipts", "verdicts", "leads", "hand-over", "notes", ".claude", "assistants", "skills", "runners", "mvp", ".git", ".github")
 READ_TOOLS = ("Read", "Grep", "Glob", "NotebookRead")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+WIKI_TOOLS = ("openwiki_search", "openwiki_read")  # read-only, from any server
 HARMLESS = ("TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
 
 
@@ -92,9 +95,9 @@ def bash_problem(command: str, role: str, fm: dict, cwd: Path, root: Path = ROOT
     if i + 1 >= len(words):
         return "a role's command is `uv run mvp/<tool>.py <command> ...`"
     script = (cwd / words[i]).resolve()
-    if script.parent != (root / "mvp").resolve() or not script.is_file():
-        return f"`{words[i]}` is not a tool of this package (mvp/<tool>.py in {root})"
-    call = f"mvp/{script.name} {words[i + 1]}"
+    if script.parent not in ((root / "mvp").resolve(), (root / "mvp" / "loops").resolve()) or not script.is_file():
+        return f"`{words[i]}` is not a tool of this package (under mvp/ in {root})"
+    call = f"{script.relative_to(root.resolve()).as_posix()} {words[i + 1]}"
     allowed = [str(c) for c in fm.get("may_call") or [] if not str(c).startswith(("skill:", "role:"))]
     if call not in allowed:
         return f"the {role} assistant may not call `{call}`. Its role file allows: {', '.join(allowed)}"
@@ -170,7 +173,7 @@ def decide(role: str, call: dict, root: Path = ROOT) -> str | None:
     if tool in ("Agent", "Task"):
         name = str(given.get("subagent_type") or "")
         return None if f"role:{name}" in (fm.get("may_call") or []) else f"the {role} assistant may not start `{name or 'an unnamed assistant'}`"
-    if tool in HARMLESS:
+    if tool in HARMLESS or tool.rsplit("__", 1)[-1] in WIKI_TOOLS:
         return None
     return f"the {role} assistant has no use for the tool `{tool}`; it is not in its role"
 
@@ -186,33 +189,33 @@ def selftest() -> int:
         results.append((name, bool(cond)))
 
     x = "examples/w/explorations/E1"
-    ok("analysis may run a look", not blocked("analysis", "Bash", command=f"uv run mvp/explore.py look --exploration {x} --by agent:analysis --why 'see pairs' -- uv run looks/a.py d.json"))
-    ok("analysis may start an exploration", not blocked("analysis", "Bash", command=f"uv run mvp/explore.py start --exploration {x} --by agent:analysis-1 --id E1"))
-    ok("analysis may not record a review", blocked("analysis", "Bash", command=f"uv run mvp/explore.py review --exploration {x} --by agent:analysis --verdict no-holes-found --file r.md"))
-    ok("analysis may not act under the review role's name", blocked("analysis", "Bash", command=f"uv run mvp/explore.py note --exploration {x} --by agent:review --kind missing --about a --text b"))
-    ok("analysis may not act under a person's name", blocked("analysis", "Bash", command=f"uv run mvp/explore.py note --exploration {x} --by human:someone --kind missing --about a --text b"))
-    ok("analysis may not make the hand-over", blocked("analysis", "Bash", command=f"uv run mvp/explore.py hand-over --exploration {x} --by agent:analysis --study-id S"))
+    ok("analysis may run a look", not blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py look --exploration {x} --by agent:analysis --why 'see pairs' -- uv run looks/a.py d.json"))
+    ok("analysis may start an exploration", not blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py start --exploration {x} --by agent:analysis-1 --id E1"))
+    ok("analysis may not record a review", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py review --exploration {x} --by agent:analysis --verdict no-holes-found --file r.md"))
+    ok("analysis may not act under the review role's name", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py note --exploration {x} --by agent:review --kind missing --about a --text b"))
+    ok("analysis may not act under a person's name", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py note --exploration {x} --by human:someone --kind missing --about a --text b"))
+    ok("analysis may not make the hand-over", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py hand-over --exploration {x} --by agent:analysis --study-id S"))
     ok("no role may lock", all(blocked(r, "Bash", command=f"uv run mvp/sf.py lock --study s --by agent:{r} --evidence https://e.org/1") for r in ("coordinating", "analysis", "review", "curating")))
     ok("no role may sign", all(blocked(r, "Bash", command=f"uv run mvp/sf.py signature --study s --by agent:{r} --decision signed") for r in ("coordinating", "analysis", "review", "curating")))
-    ok("review may record a review", not blocked("review", "Bash", command=f"uv run mvp/explore.py review --exploration {x} --by agent:review --verdict holes-found --file r.md"))
-    ok("review may recheck a look", not blocked("review", "Bash", command=f"uv run mvp/explore.py recheck --exploration {x} --look LOOK-001"))
-    ok("review may not run a look", blocked("review", "Bash", command=f"uv run mvp/explore.py look --exploration {x} --by agent:review --why w -- uv run looks/a.py"))
-    ok("curating may check drafts", not blocked("curating", "Bash", command="uv run mvp/knowledge.py check-drafts --queue q --bundle b"))
-    ok("curating may not run a look", blocked("curating", "Bash", command=f"uv run mvp/explore.py look --exploration {x} --by agent:curating --why w -- uv run looks/a.py"))
-    ok("coordinating may make the hand-over", not blocked("coordinating", "Bash", command=f"uv run mvp/explore.py hand-over --exploration {x} --by agent:coordinating --study-id S"))
-    ok("coordinating may not run a look", blocked("coordinating", "Bash", command=f"uv run mvp/explore.py look --exploration {x} --by agent:coordinating --why w -- uv run looks/a.py"))
-    ok("brackets inside a quoted reason are words, not a shell", not blocked("analysis", "Bash", command=f"uv run mvp/explore.py look --exploration {x} --by agent:analysis --why 'pairs (within 15 min); then gain' -- uv run looks/a.py"))
-    ok("a subshell is blocked", blocked("analysis", "Bash", command=f"(uv run mvp/explore.py status --exploration {x})"))
-    ok("a command after a semicolon is blocked", blocked("analysis", "Bash", command=f"uv run mvp/explore.py status --exploration {x}; cat secret"))
-    ok("a variable inside double quotes is blocked", blocked("analysis", "Bash", command='uv run mvp/explore.py status --exploration "$HOME"'))
-    ok("a chained command is blocked", blocked("analysis", "Bash", command=f"uv run mvp/explore.py status --exploration {x} && cat secret"))
-    ok("a piped command is blocked", blocked("analysis", "Bash", command=f"uv run mvp/explore.py status --exploration {x} | tee out"))
-    ok("a substitution is blocked", blocked("analysis", "Bash", command="uv run mvp/explore.py status --exploration $(cat x)"))
-    ok("a redirection is blocked", blocked("analysis", "Bash", command=f"uv run mvp/explore.py status --exploration {x} > lead.md"))
+    ok("review may record a review", not blocked("review", "Bash", command=f"uv run mvp/loops/explore.py review --exploration {x} --by agent:review --verdict holes-found --file r.md"))
+    ok("review may recheck a look", not blocked("review", "Bash", command=f"uv run mvp/loops/explore.py recheck --exploration {x} --look LOOK-001"))
+    ok("review may not run a look", blocked("review", "Bash", command=f"uv run mvp/loops/explore.py look --exploration {x} --by agent:review --why w -- uv run looks/a.py"))
+    ok("curating may check drafts", not blocked("curating", "Bash", command="uv run mvp/loops/knowledge.py check-drafts --queue q --bundle b"))
+    ok("curating may not run a look", blocked("curating", "Bash", command=f"uv run mvp/loops/explore.py look --exploration {x} --by agent:curating --why w -- uv run looks/a.py"))
+    ok("coordinating may make the hand-over", not blocked("coordinating", "Bash", command=f"uv run mvp/loops/explore.py hand-over --exploration {x} --by agent:coordinating --study-id S"))
+    ok("coordinating may not run a look", blocked("coordinating", "Bash", command=f"uv run mvp/loops/explore.py look --exploration {x} --by agent:coordinating --why w -- uv run looks/a.py"))
+    ok("brackets inside a quoted reason are words, not a shell", not blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py look --exploration {x} --by agent:analysis --why 'pairs (within 15 min); then gain' -- uv run looks/a.py"))
+    ok("a subshell is blocked", blocked("analysis", "Bash", command=f"(uv run mvp/loops/explore.py status --exploration {x})"))
+    ok("a command after a semicolon is blocked", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py status --exploration {x}; cat secret"))
+    ok("a variable inside double quotes is blocked", blocked("analysis", "Bash", command='uv run mvp/loops/explore.py status --exploration "$HOME"'))
+    ok("a chained command is blocked", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py status --exploration {x} && cat secret"))
+    ok("a piped command is blocked", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py status --exploration {x} | tee out"))
+    ok("a substitution is blocked", blocked("analysis", "Bash", command="uv run mvp/loops/explore.py status --exploration $(cat x)"))
+    ok("a redirection is blocked", blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py status --exploration {x} > lead.md"))
     ok("a bare interpreter is blocked", blocked("analysis", "Bash", command="python3 looks/a.py held-out.json"))
     ok("a fetch is blocked", blocked("analysis", "Bash", command="curl https://example.org/data"))
-    ok("a tool of the same name somewhere else is blocked", blocked("analysis", "Bash", command="uv run /tmp/mvp/explore.py status --exploration x"))
-    ok("an environment assignment in front is blocked", blocked("analysis", "Bash", command=f"X=1 uv run mvp/explore.py status --exploration {x}"))
+    ok("a tool of the same name somewhere else is blocked", blocked("analysis", "Bash", command="uv run /tmp/mvp/loops/explore.py status --exploration x"))
+    ok("an environment assignment in front is blocked", blocked("analysis", "Bash", command=f"X=1 uv run mvp/loops/explore.py status --exploration {x}"))
     ok("analysis may write a look script", not blocked("analysis", "Write", file_path=f"{x}/looks/pairs.py"))
     ok("analysis may write the lead file", not blocked("analysis", "Write", file_path=f"{x}/lead.yaml"))
     ok("analysis may not write the recorded lead", blocked("analysis", "Write", file_path=f"{x}/lead.md"))
@@ -230,13 +233,16 @@ def selftest() -> int:
     ok("curating may not write a role file", blocked("curating", "Edit", file_path="assistants/curating.md"))
     ok("curating may not write into a path outside the queue", blocked("curating", "Write", file_path="../hydrology/knowledge/gotchas/a.md"))
     ok("coordinating writes nothing", blocked("coordinating", "Write", file_path=f"{x}/looks/a.py") and blocked("coordinating", "Write", file_path="notes.md"))
-    ok("no role may edit the tools", all(blocked(r, "Edit", file_path="mvp/explore.py") for r in ("coordinating", "analysis", "review", "curating")))
+    ok("no role may edit the tools", all(blocked(r, "Edit", file_path="mvp/loops/explore.py") for r in ("coordinating", "analysis", "review", "curating")))
     ok("analysis may use its skills", not blocked("analysis", "Skill", skill="explore-a-record"))
     ok("analysis may not use the curating skill", blocked("analysis", "Skill", skill="draft-a-knowledge-page"))
     ok("coordinating may start the three other roles", not any(blocked("coordinating", "Agent", subagent_type=r) for r in ("analysis", "review", "curating")))
     ok("coordinating may not start an assistant that is not a role", blocked("coordinating", "Agent", subagent_type="general-purpose"))
     ok("analysis may not start another assistant", blocked("analysis", "Agent", subagent_type="review"))
     ok("a tool outside the role is blocked", blocked("analysis", "WebFetch", url="https://example.org") and blocked("review", "WebSearch", query="x"))
+    ok("every role may search and read the wiki through the two read-only tools",
+       not any(blocked(r, "mcp__openwiki__openwiki_search", query="x") or blocked(r, "mcp__openwiki__openwiki_read", path="a.md") for r in ("coordinating", "analysis", "review", "curating")))
+    ok("any other tool of a server is blocked, a writing one included", blocked("curating", "mcp__openwiki__openwiki_write", path="a.md") and blocked("analysis", "mcp__other__fetch", url="x"))
     ok("a role with no file gets nothing", blocked("auditing", "Read", file_path="README.md"))
     import tempfile
     tmp = Path(tempfile.mkdtemp(prefix="allow-selftest-")).resolve()

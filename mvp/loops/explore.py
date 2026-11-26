@@ -18,6 +18,9 @@ model. It makes five things true, whoever or whatever is exploring:
   2. Every look is logged: what was run, on which data by checksum, and
      what came out, in a log that is only ever added to and is chained by
      hash like the study log (the same code: this tool imports sf.py).
+     This tool sits in mvp/loops/ and not beside sf.py, because the study
+     tool counts every Python file beside a plan's code as part of that
+     code, and a new file there would undo the practice runs.
      A look that names what was set aside is refused, and the refusal is
      logged.
   3. Choices are recorded as they are made: the choice, the alternatives,
@@ -25,7 +28,8 @@ model. It makes five things true, whoever or whatever is exploring:
   4. It ends in a lead, a note, a method or a stop. A lead says what looks
      true, how it was found, how many things were tried (counted from the
      log, not remembered), which choices would change it, and a proposed
-     plan for a confirming study. `hand-over` writes what `sf.py start`
+     plan for a confirming study. A lead that quotes a decimal number
+     found in the output of none of the looks it cites is refused. `hand-over` writes what `sf.py start`
      needs, and `check-study` refuses a study whose held-out data is not
      inside what was set aside or touches what was explored.
   5. Everything it writes says "exploring" on it. There is no command here
@@ -116,7 +120,7 @@ def _load(name: str, path: Path):
     return mod
 
 
-sf = _load("sf", HERE / "sf.py")  # the log chain, the record of what has been opened, the launcher rule
+sf = _load("sf", HERE.parent / "sf.py")  # the log chain, the record of what has been opened, the launcher rule
 Refused = sf.Refused
 
 WAY = "exploring"
@@ -133,6 +137,7 @@ HOW = {  # the ways to hold data out that TWO-WAYS-OF-WORKING.md lists, and what
     "forecasts scored later": "window",
 }
 OPEN_END = "9999-12-31"
+TOOLS = ("sf.py", "explore.py", "knowledge.py", "system_trial.py")  # a look does not run these
 TIME_KEYS = ("time", "t", "date", "datetime", "timestamp")
 DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 NOTE_KINDS = ("missing", "wrong", "stale", "contradiction", "method", "dead-end")
@@ -219,6 +224,15 @@ def in_window(day: dt.date, w: dict | None) -> bool:
     return bool(w) and w["start"] <= day.isoformat() <= w["end"]
 
 
+def windows_of(sa: dict) -> list:
+    """Every window this exploration must not look into: its own, and those other explorations set aside for the same subject."""
+    return [w for w in [sa.get("window")] + list(sa.get("also_set_aside") or []) if w]
+
+
+def in_any(day: dt.date, sa: dict) -> bool:
+    return any(in_window(day, w) for w in windows_of(sa))
+
+
 def dates_in(text: str) -> list:
     out = []
     for m in DATE.finditer(text):
@@ -242,7 +256,7 @@ def text_problems(text: str, sa: dict, what: str) -> list:
     for path in sa.get("paths") or []:
         if str(path).casefold() in low or Path(path).name.casefold() in low:
             p.append(f"{what} names the set-aside path `{path}`")
-    inside = sorted({d.isoformat() for d in dates_in(text) if in_window(d, sa.get("window"))})
+    inside = sorted({d.isoformat() for d in dates_in(text) if in_any(d, sa)})
     if inside:
         p.append(f"{what} names a date inside the set-aside window ({', '.join(inside[:3])}"
                  + (f", and {len(inside) - 3} more" if len(inside) > 3 else "") + ")")
@@ -254,25 +268,27 @@ def json_problems(obj, sa: dict, what: str) -> list:
     set-aside site or release among its values. Other dates in it (when it was retrieved) are not data."""
     keys = {k.casefold() for k in sa.get("time_keys") or TIME_KEYS}
     toks = {t.casefold(): t for t in tokens_of(sa)}
-    window, hits, named = sa.get("window"), [], set()
+    windows, hits, named = windows_of(sa), [], set()
 
-    def walk(o, key=None):
+    def walk(o, key=None, in_rows=False):
         if isinstance(o, dict):
-            if window and set(o) >= {"start", "end"} and sf.window_of({"start": o["start"], "end": o["end"]}):
+            if windows and set(o) >= {"start", "end"} and sf.window_of({"start": o["start"], "end": o["end"]}):
                 if key is None or str(key).casefold() == "window":
-                    if sf.windows_overlap({"start": o["start"], "end": o["end"]}, {"start": window["start"], "end": window["end"]}):
+                    if any(sf.windows_overlap({"start": o["start"], "end": o["end"]}, core(w)) for w in windows):
                         hits.append(f"its window {o['start']} to {o['end']}")
             for k, v in o.items():
-                walk(v, k)
+                walk(v, k, in_rows)
         elif isinstance(o, list):
             for v in o:
-                walk(v, key)
+                walk(v, key, True)
         elif isinstance(o, str):
             if o.casefold() in toks:
                 named.add(toks[o.casefold()])
-            if window and key is not None and str(key).casefold() in keys:
+            # a date under a declared time key anywhere, or under any key inside a list of rows, is a time of the data;
+            # a single date at the top of the file (when it was retrieved) is not
+            if windows and key is not None and (str(key).casefold() in keys or in_rows):
                 for d in dates_in(o[:32]):
-                    if in_window(d, window):
+                    if in_any(d, sa):
                         hits.append(d.isoformat())
     walk(obj)
     p = [f"{what} holds `{t}`, which was set aside" for t in sorted(named)]
@@ -380,11 +396,20 @@ def cmd_start(x: Exploration, a) -> None:
             raise Refused(f"the record of what has been opened says this subject and an overlapping window were already "
                           f"{'explored' if ln.get('kind') == 'explored' else 'opened'} by {ln.get('study')}: data that has been "
                           "looked at cannot be set aside")
+    others = []
+    for ln in record_lines(record):  # what another exploration set aside for this subject is fenced here too
+        if ln.get("kind") == "set-aside" and ln.get("subject") == key and (ln.get("set_aside") or {}).get("window"):
+            w = ln["set_aside"]["window"]
+            if working and sf.windows_overlap(core(working), core(w)):
+                raise Refused(f"{ln.get('exploration')} set aside {w['start']} to {'onward' if w.get('open_ended') else w['end']} for this subject, and "
+                              "the working window given here reaches into it: what one exploration set aside, another does not explore")
+            if w != window and w not in others:
+                others.append(w)
     paths = [os.path.abspath(p) for p in a.set_aside_path or []]
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
-    sa = {"how": how, "subject": subject, "window": window, "sites": sites, "releases": releases, "paths": paths,
+    sa = {"how": how, "subject": subject, "window": window, "sites": sites, "releases": releases, "paths": paths, "also_set_aside": others,
           "time_keys": [k.strip() for k in (a.time_keys or ",".join(TIME_KEYS)).split(",") if k.strip()],
           "why": a.why or a.nothing_set_aside,
           "working": {"description": a.working, "window": working}}
@@ -420,7 +445,7 @@ def cmd_start(x: Exploration, a) -> None:
         rec.flush()
         os.fsync(rec.fileno())
     print(f"started {a.id} ({WAY}). Set aside: {how}"
-          + (f", {window['start']} to {'onward' if window.get('open_ended') else window['end']}" if window else "")
+          + (f", {'from ' + window['start'] + ' onward' if window.get('open_ended') else window['start'] + ' to ' + window['end']}" if window else "")
           + (f", sites {sites}" if sites else "") + (f", {releases}" if releases else "")
           + f". Written to {rel_record}. Next: `known`, then look.")
 
@@ -449,13 +474,12 @@ def cmd_read(x: Exploration, a) -> None:
     f = Path(a.concept).resolve()
     if not f.is_file():
         raise Refused(f"the concept {a.concept} does not exist")
-    fm, _ = k.front_matter(f)
-    if fm is None:
-        raise Refused(f"{a.concept} has no front matter: it is not a knowledge concept")
-    signed, by = k.signed_by(fm)
-    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sf.sha_file(f), "status": fm.get("status"),
+    fm, _body = k.front_matter(f)
+    fm = fm or {}
+    signed, by = k.signed_by(fm, _body)
+    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sf.sha_file(f), "status": k.status_of(fm, _body),
                                    "signed": signed, "signed_by": by, "takes": a.takes})
-    print(f"read: {f.name} ({'signed by ' + ', '.join(by) if signed else 'NOT SIGNED, status ' + str(fm.get('status'))}), "
+    print(f"read: {f.name} ({'signed by ' + ', '.join(by) if signed else 'NOT SIGNED, status ' + str(k.status_of(fm, _body))}), "
           f"recorded ({WAY})")
 
 
@@ -491,6 +515,9 @@ def cmd_look(x: Exploration, a) -> None:
         raise Refused(f"{script}. A look is {sf.LAUNCHERS}, then the script's own arguments")
     if not (x.d / script).is_file():
         raise Refused(f"the script `{script}` does not exist (paths are read from the exploration directory)")
+    if (x.d / script).resolve().parent in (HERE, HERE.parent) and (x.d / script).resolve().name in TOOLS:
+        raise Refused(f"`{script}` is a tool of this package, not a look: the study tool, this tool and the knowledge tool are "
+                      "called by a role under its own name, never from inside a look")
     here = set_aside_present(sa)
     if here:
         raise Refused(f"set-aside data is in the workspace ({here[0]}); an exploration does not fetch it and does not run beside it")
@@ -663,6 +690,22 @@ def lead_problems(lead, ev: list) -> list:
     return p
 
 
+DECIMAL = re.compile(r"(?<![\w.])\d+\.\d+(?![\w]|\.\d)")
+
+
+def unbacked_numbers(x: Exploration, lead: dict) -> list:
+    """Decimal numbers in the lead's own words that are in the output of none of the looks it cites. The proposed
+    plan is left out: its numbers are proposals (a difference that matters, a band), not things that were seen."""
+    outputs = ""
+    for lid in lead.get("evidence") or []:
+        f = x.d / f"receipts/{lid}.out.txt"
+        outputs += f.read_text(errors="replace") if f.is_file() else ""
+    texts = [str(lead.get("what_looks_true")), str(lead.get("how_it_was_found"))] + [str(t) for t in lead.get("pitfalls") or []]
+    texts += [str(c.get("how") or c.get("why")) for key in ("choices_that_would_change_it", "choices_that_would_not")
+              for c in lead.get(key) or [] if isinstance(c, dict)]
+    return sorted({n for t in texts for n in DECIMAL.findall(t) if n not in outputs})
+
+
 def render_lead(lead: dict) -> str:
     sa, tried = lead["set_aside"], lead["tried"]
     w = sa.get("window")
@@ -716,6 +759,10 @@ def cmd_lead(x: Exploration, a) -> None:
     problems = lead_problems(given, ev)
     if problems:
         raise Refused("the lead is not complete: " + "; ".join(problems))
+    loose = unbacked_numbers(x, given)
+    if loose:
+        raise Refused("the lead quotes numbers that are in the output of none of the looks it cites under `evidence`: "
+                      + ", ".join(loose[:12]) + ". Every number in a lead comes from a look; cite the look, or run it")
     version = count(ev, "lead.recorded") + 1
     reads = [e["data"] for e in ev if e["kind"] == "knowledge.read"]
     lead = {"kind": "lead", "status": LEAD_STATUS, "version": version, "exploration": start["data"]["id"],
@@ -1230,6 +1277,25 @@ def selftest() -> int:
         ok("a look that passes a date inside the set-aside window is refused",
            "date inside the set-aside window" in look(x, ["{python}", s1, str(data), "--start", "2025-05-01"]))
         ok("a look that names the set-aside path is refused", "set-aside path" in look(x, ["{python}", s1, str(early)]))
+        odd = tmp / "odd_keys.json"
+        odd.write_text(json.dumps({"retrieved": "2026-09-08", "rows": [{"when": "2025-06-01T00:00:00Z", "a": 1.0}]}))
+        ok("a data file that keeps its times under a key nobody declared is still refused when they sit in its rows",
+           "inside the set-aside window" in look(x, ["{python}", s1, str(odd)]))
+        link = x.d / "looks" / "innocent.json"
+        link.symlink_to(later)
+        ok("a link with an innocent name that points at set-aside data is refused", "set aside" in look(x, ["{python}", s1, "looks/innocent.json"]))
+        link.unlink()
+        ok("a look cannot run the study tool, this tool or the knowledge tool",
+           "not a look" in look(x, ["{python}", str(HERE.parent / "sf.py"), "lock", "--study", "s", "--by", "human:someone"])
+           and "not a look" in look(x, ["uv", "run", str(HERE / "explore.py"), "review", "--exploration", str(x.d), "--by", "agent:other", "--verdict", "no-holes-found", "--file", "x"]))
+        ok("another exploration of the same subject cannot explore what this one set aside",
+           "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-REACH"),
+                                              A(request=str(req), set_aside_window="2027-01-01:2027-12-31", working_window="2025-05-01:2025-12-31")))
+        xo = fresh("E-OTHER", set_aside_window="2027-01-01:2027-12-31", working_window="2023-01-01:2023-12-31")
+        quiet(cmd_known, xo, A(bundle=[str(bundle)], question=None))
+        so = script(xo, "p.py", "print('ok')\n")
+        ok("an exploration is also fenced from what another exploration set aside for the same subject",
+           xo.set_aside()["also_set_aside"] and "set aside" in look(xo, ["{python}", so, str(later)]))
         s2 = script(x, "fetch_later.py", "START = '2025-05-01'\nprint('would fetch from', START)\n")
         ok("a look whose script names a date inside the set-aside window is refused", "date inside" in look(x, ["{python}", s2]))
         s3 = script(x, "sneak.py", "import json\njson.dump({'rows': [{'time': '20' + '25-07-01T00:00:00Z', 'a': 1}]}, open('got.json', 'w'))\n")
@@ -1297,6 +1363,10 @@ def selftest() -> int:
         lead["evidence"] = ["LOOK-001"]
         lf.write_text(yaml.safe_dump({k: v for k, v in lead.items() if k != "proposed_plan"}))
         ok("a lead without a proposed plan is refused", "proposed_plan" in said(cmd_lead, y, A(file=str(lf))))
+        lead["what_looks_true"] = "A follows B closely over the year, with a gain of 1.0123 on changes."
+        lf.write_text(yaml.safe_dump(lead))
+        ok("a lead that quotes a number no cited look printed is refused", "1.0123" in said(cmd_lead, y, A(file=str(lf))))
+        lead["what_looks_true"] = "A follows B closely over the year, on changes, across 12 rows."
         lf.write_text(yaml.safe_dump(lead))
         ok("ending as a lead before a lead is recorded is refused", "no lead" in said(cmd_end, y, A(outcome="lead", summary="x")))
         ok("a review before there is anything to review is refused", "nothing to review" in said(cmd_review, y, A(by="agent:tester-review", verdict="holes-found", file=str(req))))
@@ -1462,7 +1532,8 @@ def build_parser() -> argparse.ArgumentParser:
         (["--working-window"], {"default": None, "help": "START:END of the data that will be explored"}),
         (["--time-keys"], {"default": None, "help": "the keys under which a data file carries its times (default: " + ",".join(TIME_KEYS) + ")"}),
         (["--studies"], {"default": None, "help": "the folder of confirming studies, where the record is (default: ../../studies from the exploration)"}))
-    add("known", cmd_known, by, (["--bundle"], {"action": "append", "required": True, "help": "a knowledge bundle; repeatable"}),
+    add("known", cmd_known, by, (["--wiki", "--bundle"], {"dest": "bundle", "action": "append", "required": True,
+                                                         "help": "a wiki: a directory of Markdown pages; repeatable"}),
         (["--drafts"], {"action": "append", "default": None, "help": "a queue of drafted pages, listed as drafts; repeatable"}),
         (["--question"], {"default": None}), (["--tag"], {"action": "append", "default": None}))
     add("read", cmd_read, by, (["--concept"], {"required": True}), (["--takes"], {"required": True, "help": "what this concept rules in, rules out or warns about, for this question"}))
