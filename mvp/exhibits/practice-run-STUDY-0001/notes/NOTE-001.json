@@ -1,0 +1,13 @@
+{
+ "id": "NOTE-001",
+ "at": "2026-11-26T04:01:14Z",
+ "by": "agent:practice-analysis",
+ "kind": "method",
+ "about": "science-factory/mvp/gain.py and confront.py (the candidate gain estimate)",
+ "text": "Without a quality screen the gain is steered by degraded passes at low stage. In known-answer tests built on the real 2024 pass times and gauge record, one-signed faults on a quarter of the lowest-stage passes cut interval coverage to 67 percent and raised false refutation right at the difference that matters to 34 percent and false confirmation there to 9 percent (2000 test cases per setting). In the 2024 record itself one pass with a degraded quality flag, at the year's lowest stage, carries about two thirds of the residual sum of squares. Proposed and written into the plan: exclude passes with reach_q at or above 2 before pairing and report the count.",
+ "evidence": {
+  "path": "receipts/known-answers-without-screen.json",
+  "sha256": "7a9591601166c819b970cc644b0d1f777707a5b3d813d0746e0a8edf79c4da4b"
+ },
+ "status": "open"
+}

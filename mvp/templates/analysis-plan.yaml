@@ -1,0 +1,170 @@
+# Analysis plan: a template with every key the study tool reads.
+#
+# Copy this file to <study directory>/analysis-plan.yaml and replace the example values (a tide gauge and a
+# rate, chosen only to have something concrete). Then run
+#     sf.py check-plan --study <study directory>
+# which says, key by key, what is missing or wrong. A key the tool does not know is refused, and so is a
+# key given twice, so a misspelling cannot hide. Keys marked "for people" are not checked beyond being
+# allowed; everything else is.
+#
+# Words used below.
+#   held-out data    data nobody opens before the lock
+#   working data     anything you or your group have already looked at
+#   run receipt      the record a run writes, with its code and inputs by checksum and every number it
+#                    produced: one JSON file. Each test below names where its command writes one.
+#   the difference that matters   the smallest difference that would change what you do
+#   criterion        a pass or fail threshold on a rate the known-answer tests measure
+#
+# Placeholders, filled in by the tool wherever a command or the code list uses them.
+#   {python}   the Python the study tool itself runs under
+#   {study}    this study directory
+#   {name}     a folder you name under `roots`
+# A relative path in a command or in `code` is read from the study directory, wherever the tool is called
+# from.
+#
+# A command is a list of words: a launcher the tool knows, then a script file, then the script's own
+# arguments. The launchers are `{python}` followed directly by the script, and `uv run` followed by the
+# script (a file whose name ends in .py, or any file after `--script`). The script must exist; the lock binds
+# it and prints, for each command, which script that is. Any other program is refused by the plan check (a
+# shell, `env`, `make`, `{python} -c`, `uv run python`), because a script named inside another program's
+# text is one the lock would never see. A step that is not yet a script goes into one, and the plan names it.
+#
+# A command is given a short list of environment variables and nothing else: PATH, HOME, USER, LOGNAME,
+# TERM, the language, time zone and temporary-folder settings, the XDG base directories, the certificate
+# and proxy settings, and every UV_ variable (the names are at the top of sf.py). A token your fetch needs
+# is named under `passes_environment` on that test or rehearsal (the name, never the value); the lock
+# prints the names and each run records them.
+#
+# When a command runs through `uv run`, the settings uv reads from this study directory and the folders
+# above it (pyproject.toml, uv.toml, uv.lock, .python-version) are locked with the code, and a .venv
+# folder that appears or changes there after the lock blocks the opening.
+
+study: STUDY-0002                 # required: this study's id
+study_kind: confirmatory          # optional: confirmatory (the default), or system_trial for a blind test case
+                                  #   made at its own opening (see studies/STUDY-0000)
+question: "Is monthly mean sea level at the harbor tide gauge rising faster than 2 mm per year?"   # required; ends in a question mark
+claim_class: trend                # for people: the organization's claim class
+quantity_estimated: >             # required: what is estimated and how its interval is made
+  The linear rate of monthly mean sea level over the window, in mm per year, with a 95 percent interval
+  under a lag-1 model of the residuals.
+
+roots:                            # optional: short names for folders outside the study, each a path
+  lab: ../../../my-lab-repository #   relative to this study directory; use them as {lab}/...
+
+code:                             # required: the files that make up the method. They are locked by checksum
+  - "{study}/trend.py"            #   at the lock, together with every existing file any command below
+  - "{study}/trend_cases.py"      #   names (scripts, fixtures, parameter files) and everything Python could
+                                  #   import from the folder of each of them.
+
+data:
+  working: "The gauge's months for 1990 through 2004, already fitted and plotted."   # required: what was already seen
+  held_out:
+    # required: the subject. The record of what has been opened matches studies by `pair` and `window`, so
+    # a second study of the same subject and an overlapping window is exploratory. The tool never uses the
+    # study's id in its place. Text or a mapping of names to text.
+    pair: {gauge: "HARBOR-TIDE-GAUGE", series: "altimetry at the gauge, never loaded"}
+    window: {start: "2005-01-01", end: "2024-12-31"}   # required: exactly `start` and `end`, dates as YYYY-MM-DD
+    withheld_values: [monthly altimetric sea level]    # required: what nobody reads before the opening
+    path: data/altimetry.json     # required: where, inside the study, the access gate puts the held-out data.
+                                  #   This path, or its folder, must appear in the held-out test's `fetch` command.
+    observation_metadata: [month, number of passes, quality flag]   # for people: what may be read before the lock
+    why_this_window: "The series begins in 2005; none of it has been loaded by this group."   # for people
+    metadata_note: "Months and pass counts say nothing about the rate."                       # for people
+
+tests:
+  # The two tests that run before the lock, as often as you like. Each needs `command` and `receipt`.
+  known-answers:                  # synthetic data with the truth put in; its receipt carries the criteria (see rules)
+    command: ["{python}", "{study}/trend_cases.py", "--plan", "{study}/analysis-plan.yaml",
+              "--out", "{study}/receipts/known-answers.json"]
+    receipt: receipts/known-answers.json
+  working-data:                   # the same method on data already seen
+    command: ["{python}", "{study}/trend.py", "--inputs", "{study}/working/gauge_1990_2004.json",
+              "--out", "{study}/receipts/working-data.json"]
+    receipt: receipts/working-data.json   # this receipt must carry every field a rule reads, as a number
+    # writes: [working/generated.json]   optional, on any test and any rehearsal: other files inside the study
+    #   that this step's own command writes. The tool removes them before each run and keeps them out of the
+    #   locked code. A file you supply (a fixture, parameters) is not listed here: it is locked with the code.
+  # The test on held-out data. It is run only by `sf.py open-held-out`, once, after the lock.
+  held-out:
+    fetch: ["{python}", "{study}/fetch_series.py", "--start", "2005-01-01", "--end", "2024-12-31",
+            "--out", "{study}/data/altimetry.json"]     # required: only the access gate runs this
+    command: ["{python}", "{study}/trend.py", "--inputs", "{study}/data/altimetry.json",
+              "--out", "{study}/receipts/held-out.json"]
+    receipt: receipts/held-out.json   # this receipt must hold data.sha256, the checksum of the fetched file, every
+                                      #   field a rule reads, and `refused: "why"` when the method declines to estimate
+    # passes_environment: [EARTHDATA_TOKEN]   optional, on any test and any rehearsal: environment variables
+    #   this step's commands are given beside the short list. Names only. The step is refused, before
+    #   anything runs and without using the opening, when a name listed here is not set.
+    # data: data/other.json       optional: where this test's fetch puts its data, if not data.held_out.path
+    # pair: ... and window: ...   optional: this test's own subject and window, if not those of data.held_out
+  # independent-site:             optional: a second test on held-out data, written like `held-out`, with its own
+  #   fetch, command and receipt, and its own `data`, `pair` and `window`
+
+rehearsals:                       # optional: things the opening depends on, run once on working data
+  - id: opening-path              #   required for each: `id` and `steps` (a list of commands)
+    why: "the fetch and the analysis have run end to end before the one opening is spent"   # for people
+    steps:
+      - ["{python}", "{study}/fetch_series.py", "--start", "1990-01-01", "--end", "2004-12-31",
+         "--out", "{study}/rehearsal/gauge_again.json"]
+      - ["{python}", "{study}/trend.py", "--inputs", "{study}/rehearsal/gauge_again.json",
+         "--out", "{study}/receipts/rehearsal-opening-path.json"]
+    receipt: receipts/rehearsal-opening-path.json   # optional; when given it must carry every field a rule reads
+    writes: [rehearsal/gauge_again.json]            # what the rehearsal's own steps write, besides the receipt
+    # needs: ["{lab}/findings/rehearsal-finding.md"]   optional: files that must exist for this rehearsal to
+    #   pass. The tool looks for them before any step runs (it runs no `test -f`), and the lock binds them.
+
+rules:                            # required: one or more decision rules, each with its own `id`
+  - id: rate-above-allowance
+    role: primary                 # primary (at least one rule) or secondary
+    statement: "The rate is above 2 mm per year."   # for people
+    # A condition is {field, op, value}: `field` is a dotted path into the receipt, `op` is one of
+    # >= <= > < ==, `value` is a number.
+    supported_if:                 # required: every condition must hold
+      - {field: rate.ci_low, op: ">=", value: 2.0}
+    refuted_if:                   # required: a list of groups; the rule is refuted when every condition of any
+                                  #   one group holds. A rule that cannot be refuted is not a rule.
+      - [{field: rate.ci_high, op: "<", value: 2.0}]
+    # Anything else is inconclusive, which is a result and is final for this data.
+    # For an equivalence ("within five percent of one") the same keys read:
+    #   supported_if: [{field: gain.ci_low, op: ">=", value: 0.95}, {field: gain.ci_high, op: "<=", value: 1.05}]
+    #   refuted_if:   [[{field: gain.ci_high, op: "<", value: 0.95}], [{field: gain.ci_low, op: ">", value: 1.05}]]
+    power_evidence:               # required: what the known-answer tests must have shown before the lock
+      path: rules.rate-above-allowance   # where in the known-answers receipt this rule's block sits. The block
+                                  #   must hold `tested_rule: {supported_if: ..., refuted_if: ...}`, copied from
+                                  #   the plan it ran on, and each field named below as a rate between 0 and 1.
+      require:                    # the criteria, each a condition on that block. The tool requires these four
+                                  #   of every rule, and refuses a criterion that cannot fail (a rate allowed up
+                                  #   to 1, or power required to be at least 0).
+        - {field: false_confirm_at_edge_max, op: "<=", value: 0.05}    # how often the rule confirms right at the difference that matters
+        - {field: false_refute_at_edge_max, op: "<=", value: 0.05}     # how often it refutes right at that difference
+        - {field: power_to_refute_when_false, op: ">=", value: 0.80}   # how often it refutes when the idea is false
+        - {field: coverage_when_true, op: ">=", value: 0.90}           # how often the interval covers the value put in
+        # more criteria of your own may follow, on any field the known-answers receipt reports
+      # waived:                   optional: a required criterion this rule cannot be held to, with the reason.
+      #   - {criterion: coverage_when_true, reason: "the rule is on a count with no interval to cover"}
+      #   The lock prints every waiver for the people locking. `power_to_refute_when_false` cannot be
+      #   waived: a rule has a refutation, and that criterion is what shows the rule can refute.
+
+openings_allowed: 1               # required: 1, or a mapping such as {held-out: 1, independent-site: 1}.
+                                  #   More than one opening of the same data is refused.
+
+planned_handling:                 # for people: what is done to the data, written down beforehand
+  quality: "Months with fewer than three passes are excluded before the fit; the count is reported."
+  declined: "If the method declines to estimate, the outcome is inconclusive."
+
+independence: >                   # required: how independent the comparison record is, with a source
+  The altimetry is not calibrated against this gauge.
+
+what_this_can_show: >             # for people
+  Whether the rate seen at the gauge holds in an independent record over the following two decades.
+
+overturn: >                       # required: what result would overturn the claim
+  An interval for the window lying wholly below 2 mm per year.
+
+limitations:                      # required: what the study cannot show
+  - "One gauge; nothing is claimed elsewhere."
+  - "The interval is a sampling interval under the stated noise model."
+
+scheduled_retest:                 # for people: when the question is asked again
+  next_window: "2025-01-01 to 2029-12-31, after the window closes"
+  trigger: "a new window or a reprocessed series; started as a fresh study that cites this one"

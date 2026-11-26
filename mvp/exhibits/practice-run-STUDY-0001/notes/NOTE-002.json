@@ -1,0 +1,13 @@
+{
+ "id": "NOTE-002",
+ "at": "2026-11-26T04:02:30Z",
+ "by": "agent:practice-analysis",
+ "kind": "method",
+ "about": "hydrology/knowledge/recipes/swot-gauge-confrontation.md (mean error of the change and its interval)",
+ "text": "The mean error of the change is blind to gain. Its 95 percent interval contained zero in every one of 2000 known-answer test cases per setting at gains of 1.00 and 0.90 and under a 0.5 m per year drift, run through the unmodified executor. Algebraically the mean of the change errors is the last level difference minus the first, divided by the count, so it reads two passes; its reported spread is about six times its actual spread across test cases. An independent check found it responds only to a drift far larger than the noise. The change RMSD and correlation in the same recipe are unaffected. Proposed: amend the recipe to say what this score can and cannot detect, or replace it with the gain; the recipe is signed, so the amendment owes a re-signature.",
+ "evidence": {
+  "path": "receipts/known-answers.json",
+  "sha256": "c739886cf26430a0ea9a4b6962229d2339d488f16d434177cf5b9f539918b12c"
+ },
+ "status": "open"
+}

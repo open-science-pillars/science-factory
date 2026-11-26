@@ -1,0 +1,82 @@
+{
+ "computation": "swot-gauge-confrontation-with-gain (prototype)",
+ "sanctioned": false,
+ "code": {
+  "executor_sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3",
+  "gain_sha256": "fa7e07f34d190bf7128105a12368059d7fdb29a36005f5654d7600e635aa276a",
+  "wrapper_sha256": "c2a057d2b7af66dc1df4e0527346579c026ed3b31a239b4c5c6c9c22565e6336"
+ },
+ "data": {
+  "path": "working_data_case.json",
+  "sha256": "7aaa7c67a75bf191d295db9d4ae2336a44d7bb7f1c0ec873f638c51af3fd4645"
+ },
+ "planned_handling": {
+  "tolerance_minutes": 15,
+  "screen_reach_q": 2,
+  "require_crid": false
+ },
+ "screen": {
+  "rule": "passes with reach_q at or above 2 are excluded before pairing",
+  "passes_offered": 52,
+  "passes_excluded": 0,
+  "passes_without_a_flag": 0
+ },
+ "processing_identifiers": {
+  "values": [
+   "SYNTHETIC_A"
+  ],
+  "passes_with_one": 52,
+  "passes_kept": 52
+ },
+ "gain": {
+  "gain": 0.9772,
+  "ci_low": 0.9365,
+  "ci_high": 1.0178,
+  "confidence": 0.95,
+  "drift_m_per_yr": -0.406,
+  "intercept_m": 0.0726,
+  "n": 50,
+  "effective_sample_size": 42.1,
+  "residual_lag1": 0.085,
+  "residual_sd_m": 0.1577,
+  "gauge_sd_m": 3.9713,
+  "intervals_are": "sampling intervals under a lag-1 autocorrelation model of the regression residuals; they carry neither instrument's published uncertainty"
+ },
+ "gain_by_stage_half": {
+  "lower_half_of_stage": {
+   "gain": 1.0035,
+   "ci_low": 0.9283,
+   "ci_high": 1.0787,
+   "n": 25
+  },
+  "upper_half_of_stage": {
+   "gain": 0.9635,
+   "ci_low": 0.893,
+   "ci_high": 1.0339,
+   "n": 25
+  }
+ },
+ "pair": {
+  "reach_id": "SYNTHETIC",
+  "gauge": "SYNTHETIC"
+ },
+ "window": {
+  "start": "2031-01-01",
+  "end": "2031-12-31"
+ },
+ "collection_named": "KNOWN_ANSWER_TEST_CASE",
+ "matching": {
+  "tolerance_minutes": 15,
+  "passes_offered": 52,
+  "pairs": 50
+ },
+ "approval_values": [
+  "Synthetic"
+ ],
+ "descriptive": {
+  "change_rmsd_m": 0.2077,
+  "change_correlation": 0.9723,
+  "reported_uncertainty_median_m": 0.096,
+  "residual_sd_over_reported_uncertainty": 1.64
+ }
+}

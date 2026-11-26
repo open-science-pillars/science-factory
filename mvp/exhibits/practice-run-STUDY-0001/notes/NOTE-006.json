@@ -1,0 +1,10 @@
+{
+ "id": "NOTE-006",
+ "at": "2026-11-26T04:02:31Z",
+ "by": "agent:practice-analysis",
+ "kind": "missing",
+ "about": "hydrology/.github/workflows/plugin-gate.yml (findings checker)",
+ "text": "The findings checker is not run by this repository's merge checks, so a finding's form is checked by nothing until this work wires it in. The plan's finding-form rehearsal requires a rehearsal finding drafted from the 2024 receipt to pass it before the lock.",
+ "evidence": null,
+ "status": "open"
+}

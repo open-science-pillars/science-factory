@@ -1,0 +1,15 @@
+# STUDY-0001: Does the satellite see the same rise and fall as the gauge?
+
+**Asked by:** human:PaulMRamirez · **Sphere:** hydrosphere · **Capability:** hydrology · **Status:** draft, not started
+
+**The question.** Over the first full year of forward processing (2025-04-28 to 2026-04-27), does the water surface elevation SWOT (the Surface Water and Ocean Topography mission) reports for the Mississippi reach at Baton Rouge rise and fall by the same amount as the stage the USGS gauge there records, to within five percent?
+
+**Why this one.** Both records are public and need no login, the 2024 window is already committed as a 73 KB fixture (so it is working data), the two instruments are independent, and the window asked about has not been read by this project, so opening it is a real experiment.
+
+**Why this window.** The hydrology bundle records that the collection changes from its reprocessed baseline to forward processing on 2025-04-28. A calendar 2025 window would straddle that change, and a step between baselines leaks into the gain. The window in the analysis plan is a full annual cycle on one baseline.
+
+**What is already known (working data, calendar 2024).** The signed recipe scores the changes: 50 of 52 passes paired, change correlation +0.957, change RMSD 0.382 m. The quantity this study would estimate, on the same record, after the plan's quality screen drops three passes flagged degraded, is a gain of 1.01 with a 95 percent sampling interval of 0.99 to 1.04. That number is why the question is worth asking and is exactly why it cannot be the answer: it was seen before any analysis plan was written.
+
+**What a finding here would and would not say.** It would say how the two records relate at one reach in one year on the forward-processing baseline: temporal replication at one pair. It would not say which instrument is right. A reach-averaged elevation and a point gauge can differ in the size of their changes for hydraulic reasons that are neither's error, and the gain is an average over the year's stage range.
+
+**Third-party handling.** A statement about a named mission product is a finding about a third party. Under the organization's policy on publishing findings about third parties, no result from opening the held-out data reaches a public branch, issue or pull request until the product's team has held it privately for the stated window (no less than 30 days) or has opted in in writing; public surfaces carry only that the held-out data was opened and that its result is held. The scientist who asked receives the result privately at once: the hold is on public reference, not on the person who asked. The opening and everything after it therefore run from a fresh `git clone` of the merged lock, in a private repository and a fresh container. Both records are public, so nothing but instruction and evidence keeps the withheld values from the analysis assistant before the opening. The finding carries the non-affiliation line. Whether the steward's own affiliations call for any review or disclosure before delivery is the steward's decision, made before the lock.

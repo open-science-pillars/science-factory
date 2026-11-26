@@ -1,0 +1,197 @@
+# The plan as one initiative and ten deliverables, in the organization's roadmap form.
+# The study tool's deliverables name this repository, which the organization's roadmap does not list yet.
+# A run receipt, called a receipt below, is the record a run writes, with its code and inputs by checksum and every
+# number it produced, so anyone can re-check the result without trusting whoever ran it.
+  - id: science-factory
+    title: Science factory, findings production as a standing process
+    outcome: "A question about archived observations travels from a scientist's request to a steward-signed finding, or a recorded negative result, through declared stages, with held-out data opened once under an analysis plan locked beforehand, and a study log that can be re-checked against commits and against fingerprints posted outside the workspace."
+    status: proposed
+    priority: P1
+    depends_on: []
+    gate: "The steward accepts the system trial before any study about a real product is locked."
+    deliverables:
+      - id: science-factory-study-tool
+        title: Land the science factory's study tool and procedure
+        repo: science-factory
+        status: proposed
+        priority: P1
+        depends_on: []
+        gate: null
+        acceptance:
+          - "The study tool's self-test passes in the repository's required check, every attack scenario included."
+          - "The procedure is read by the study tool: status places a study from its stages, and a stage naming something the tool cannot check is refused; the parts of the procedure file the tool does not read are marked as such in the file."
+          - "The layout is stated where the files land: where they sit in the repository, where the hydrology checkout sits beside them, and the roots lines of both analysis plans agree with it. The tests are run again after any change to a plan."
+          - "The blind test of the system runs unattended and reports how often a false idea is supported and how often a true one is missed."
+          - "A decision record states that an analysis plan is a record of a study, not a new concept type, and how notes relate to the ingest loop."
+          - "The study tool, the procedure template and the contract for where it runs are shared tooling; each capability carries its own factory (procedure, studies, record of what has been opened, change log with predictions) in its own repository under its own stewards."
+          - "The wording gate is clean on everything landed."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [Python with uv, the hydrology checkout, organization governance]
+        labels: [roadmap, "priority:P1"]
+      - id: science-factory-system-trial
+        title: Run the system trial on a blind test case
+        repo: science-factory
+        status: proposed
+        priority: P1
+        depends_on: [science-factory-study-tool]
+        gate: "The lock: the steward locks the analysis plan and the code together, citing an approving review, and the lock's own commit is merged on a protected branch, with an approval of its own, before the blind test case is sealed."
+        acceptance:
+          - "The system trial passes its plan check, known-answer tests, working data and rehearsal, is locked by the steward, and opens its held-out data exactly once. The opening runs in the workspace, so the trial accepts the procedure and not a clean place for the opening."
+          - "A write-up attached from run receipts, an independent review assistant's verdict recorded after it, and the steward's recorded decision naming that write-up by checksum are in the study log."
+          - "The sealed answer is revealed after the steward's decision, and the verdict in the study log is right. An inconclusive trial is closed as declined and another trial is run beside it (expect about one in eight: 24 of the 200 blind test cases were inconclusive). A wrong verdict is raised as a note and blocks the next deliverable."
+          - "One note is raised on purpose, the curation list is written, and every note raised is accepted, linked or declined; the process scorecard and a change-log entry with its prediction and its observed outcome are filed; the study is closed and its last commit is merged."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [science-factory-study-tool landed]
+        labels: [roadmap, "priority:P1"]
+      - id: hydrology-gain-computation
+        title: Land the satellite and gauge gain as an attested computation
+        repo: hydrology
+        status: proposed
+        priority: P1
+        depends_on: [science-factory-study-tool]
+        gate: null
+        acceptance:
+          - "The confrontation with a gain is an attested computation, with an attester and an offline golden on the committed 2024 record."
+          - "The known-answer test evidence is its calibration report, with the known limits listed."
+          - "The fetch keeps the processing identifier and can fetch observation metadata alone; the 2024 fixture is refreshed."
+          - "The quality screen and the processing guard are part of the computation, not a wrapper."
+          - "The estimator keeps its power when one unflagged gross error is present, or the analysis plan states the power it has when one occurs."
+        evidence: []
+        contributor:
+          readiness: needs-context
+          champion: PaulMRamirez
+          prerequisites: [the specification's rule that a computation is a skill, the hydrology gate]
+        labels: [roadmap, "priority:P1"]
+      - id: hydrology-variability-domain
+        title: Sign a validity domain for variability claims on reach elevation against a gauge
+        repo: hydrology
+        status: proposed
+        priority: P1
+        depends_on: []
+        gate: "The steward supplies the authoritative sources the domain rests on."
+        acceptance:
+          - "The seeder drafts the domain from steward-supplied sources, one cited source per claim."
+          - "The steward signs it, or records a decision that findings in this class are held at draft."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [authoritative sources for the product's validation]
+        labels: [roadmap, "priority:P1"]
+      - id: findings-checker-in-gate
+        title: Run the findings checker in the gates that hold findings
+        repo: nasa-daac-knowledge
+        status: proposed
+        priority: P1
+        depends_on: [hydrology-gain-computation]
+        gate: null
+        acceptance:
+          - "The shared check script and the hydrology gate run the findings checker."
+          - "A rehearsal finding drafted from the 2024 receipt passes it with a validity verdict, before any analysis plan is locked."
+        evidence: []
+        contributor:
+          readiness: needs-context
+          champion: PaulMRamirez
+          prerequisites: [the findings section of the specification]
+        labels: [roadmap, "priority:P1"]
+      - id: swot-gauge-recipe-amendment
+        title: Amend the signed confrontation recipe where its interval cannot see a gain
+        repo: hydrology
+        status: proposed
+        priority: P2
+        depends_on: []
+        gate: null
+        acceptance:
+          - "The recipe says what the mean error of the change can and cannot detect, with the known-answer test evidence linked, or the score is replaced."
+          - "The amended recipe stays stable and is re-signed under the merge then sign rule."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [the note and its evidence from the practice run]
+        labels: [roadmap, "priority:P2"]
+      - id: science-factory-first-finding
+        title: Take the first real study from its request to the steward's decision
+        repo: hydrology
+        status: proposed
+        priority: P1
+        depends_on: [science-factory-system-trial, hydrology-gain-computation, hydrology-variability-domain, findings-checker-in-gate]
+        gate: "The lock: the analysis plan and the code are locked by the steward before any withheld value of the window is read, and the lock's own commit is merged on a protected branch with an approval of its own; the third-party findings policy governs everything after the held-out data is opened."
+        acceptance:
+          - "Observation metadata for the plan's window are fetched alone, and the known-answer tests pass on them. The plan states why each value fetched before the lock, the gauge record included, cannot move the answer."
+          - "Both rehearsals the plan requires pass on the locked plan and code. The known-answer tests and both rehearsals are run in the container image the opening will use."
+          - "The held-out data is opened once, from a fresh git clone of the merged lock (never a copy of a workspace), in a private repository and a fresh container. The opening's event records the host, the user, and the commit of every repository the plan names and whether its work tree was clean; the container or lockfile digest is written into the pull request by hand. Public surfaces carry only that the data was opened and that its result is held."
+          - "A finding (supported, refuted or inconclusive) passes the findings checker and carries the steward's verified event, or the steward's decision not to sign is recorded."
+          - "The product's team holds the result privately for the stated window, or opts in in writing, before any public reference; the finding carries the non-affiliation line."
+          - "Every note is accepted, linked or declined; the process scorecard and change-log entry are filed; the scheduled re-test is set up."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [a private repository for the held result, a container image for the opening, the steward's decisions listed in the factory package]
+        labels: [roadmap, "priority:P1"]
+      - id: science-factory-scientist-intake
+        title: Let a scientist ask in their own words
+        repo: science-factory
+        status: proposed
+        priority: P1
+        depends_on: [science-factory-system-trial]
+        gate: "A working scientist, not an assistant playing one, writes a request and approves the plan made from it."
+        acceptance:
+          - "The request template, the four questions back and the catalog of kinds of question are landed, and an analysis assistant produces an analysis plan from a request."
+          - "The request's fields are part of the analysis plan and checked at the plan check: the difference that matters and its source, what has already been looked at, how the data is held out, what will be done with each answer, a needed-by date, authors, and one hard case named by the scientist who asked."
+          - "The plan stage reports whether the question can be answered by the date and the chance of an inconclusive answer at the stated difference that matters, from known-answer tests on the real sampling, as soon as a method exists to run them."
+          - "An exploratory study exists as its own kind: it holds data out first, ends in a hypothesis card, and its close starts a confirmatory study."
+          - "The scientist who asked approves the plan at the lock with the steward, the lock records both names, and the scientist receives the result privately at once when a third-party hold applies."
+        evidence: []
+        contributor:
+          readiness: needs-context
+          champion: PaulMRamirez
+          prerequisites: [the scientist review in the factory package, one scientist willing to try it]
+        labels: [roadmap, "priority:P1"]
+      - id: science-factory-scale-adapter
+        title: Fit pipelines that are large, slow and compiled
+        repo: science-factory
+        status: proposed
+        priority: P2
+        depends_on: [science-factory-scientist-intake]
+        gate: null
+        acceptance:
+          - "An opening of held-out data is submitted through the contract for where it runs and collected, with the place, the job and the run log in the study log. The study log records the opening, with its job id, before the job is submitted. A job without the place's fetch.started marker never started and may be voided by a person; a job with it has used the opening up."
+          - "The job at the place is the study tool itself, sf.py open-held-out on a fresh git clone of the protected branch, with the study log returned as an output, and every row of the table in DESIGN.md of what an opening sent through a place must carry is met."
+          - "The known-answer tests and the rehearsals run through the same contract, at the place and image the opening will use, and the lock refuses evidence from another environment."
+          - "A cloud or CI place to run and a cluster scheduler pass adapter.py conformance --place; the MAAP mapping is exercised on one registered algorithm, or its open questions are answered in writing."
+          - "The record of what has been opened spans factories, so a window is opened once, across capabilities."
+          - "Held-out data is named by a manifest of locations and provider checksums, and the manifest is what is hashed."
+          - "The environment is bound by commit and lockfile or container digest, checked at the opening."
+          - "Decision rules come in families with a multiplicity correction written into the plan, whose error rate is evidenced on known-answer tests; receipts carry scalar summaries and the hash of each field."
+          - "Known-answer test evidence is bound to the rules, the code and a manifest of the test cases, and small ensembles are accepted with stated bounds on each rate."
+          - "The workflow adapter checklist is exercised on one real pipeline from outside the organization's own capabilities."
+        evidence: []
+        contributor:
+          readiness: needs-context
+          champion: PaulMRamirez
+          prerequisites: [a pipeline owner willing to try the adapter]
+        labels: [roadmap, "priority:P2"]
+      - id: science-factory-specification
+        title: Propose the study and its rule of one opening as a specification revision
+        repo: marketplace
+        status: proposed
+        priority: P2
+        depends_on: [science-factory-first-finding]
+        gate: null
+        acceptance:
+          - "A candidate section defines the study, the analysis plan, the named steps of evidence (plan check, known-answer tests, working data, held-out data, a repeat at an independent site, a scheduled re-test) and the rule that a window is opened once, citing the first real study as its evidence."
+          - "It states how a structured note relates to the ingest loop and the concept issue."
+        evidence: []
+        contributor:
+          readiness: owner-only
+          champion: PaulMRamirez
+          prerequisites: [the first real study closed]
+        labels: [roadmap, "priority:P2"]

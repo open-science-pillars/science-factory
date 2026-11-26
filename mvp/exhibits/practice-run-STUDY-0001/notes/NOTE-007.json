@@ -1,0 +1,13 @@
+{
+ "id": "NOTE-007",
+ "at": "2026-11-26T04:02:31Z",
+ "by": "agent:practice-analysis",
+ "kind": "method",
+ "about": "science-factory/mvp/gain.py (power under an unflagged gross error)",
+ "text": "After the quality screen, one pass the product does not flag (2024-03-26, residual +0.86 m) carries about 70 percent of the residual sum of squares in the 2024 record. The interval still covers (the required gross-error cases: coverage 0.93), but the rule's power to support a true claim falls from about 0.95 in a kind case to about 0.49 when such passes occur. Proposed for the method work: a robust estimator written into the plan, or a plan that states the power it has when a gross error is present. Found by the second review pass.",
+ "evidence": {
+  "path": "receipts/working-data.json",
+  "sha256": "757d615b2a36c9cfedebc475239097c7e93d3700df40cde3d83e1b5fb2dc3053"
+ },
+ "status": "open"
+}

@@ -1,0 +1,43 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The analysis plans find the checkouts beside the package by relative
+      # path, so the three repositories sit side by side.
+      - uses: actions/checkout@v4
+        with:
+          path: science-factory
+      - uses: actions/checkout@v4
+        with:
+          repository: open-science-pillars/hydrology
+          ref: f9850d08c526139407eedf13ee3f12effbe83594
+          path: hydrology
+      - uses: actions/checkout@v4
+        with:
+          repository: open-science-pillars/nasa-daac-knowledge
+          ref: c04ae2e156ca8672c7724254a2c738bd252e9de6
+          path: nasa-daac-knowledge
+      - uses: astral-sh/setup-uv@v5
+      - name: The study tool tests itself
+        run: uv run science-factory/mvp/sf.py selftest
+      - name: The local place passes the compute contract
+        run: uv run science-factory/mvp/compute/adapter.py conformance
+      - name: The conformance test fails every deliberately wrong place
+        run: uv run science-factory/mvp/compute/adapter.py conformance --self-check
+      - name: Both analysis plans are complete
+        run: |
+          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0000
+          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0001
+      - name: A short blind test of the system
+        run: uv run science-factory/mvp/system_trial.py blind-test --template science-factory/mvp/studies/STUDY-0000 --n 20

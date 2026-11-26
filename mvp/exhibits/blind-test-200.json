@@ -1,0 +1,37 @@
+{
+ "blind_test": "blind test cases through the whole procedure",
+ "cases": 200,
+ "seed": 7,
+ "difference_that_matters": 0.05,
+ "acts_by_people": "recorded by the harness in throwaway directories; this measures the study tool and the method, not people or assistants",
+ "by_gain_put_in": {
+  "1.0": {
+   "cases": 100,
+   "supported": 82,
+   "refuted": 0,
+   "inconclusive": 18,
+   "ready_for_signature": 100,
+   "wrong": 0
+  },
+  "0.9": {
+   "cases": 50,
+   "supported": 0,
+   "refuted": 47,
+   "inconclusive": 3,
+   "ready_for_signature": 50,
+   "wrong": 0
+  },
+  "1.1": {
+   "cases": 50,
+   "supported": 0,
+   "refuted": 47,
+   "inconclusive": 3,
+   "ready_for_signature": 50,
+   "wrong": 0
+  }
+ },
+ "false_support_rate": 0.0,
+ "missed_true_rate": 0.18,
+ "wrong_verdicts": 0,
+ "every_run_ready_for_signature": true
+}
