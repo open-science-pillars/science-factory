@@ -1,7 +1,0 @@
-[exploring: output of LOOK-010]
-warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
-gap-rule groups against the phase groups used in the looks (counts): {'first of pair': {'A': 17}, 'second of pair': {'B': 17}, 'alone': {'C': 17, 'B': 1}}
-passes the two groupings place differently: [('2024-03-26', 'alone', 'B')]
-track A: intervals between its passes: 15 of 16 near one repeat, median 20.86464 d, min 20.86461, max 20.86468; longer intervals: [41.7293]
-track B: intervals between its passes: 17 of 17 near one repeat, median 20.86464 d, min 20.86461, max 20.86468; longer intervals: []
-track C: intervals between its passes: 16 of 16 near one repeat, median 20.86464 d, min 20.86461, max 20.86466; longer intervals: []

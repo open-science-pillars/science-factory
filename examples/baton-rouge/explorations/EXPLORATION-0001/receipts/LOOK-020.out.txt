@@ -1,4 +1,0 @@
-[exploring: output of LOOK-020]
-screen: {"rule": "passes with reach_q at or above 2 are excluded before pairing", "passes_offered": 52, "passes_excluded": 3, "passes_without_a_flag": 0}
-gain: {"gain": 1.0121, "ci_low": 0.9862, "ci_high": 1.0381, "confidence": 0.95, "drift_m_per_yr": -0.124, "intercept_m": -0.2068, "n": 47, "effective_sample_size": 27.8, "residual_lag1": 0.257, "residual_sd_m": 0.1548, "gauge_sd_m": 2.9673, "intervals_are": "sampling intervals under a lag-1 autocorrelation model of the regression residuals; they carry neither instrument's published uncertainty"}
-gain_by_stage_half: {"lower_half_of_stage": {"gain": 1.0131, "ci_low": 0.968, "ci_high": 1.0583, "n": 23}, "upper_half_of_stage": {"gain": 0.9833, "ci_low": 0.9125, "ci_high": 1.054, "n": 24}}

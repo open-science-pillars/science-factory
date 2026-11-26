@@ -1,9 +1,0 @@
-[exploring: output of LOOK-011]
-warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
-all 52 passes at 60 min interpolated; screened line n=48, gain 1.0132; tracks found by cycle phase: 3
-   track at phase   0.00 d: n=17, first 2024-01-01T10:59, median width 794 m, median dark_frac 0.016, flagged 2, screened n=15 mean residual -0.0235 m sd 0.0590 m; departing passes: []
-   track at phase   1.45 d: n=18, first 2024-01-02T21:50, median width 764 m, median dark_frac 0.038, flagged 0, screened n=17 mean residual +0.0159 m sd 0.0910 m; departing passes: ['2024-03-26']
-   track at phase  11.38 d: n=17, first 2024-01-12T20:12, median width 784 m, median dark_frac 0.022, flagged 1, screened n=16 mean residual +0.0051 m sd 0.0938 m; departing passes: ['2024-10-30']
-all: n=52, gain without a time term 1.0336; with one 1.0248 (plain standard error 0.0158), drift -0.1648 m per year (plain standard error 0.1582)
-reach_q below 2: n=49, gain without a time term 1.0180; with one 1.0115 (plain standard error 0.0094), drift -0.1143 m per year (plain standard error 0.0964)
-reach_q below 2 and wse_u below 0.2 m: n=48, gain without a time term 1.0132; with one 1.0094 (plain standard error 0.0051), drift -0.0684 m per year (plain standard error 0.0526)

@@ -479,26 +479,42 @@ def selftest() -> int:
        and blocked("analysis", "Bash", command=f"uv run tools/explore.py reviewer --exploration {x} --by agent:analysis --reviewer agent:review-01")
        and blocked("review", "Bash", command=f"uv run tools/explore.py reviewer --exploration {x} --by agent:review --reviewer agent:review-02")
        and not blocked("analysis", "Bash", command=f"uv run tools/explore.py look --exploration {x} --by agent:analysis --why 'see pairs' --also-reads looks/helper.py -- uv run looks/a.py d.json"))
-    flat = [q for q in ("examples/baton-rouge/record/02-analysis.answer.md", "examples/baton-rouge/with-assistants/record/01-analysis.answer.md",
-                        "examples/baton-rouge/record/07-analysis-second-question.answer.md") if (ROOT / q).is_file()]
-    ok("the review role may not read the author's account where the kept example keeps it, as flat files in record/",
-       len(flat) == 3 and all(blocked("review", "Read", file_path=q) for q in flat)
-       and blocked("review", "Read", file_path="examples/w/record/04-analysis.answer.md") and blocked("review", "Read", file_path="examples/w/Record/Analysis/01.answer.md")
-       and blocked("review", "Read", file_path="examples/w/record/analysis"))
-    ok("the review role may still read its own account, a file of its own that only has the word in its name included, and the work",
-       not blocked("review", "Read", file_path="examples/w/record/review/on-the-analysis.md") and not blocked("review", "Read", file_path="examples/w/record/03-review.answer.md")
-       and not blocked("review", "Read", file_path="examples/baton-rouge/explorations/EXPLORATION-0001/lead.md"))
-    ok("a search by the review role with no folder named, over the whole repository, or over the whole disk is blocked",
-       blocked("review", "Grep", pattern="gain") and blocked("review", "Grep", path=".", pattern="gain") and blocked("review", "Grep", path="/", pattern="gain")
-       and blocked("review", "Glob", pattern="**/*.md") and blocked("review", "Grep", path="examples/baton-rouge", pattern="gain")
-       and blocked("review", "Glob", path="tools", pattern="../examples/baton-rouge/record/*") and blocked("review", "Read"))
-    ok("the review role cannot have a tool read the author's account for it: a file or a folder given to a command is checked like a read",
-       blocked("review", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:review --verdict holes-found --file {flat[0] if flat else 'x'}")
-       and blocked("review", "Bash", command="uv run tools/knowledge.py about --question 'what did the author say' --wiki examples/baton-rouge/record")
-       and not blocked("review", "Bash", command="uv run tools/knowledge.py about --question 'what is known' --wiki openwiki"))
     import tempfile
     tmp = Path(tempfile.mkdtemp(prefix="allow-selftest-")).resolve()
     try:
+        # an example laid out the way a run by one instance keeps it: every role's account as a flat file in record/
+        kept = tmp / "kept"
+        flat = ["examples/demo/record/02-analysis.answer.md", "examples/demo/with-assistants/record/01-analysis.answer.md",
+                "examples/demo/record/07-analysis-second-question.answer.md"]
+        for q in flat:
+            (kept / q).parent.mkdir(parents=True, exist_ok=True)
+            (kept / q).write_text("what the author said\n")
+        (kept / "examples" / "demo" / "explorations" / "EXPLORATION-0001").mkdir(parents=True)
+        (kept / "examples" / "demo" / "explorations" / "EXPLORATION-0001" / "lead.md").write_text("a lead\n")
+        (kept / "tools").mkdir()
+        (kept / "openwiki").mkdir()
+
+        def blocked_in(role: str, tool: str, **given) -> bool:
+            return decide(role, {"tool_name": tool, "tool_input": given, "cwd": str(kept)}) is not None
+
+        ok("the review role may not read the author's account where a run keeps it as flat files in record/",
+           all((kept / q).is_file() for q in flat) and all(blocked_in("review", "Read", file_path=q) for q in flat)
+           and all(blocked_in("review", "Read", file_path=str(kept / q)) for q in flat)
+           and blocked_in("review", "Read", file_path="examples/w/record/04-analysis.answer.md") and blocked_in("review", "Read", file_path="examples/w/Record/Analysis/01.answer.md")
+           and blocked_in("review", "Read", file_path="examples/w/record/analysis"))
+        ok("the review role may still read its own account, a file of its own that only has the word in its name included, and the work",
+           not blocked_in("review", "Read", file_path="examples/w/record/review/on-the-analysis.md") and not blocked_in("review", "Read", file_path="examples/w/record/03-review.answer.md")
+           and not blocked_in("review", "Read", file_path="examples/demo/explorations/EXPLORATION-0001/lead.md"))
+        ok("a search by the review role with no folder named, over the whole repository, or over the whole disk is blocked",
+           blocked_in("review", "Grep", pattern="gain") and blocked_in("review", "Grep", path=".", pattern="gain") and blocked_in("review", "Grep", path="/", pattern="gain")
+           and blocked_in("review", "Glob", pattern="**/*.md") and blocked_in("review", "Grep", path="examples/demo", pattern="gain")
+           and blocked_in("review", "Glob", path="tools", pattern="../examples/demo/record/*") and blocked_in("review", "Read"))
+        ok("the review role cannot have a tool read the author's account for it: a file or a folder given to a command is checked like a read",
+           blocked_in("review", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:review --verdict holes-found --file {flat[0]}")
+           and blocked("review", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:review --verdict holes-found --file {kept / flat[0]}")
+           and blocked_in("review", "Bash", command="uv run tools/knowledge.py about --question 'what did the author say' --wiki examples/demo/record")
+           and blocked("review", "Bash", command=f"uv run tools/knowledge.py about --question 'what did the author say' --wiki {kept}/examples/demo/record")
+           and not blocked("review", "Bash", command="uv run tools/knowledge.py about --question 'what is known' --wiki openwiki"))
         held = tmp / "held" / "later.json"
         (tmp / "explorations" / "E1").mkdir(parents=True)
         (tmp / "explorations" / "E1" / "set-aside.json").write_text(json.dumps({"set_aside": {"paths": [str(held.parent)]}}))

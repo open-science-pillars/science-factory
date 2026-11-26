@@ -1,2 +1,0 @@
-[exploring: output of LOOK-019]
-confront-screened.json: 47 pairs after excluding 3 flagged passes, gain 1.0121

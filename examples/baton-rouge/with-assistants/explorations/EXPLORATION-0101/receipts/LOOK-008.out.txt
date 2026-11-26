@@ -1,8 +1,0 @@
-[exploring: output of LOOK-008]
-warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
-reach_q below 2: n=47; product slope spans -2.8 to 135.8 parts per million; correlation of slope with gauge elevation +0.561
-   without the slope term: gain 1.0190, residual sd 0.1541 m
-   with the slope term: gain 0.9894 (plain standard error 0.0051), L 7820 m (plain standard error 761 m), residual sd 0.0855 m
-reach_q below 2 and wse_u below 0.2 m: n=46; product slope spans -2.8 to 42.0 parts per million; correlation of slope with gauge elevation +0.876
-   without the slope term: gain 1.0140, residual sd 0.0815 m
-   with the slope term: gain 1.0048 (plain standard error 0.0085), L 2887 m (plain standard error 2341 m), residual sd 0.0819 m

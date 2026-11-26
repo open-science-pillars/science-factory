@@ -131,8 +131,8 @@ def selftest() -> int:
         results.append(("a task that hands the review role the author's account is refused, and nothing is started",
                         run("review", "Check EXPLORATION-1. The author's notes are in examples/w/record/analysis/01.answer.md.", tmp / "record" / "review" / "06", str(fake), tmp) == 2
                         and not (tmp / "seen-task.txt").exists() and not (tmp / "record/review/06.task.md").exists()))
-        results.append(("a task that names the author's account where the kept example keeps it, as a flat file in record/, is refused too",
-                        run("review", "Check EXPLORATION-1; see examples/baton-rouge/record/02-analysis.answer.md.", tmp / "record" / "review" / "07", str(fake), tmp) == 2
+        results.append(("a task that names the author's account where a run keeps it as a flat file in record/ is refused too",
+                        run("review", "Check EXPLORATION-1; see examples/demo/record/02-analysis.answer.md.", tmp / "record" / "review" / "07", str(fake), tmp) == 2
                         and run("review", "Read `examples/w/Record/04-Analysis-second.answer.md`", tmp / "record" / "review" / "07", str(fake), tmp) == 2
                         and not (tmp / "seen-task.txt").exists() and not (tmp / "record/review/07.task.md").exists()))
         results.append(("a review task that names the work, and the reviewer's own earlier account, is started",
