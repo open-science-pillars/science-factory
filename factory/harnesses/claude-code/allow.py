@@ -74,7 +74,7 @@ import yaml  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent  # the repository: this file is in factory/harnesses/<harness>/
 KEPT_BY_THE_TOOLS = ("*-log.jsonl", "openings.jsonl", "set-aside.json", "lead.json", "lead.md", "curation-list.json", "scorecard.json",
-                     "queue.json", "hand-over.json")
+                     "queue.json", "hand-over.json", "judgements.jsonl")
 KEPT_FOLDERS = ("receipts", "verdicts", "leads", "hand-over", "notes", ".claude", "agents", "skills", "harnesses", "runners", "scorers", "benchmarks", "automations", "tools", "factory", "methods", "compute", ".git", ".github")
 READ_TOOLS = ("Read", "Grep", "Glob", "NotebookRead")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")

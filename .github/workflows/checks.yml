@@ -32,6 +32,10 @@ jobs:
           else
             echo "no earlier commit in this checkout to compare with"
           fi
+      # The judges: everything up to the point where a model is asked, and back from it. The self-test builds a
+      # study that has been opened and checks that a judging packet holds nothing written after the opening.
+      - name: The scorers tool tests itself, the outcome firewall included
+        run: uv run tools/scorers.py selftest
       - name: The study tool tests itself
         run: uv run tools/sf.py selftest
       - name: The pairing step of this repository's own tests itself
