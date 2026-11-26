@@ -1,5 +1,0 @@
-[exploring: output of LOOK-016]
-tolerance 5 min: 31 pairs, 21 passes with no reading inside it ['2024-01-02T21:50:37Z', '2024-01-23T18:35:43Z', '2024-02-13T15:20:47Z', '2024-02-23T13:43:01Z', '2024-03-04T01:14:21Z', '2024-03-05T12:05:52Z', '2024-03-15T10:28:03Z', '2024-03-26T08:50:55Z', '2024-04-16T05:36:01Z', '2024-05-07T02:21:04Z', '2024-05-27T23:06:09Z', '2024-06-17T19:51:15Z', '2024-07-08T16:36:17Z', '2024-07-29T13:21:23Z', '2024-08-19T10:06:27Z', '2024-09-09T06:51:33Z', '2024-09-30T03:36:41Z', '2024-10-21T00:21:45Z', '2024-11-10T21:06:49Z', '2024-12-01T17:51:54Z', '2024-12-22T14:36:58Z']
-level difference (satellite minus gauge, contains an uncited datum offset): n=31, median -0.253 m, mean -0.292 m, sd 0.325 m, min -2.007, max -0.003
-gauge stage range over the pairs: 1.47 to 10.33 m
-pairing offset: max 2.2 min

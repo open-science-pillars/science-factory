@@ -1,7 +1,0 @@
-[exploring: output of LOOK-001]
-tolerance 15 min; reach_q screen None: 50 of 50 pairs kept
-  2024-01-01T10:59:06Z  width 770.8 m (-13.5 m from the median, rank 15 of 50 from the narrowest)  stage 1.61 m  reach_q 2  dark_frac 0.247
-  2024-03-26T08:50:55Z  width 756.0 m (-28.3 m from the median, rank 8 of 50 from the narrowest)  stage 7.68 m  reach_q 1  dark_frac 0.692
-  2024-10-30T22:43:57Z  width 763.4 m (-21.0 m from the median, rank 12 of 50 from the narrowest)  stage 1.47 m  reach_q 2  dark_frac 0.020
-  2024-11-30T07:00:23Z  width 792.7 m (+8.4 m from the median, rank 34 of 50 from the narrowest)  stage 3.51 m  reach_q 2  dark_frac 0.020
-the five widths furthest from the median: 2024-02-12 +152.9 m (q 1, dark 0.015, stage 9.10); 2024-05-26 +62.5 m (q 1, dark 0.017, stage 10.33); 2024-04-14 +58.2 m (q 1, dark 0.009, stage 7.95); 2024-05-05 +47.1 m (q 1, dark 0.013, stage 9.00); 2024-09-30 -44.1 m (q 1, dark 0.187, stage 1.64)

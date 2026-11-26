@@ -3,13 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""test_cases: known-answer test cases for the satellite-versus-gauge
-confrontation.
+"""test_cases: known-answer test cases for the gain of one record against
+another.
 
-A test case is a synthetic input tree in exactly the shape the sanctioned
-executor reads
-(hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py), generated
-from parameters whose true values are known, so a method can be asked the
+A test case is a synthetic input tree in the shape the pairing step reads
+(methods/built-in-pairing/pair_records.py says which keys), generated from
+parameters whose true values are known, so a method can be asked the
 one question real data never answers: did you recover what was put in?
 
 A case comes in two parts, and they are kept apart. The data is what a
@@ -23,7 +22,7 @@ A synthetic river (the default): the river is invented too.
   river stage   h(t) = mean + seasonal + AR(1) flood pulses (daily)
   gauge reading h(t) + N(0, sigma_gauge), every 15 minutes near each pass
 
-On the real sampling (`sampling=` a tree in the fixture shape): the pass
+On the real sampling (`sampling=` a tree in the same shape): the pass
 times, the quality flags, the processing identifiers and the gauge readings
 are the real ones for a window, and only the satellite elevations are
 synthetic. Pass times and flags cannot move the gain; gauge stage cannot
@@ -45,16 +44,17 @@ What is put in, the truth and the trouble:
   outlier_frac, outlier_scale   zero-mean gross errors at any stage, not flagged
   lowstage_fault_frac, lowstage_fault_m, fault_flagged
                                 one-signed errors on passes in the lowest
-                                quarter of stage (the shape the 2024 record
-                                shows), flagged as degraded (reach_q 2)
+                                quarter of stage, flagged as degraded
+                                (reach_q 2)
                                 with probability fault_flagged
   crid_change_frac, step_m      a processing change part-way through the
                                 window, with a new identifier and an offset
 
-Defaults are calibrated to the committed 2024 Baton Rouge working-data
-fixture after the plan's quality screen (gauge elevation sd about 3.0 m,
-residual sd about 0.16 m with lag-1 correlation about 0.25, a pass every
-nine to ten days), never to any held-out window.
+The defaults describe an invented river: a second record whose standard
+deviation is about 3.0 m, residuals of about 0.16 m with lag-1 correlation
+about 0.25, a pass every nine to ten days. They were first set to
+resemble one year of one real river and gauge and are kept as an example;
+every one is an option on the command line.
 
 Usage:
   test_cases.py --seed 7 --gain 0.9 --out case.json [--answer answer.json]
@@ -224,9 +224,9 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--sampling", type=Path, help="a tree in the fixture shape: build the case on its pass times and gauge readings")
+    ap.add_argument("--sampling", type=Path, help="a tree in the same shape: build the case on its pass times and the readings of its second record")
     ap.add_argument("--out", type=Path, help="where the data goes (what a method is given)")
     ap.add_argument("--answer", type=Path, help="where what was put in goes; never pass this file to the method")
     ap.add_argument("--selftest", action="store_true")

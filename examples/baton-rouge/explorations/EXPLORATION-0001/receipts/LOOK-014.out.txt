@@ -1,4 +1,0 @@
-[exploring: output of LOOK-014]
-screen: 3 of 50 pairs excluded (reach_q at or above 2)
-tolerance 15 min: 47 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
-changes between consecutive pairs: n=46, correlation +0.9896, RMSD 0.1859 m, mean error +0.0006 m, gauge change spread 1.2251 m

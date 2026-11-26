@@ -7,8 +7,12 @@
 # To take a new version of a checker: read it, then add its checksum here in a change that is reviewed like any
 # other change to the factory's files. No role may write this file (the per-call check keeps every role out of
 # factory/), and an entry is never added to make a failing queue pass.
+#
+# The one entry below is an example and is used only by the optional demo (examples/baton-rouge): the checker
+# another repository keeps for the Open Knowledge Format v0.2. Nothing in this repository's own checks runs it.
+# A factory of your own lists the checker of its own knowledge format here, or none.
 checkers:
   - name: check_okf_v02.py
-    what: the organization's checker for the Open Knowledge Format v0.2
+    what: a checker for the Open Knowledge Format v0.2, kept in another repository (an example)
     from: https://github.com/open-science-pillars/nasa-daac-knowledge, tools/check_okf_v02.py, at commit c04ae2e156ca8672c7724254a2c738bd252e9de6
     sha256: cc11ab5fb2e7b6fbb5de1debe1af4ee10e55bb4615a24336fc3f98f496684d55

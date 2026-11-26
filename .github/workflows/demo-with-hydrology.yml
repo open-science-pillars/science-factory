@@ -1,0 +1,47 @@
+name: optional demo, with the hydrology repository beside this one
+
+# An optional demo, not a check of this repository. It shows the factory used with a pairing script, knowledge and a
+# knowledge checker that live in two other repositories of the same project. It runs when someone asks for it and
+# once a week, never on a push or a pull request, so nothing here can hold up a change to the factory. In the long
+# run it belongs in the hydrology repository, as a check that repository makes of its own use of the factory; it is
+# kept here until that repository has one. It reads no kept record: every run below is made fresh.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    name: optional demo (needs two other repositories)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The demo's plan finds the hydrology checkout beside this repository by relative path, so the three
+      # repositories sit side by side.
+      - uses: actions/checkout@v4
+        with:
+          path: science-factory
+      - uses: actions/checkout@v4
+        with:
+          repository: open-science-pillars/hydrology
+          ref: f9850d08c526139407eedf13ee3f12effbe83594
+          path: hydrology
+      - uses: actions/checkout@v4
+        with:
+          repository: open-science-pillars/nasa-daac-knowledge
+          ref: c04ae2e156ca8672c7724254a2c738bd252e9de6
+          path: nasa-daac-knowledge
+      - uses: astral-sh/setup-uv@v5
+      - name: The demo's system trial plan, which pairs with the hydrology script, is complete
+        run: uv run science-factory/tools/sf.py check-plan --study science-factory/examples/baton-rouge/system-trial
+      - name: A short blind test of the system, on the hydrology pairing script
+        run: uv run science-factory/methods/gain/system_trial.py blind-test --template science-factory/examples/baton-rouge/system-trial --n 20
+      - name: On ten test cases the built-in pairing step and the hydrology script give the same pairs and scores
+        run: uv run science-factory/methods/built-in-pairing/pair_records.py --selftest --compare-with hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py
+      - name: The knowledge helpers test themselves, with the checker pinned in factory/checkers.yaml
+        run: uv run science-factory/tools/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
+      - name: The first step of the demo, reading what the hydrology knowledge says about the first request
+        run: uv run science-factory/tools/knowledge.py about --question "How well does SWOT river height follow the Baton Rouge gauge, and where does it not?" --wiki hydrology/knowledge

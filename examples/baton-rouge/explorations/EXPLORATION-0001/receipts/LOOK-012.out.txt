@@ -1,9 +1,0 @@
-[exploring: output of LOOK-012]
-tolerance 15 min; reach_q screen 2; dark_frac screen None: 47 of 50 pairs kept
-gain 1.0121, plain least squares 95 percent interval 0.9936 to 1.0307 (too narrow: no allowance for correlation in time), residual sd 0.155 m
-the five pairs whose removal moves the gain most:
-  without 2024-03-26T08:50:55Z (gauge 7.68 m, reach_q 1, dark_frac 0.692): gain moves by -0.0021
-  without 2024-01-02T21:50:37Z (gauge 1.78 m, reach_q 1, dark_frac 0.114): gain moves by -0.0020
-  without 2024-04-26T03:58:14Z (gauge 9.57 m, reach_q 1, dark_frac 0.020): gain moves by +0.0019
-  without 2024-09-30T03:36:41Z (gauge 1.64 m, reach_q 1, dark_frac 0.187): gain moves by +0.0014
-  without 2024-05-07T02:21:04Z (gauge 8.86 m, reach_q 1, dark_frac 0.052): gain moves by +0.0013

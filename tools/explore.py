@@ -341,7 +341,7 @@ def parse_subject(text: str) -> dict:
     for part in str(text or "").split(","):
         k, eq, v = part.partition("=")
         if not eq or not k.strip() or not v.strip():
-            raise Refused("`--subject` is key=value,key=value (for example reach_id=74210000331,gauge=USGS-07374000): "
+            raise Refused("`--subject` is key=value,key=value (for example site=HARBOUR-1,sensor=B): "
                           "the same keys a plan's `pair` will carry, because the record matches on them")
         out[k.strip()] = v.strip()
     return out

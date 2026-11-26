@@ -3,29 +3,36 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""gain: the candidate quantity estimated for a satellite-versus-gauge gain
-claim, as a PROTOTYPE.
+"""gain: the gain of one record against another, the built-in method of
+this factory, as a PROTOTYPE.
 
-NOT A SANCTIONED COMPUTATION. This is the analysis assistant's starting
-point, kept here so the known-answer tests can be run before any capability
-is touched. The method work lands it in hydrology as an attested
-computation with an attester and a golden, under the specification's rule
-that a computation is a skill.
+It is the method the system trial and the blind test of the system
+exercise, kept here so the whole procedure runs from this repository
+alone. It is not the checked computation of any discipline: a group that
+wants findings from it lands it in its own repository with its own checker
+and stored reference result.
 
-The quantity estimated. Regress satellite elevation on gauge elevation and
-on time across the paired passes of a confrontation receipt:
+The names. The method was first written for a satellite record of a
+river's height against a river gauge, and its inputs keep those names
+(`satellite_m`, `gauge_elevation_m`). They are names only: the first
+record is the one under test, the second the one it is compared with, and
+nothing here knows what either measures.
+
+The quantity estimated. Regress the first record on the second and on time
+across the pairs of a pairing receipt:
     satellite = intercept + gain * gauge + drift * years + residual
-The gain says whether the satellite sees the same size of rise and fall as
-the gauge (1.0 means yes), as an average over the stage the window visited.
+The gain says whether the first record sees the same size of rise and fall
+as the second (1.0 means yes), as an average over the range the window
+visited.
 The intercept absorbs any constant offset between the two vertical
-references, so the uncited datum difference that forbids scoring the level
-cannot touch the gain. The time term is there because the known-answer
+references, so an unknown constant difference between them cannot touch
+the gain. The time term is there because the known-answer
 tests demanded it: without it, a slow drift between the two records leaks
 into the gain through the seasonal cycle and the interval covered the gain
 that was put in only 81 percent of the time (measured in an early run whose
 receipt was not kept). With it the gain is estimated at fixed time.
 
-The interval follows the organization's trend method: lag-1 autocorrelation
+The interval allows for serial correlation: lag-1 autocorrelation
 of the residuals, an effective sample size n(1-r1)/(1+r1) capped at n, the
 residual variance on n_eff - 3 degrees of freedom, and a two-sided
 Student-t interval on those degrees of freedom. It declines below ten pairs
@@ -36,15 +43,15 @@ measured it (known_answer_tests.py): it covers at about 93 percent in a
 kind case, under drift, under zero-mean gross errors, under flagged
 low-stage faults (once the plan's quality screen removes them) and with
 residual autocorrelation up to about 0.6. It does not survive low-stage
-errors the product leaves unflagged, autocorrelation near 0.9, a relation
+errors the record's own flag does not mark, autocorrelation near 0.9, a relation
 that bends with stage, or an offset step inside the window (which the
 plan's processing guard declines instead).
 
-Input: a receipt written by the sanctioned confrontation executor (its
-`pairs` list). Output: a gain block as JSON.
+Input: a receipt written by a pairing step (its `pairs` list), such as
+methods/built-in-pairing/pair_records.py. Output: a gain block as JSON.
 
 Usage:
-  gain.py --receipt confrontation-receipt.json [--out gain.json]
+  gain.py --receipt pairing-receipt.json [--out gain.json]
   gain.py --selftest
 """
 import sys
@@ -133,7 +140,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--receipt", type=Path)
     ap.add_argument("--out", type=Path)
     ap.add_argument("--selftest", action="store_true")

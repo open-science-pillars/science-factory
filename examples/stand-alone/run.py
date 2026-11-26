@@ -7,16 +7,22 @@
 Nothing here needs another repository or the network: the record is
 examples/stand-alone/record-2024.json (synthetic, with a known answer) and
 the knowledge base is the wiki in openwiki/. The work is done in a scratch
-folder that is removed afterwards.
+folder outside the repository, made fresh on every run. It is left in
+place and its path is printed, with a short list of what is in it, so
+that a newcomer can open an exploration and a study and see what each
+looks like on disk. Nothing is written into the repository.
 
 What this is and is not. It is the tools, driven from the command line the
 way a role would drive them, with each step checked. No assistant runs in
 it and no language model: it shows that the loops hold together and that
-the refusals refuse, and the checks workflow runs it. What assistants do
-with the same tools is the demo in examples/baton-rouge.
+the refusals refuse, and the checks workflow runs it. Its last part takes
+a study of its own (a system trial on a synthetic record, with this
+repository's own method) through every stage a tool can take, and stops
+where the next step is a person's: the lock. What assistants do with the
+same tools is the optional demo in examples/baton-rouge.
 
-  uv run examples/stand-alone/run.py            run and check
-  uv run examples/stand-alone/run.py --keep     keep the scratch folder and print where it is
+  uv run examples/stand-alone/run.py            run, check, and print where the output is
+  uv run examples/stand-alone/run.py --remove   run, check, and remove the output
 """
 import argparse
 import json
@@ -36,7 +42,8 @@ GAIN_PUT_IN, CLOSE_ENOUGH = 1.03, 0.02   # the answer the record was made with (
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
-    ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--keep", action="store_true", help="the output is kept by default; this option is still taken and changes nothing")
+    ap.add_argument("--remove", action="store_true", help="remove the scratch folder when the run is over")
     a = ap.parse_args()
     work = Path(tempfile.mkdtemp(prefix="stand-alone-")).resolve()
     steps = []
@@ -238,15 +245,48 @@ def main() -> int:
         step("the study started from it stands at the plan stage, waiting for a real plan, with nothing locked or signed",
              json.loads(tool("sf.py", "status", "--study", study, answer=True))["stage"] in ("plan", "test")
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "signature.recorded") for ln in (study / "study-log.jsonl").read_text().splitlines()))
+
+        # the confirming loop, as far as a tool can take it: a study through its tests, stopping before the lock
+        trial = studies / "STUDY-B"
+        trial.mkdir()
+        template = HERE / "system-trial"
+        trial_plan = yaml.safe_load((template / "analysis-plan.yaml").read_text())
+        trial_plan["study"] = "STUDY-B"
+        trial_plan["roots"] = {k: str((template / v).resolve()) for k, v in trial_plan["roots"].items()}  # the copy stands elsewhere
+        (trial / "analysis-plan.yaml").write_text(yaml.safe_dump(trial_plan, sort_keys=False))
+        S = ("--study", trial)
+        tool("sf.py", "start", *S, "--id", "STUDY-B", "--question", trial_plan["question"], "--by", coordinator)
+        step("a second study, a system trial on a synthetic record, is started and its plan is complete",
+             "the analysis plan is complete" in tool("sf.py", "check-plan", *S))
+        step("its opening is refused before the lock",
+             "REFUSED" in tool("sf.py", "open-held-out", *S, "--by", coordinator, expect=2))
+        step("the known-answer tests pass: the method meets every criterion the plan sets, on synthetic records with the truth put in",
+             "pass" in tool("sf.py", "test", "known-answers", *S, "--by", me) and (trial / "receipts" / "known-answers.json").is_file())
+        tool("sf.py", "test", "working-data", *S, "--by", me)
+        tool("sf.py", "rehearse", *S, "--id", "opening-path", "--by", me)
+        trial_status = json.loads(tool("sf.py", "status", *S, answer=True))
+        step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no assistant takes it further",
+             trial_status["stage"] == "lock" and "PASS" not in tool("sf.py", "lock", *S, "--by", me, "--evidence", "https://example.invalid/not-a-person", expect=2)
+             and not any(json.loads(ln)["kind"] in ("lock.recorded", "held-out.opened", "signature.recorded") for ln in (trial / "study-log.jsonl").read_text().splitlines()))
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
         return 1
     finally:
-        if a.keep:
-            print(f"kept: {work}")
-        else:
+        if a.remove:
             shutil.rmtree(work, ignore_errors=True)
+    if not a.remove:
+        print(f"""What this run made is in {work}, outside the repository. Nothing in it is kept by the repository; delete it when you have looked.
+  explorations/EXPLORATION-A/   an exploration: exploration-log.jsonl (every step, chained by hash), set-aside.json (what
+                                was not looked at), looks/ and receipts/ (each look's script and its record), figures/,
+                                notes/, lead.md (what was found, with the order of looks and choices), review/ and
+                                verdicts/, hand-over/ (the request a study starts from)
+  studies/STUDY-A/              a study started from that hand-over: study-log.jsonl and a plan, at the plan stage
+  studies/STUDY-B/              a study taken through its tests: analysis-plan.yaml, study-log.jsonl, receipts/ (the
+                                known-answer tests, the working data, the rehearsal), standing at the lock
+  studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
+  knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
+  data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0
 

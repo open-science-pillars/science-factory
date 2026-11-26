@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   core:
-    # Everything here runs from this repository alone: no other repository is checked out beside it.
+    # Everything here runs from this repository alone: no other repository is checked out beside it, and no
+    # kept record is read, because none is kept. Every run these steps check is made fresh by the step itself.
     name: from this repository alone
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -25,10 +26,6 @@ jobs:
         run: uv run tools/sf.py check-plan --study examples/stand-alone/system-trial
       - name: A short blind test of the system, on the built-in pairing step
         run: uv run methods/gain/system_trial.py blind-test --template examples/stand-alone/system-trial --n 20
-      - name: The table of moved files is borne out by the files, and the one record that can be replayed without the checkouts says what it said
-        run: |
-          uv run tools/check_old_records.py
-          uv run tools/check_old_records.py --selftest
       - name: The local place passes the compute contract
         run: uv run compute/adapter.py conformance
       - name: The conformance test fails every deliberately wrong place
@@ -36,8 +33,8 @@ jobs:
       # The self-tests below include every attack an independent reviewer made on these tools (the review register,
       # docs/reviews/ASSISTANTS-AND-EXPLORING.md, section 4). The exploring tool's tests of the kernel fence run with
       # it where the runner's kernel has Landlock, and all of them also run with it switched off. The knowledge
-      # helpers' self-test checks that factory/checkers.yaml parses and names the organization's checker; the job
-      # below runs that checker, which the helpers refuse to do unless its checksum is the pinned one.
+      # helpers' self-test checks that factory/checkers.yaml parses; the one checker pinned there belongs to another
+      # repository and is run only by the optional demo (demo-with-hydrology.yml), never here.
       - name: The exploring tool, the knowledge helpers and the checks
         run: |
           uv run tools/explore.py selftest
@@ -52,58 +49,13 @@ jobs:
           uv run runners/by-hand/as_role.py --selftest
           uv run skills/explore-a-record/scripts/describe_record.py --selftest
           uv run skills/explore-a-record/scripts/plot_xy.py --selftest
-      - name: The stand-alone example, end to end
+      - name: The stand-alone example, end to end (both loops, then a study taken to the lock), in a scratch folder
         run: uv run examples/stand-alone/run.py
+      - name: The example left nothing in the repository
+        run: test -z "$(git status --porcelain)"
       - name: The stand-alone example again, with a setting that makes the launcher warn on standard error
         # uv prints a deprecation warning for this variable on every call; the example once read that warning as part of
         # a tool's answer and crashed. One of its own steps tests the same thing without depending on the launcher.
         env:
           UV_NATIVE_TLS: "true"
         run: uv run examples/stand-alone/run.py
-
-  with-hydrology:
-    # The checks that use the hydrology capability's own pairing script, its knowledge and the organization's
-    # checker. They prove what they proved before the built-in pairing step existed: nothing here was made
-    # to pass by it.
-    name: with the hydrology capability beside it
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      # The analysis plans find the checkouts beside the package by relative
-      # path, so the three repositories sit side by side.
-      - uses: actions/checkout@v4
-        with:
-          path: science-factory
-      - uses: actions/checkout@v4
-        with:
-          repository: open-science-pillars/hydrology
-          ref: f9850d08c526139407eedf13ee3f12effbe83594
-          path: hydrology
-      - uses: actions/checkout@v4
-        with:
-          repository: open-science-pillars/nasa-daac-knowledge
-          ref: c04ae2e156ca8672c7724254a2c738bd252e9de6
-          path: nasa-daac-knowledge
-      - uses: astral-sh/setup-uv@v5
-      - name: Both analysis plans are complete
-        run: |
-          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0000
-          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0001
-      - name: A short blind test of the system, on the hydrology capability's pairing script
-        run: uv run science-factory/methods/gain/system_trial.py blind-test --template science-factory/studies/STUDY-0000 --n 20
-      - name: The records made before the layout changed still say what they said, to the study tool that made them
-        run: uv run science-factory/tools/check_old_records.py
-      - name: On ten test cases the built-in pairing step and the hydrology script give the same pairs and scores
-        run: uv run science-factory/methods/built-in-pairing/pair_records.py --selftest --compare-with hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py
-      - name: The knowledge helpers test themselves, with the organization's checker
-        run: uv run science-factory/tools/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
-      - name: The demo's drafted knowledge, from both runs, still passes the queue's rules and the organization's checker
-        run: |
-          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
-          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
-      - name: The demo's exploration logs, from both runs, still check out on the tool as it now is
-        run: |
-          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
-          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
-          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
-          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002

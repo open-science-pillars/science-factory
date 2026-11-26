@@ -3,24 +3,33 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""confront: apply the plan's quality screen, run the sanctioned
-confrontation executor, then the candidate gain estimate, and write one
-receipt that binds all three.
+"""confront: apply the plan's quality screen, run the pairing step the
+plan names, then the gain estimate, and write one receipt that binds all
+three.
 
-PROTOTYPE, like gain.py: the shape the method work lands in hydrology as an
-attested computation. The same function serves the known-answer tests, the
-working data and the one opening of the held-out data, which is this
-procedure's version of test-as-you-fly: the code the lock covers is the
-code that reads the held-out data.
+PROTOTYPE, like gain.py, and part of the same built-in method. The pairing
+step is a parameter (--executor): the system trial that ships here names
+this repository's own (methods/built-in-pairing/pair_records.py), and a
+study of a real record names the script its own discipline keeps for the
+purpose. The same function serves the known-answer tests, the working data
+and the one opening of the held-out data, which is this procedure's
+version of test-as-you-fly: the code the lock covers is the code that
+reads the held-out data.
+
+The input tree keeps the names of the method's first use, a satellite
+record of river height against a river gauge (`satellite.rows`, `gauge`,
+`reach_q` for the quality flag, `crid` for the processing identifier).
+They are names only; any two records written in that shape are read.
 
 What happens to an input tree, in order:
   1. the quality screen: passes flagged degraded or worse (reach_q at or
      above the plan's threshold) are excluded before pairing, and the
-     count is reported. The 2024 record is why: one degraded pass at the
-     year's lowest stage carried two thirds of the residual sum of squares.
+     count is reported. One degraded pass at the lowest stage of a year
+     can carry most of the residual sum of squares.
   2. the processing guard: a window that mixes processing identifiers is
      refused, because an offset between them leaks into the gain.
-  3. the sanctioned executor, unmodified, pairs passes with gauge readings.
+  3. the pairing step, unmodified, pairs the passes of the first record
+     with the readings of the second.
   4. the gain estimate (gain.py), plus two descriptive gains for the lower
      and upper half of stage, which no rule uses.
 
@@ -44,9 +53,9 @@ The receipt this writes is a run receipt: the record a run writes, with its
 code and inputs by checksum and every number it produced.
 
 Usage:
-  confront.py --executor PATH/load_swot_confrontation.py --inputs TREE.json --out receipt.json
+  confront.py --executor PATH/pair_records.py --inputs TREE.json --out receipt.json
               [--screen-reach-q 2] [--require-crid] [--refusal-is-a-result]
-  confront.py --executor PATH/load_swot_confrontation.py --batch CASES.jsonl --out RESULTS.jsonl
+  confront.py --executor PATH/pair_records.py --batch CASES.jsonl --out RESULTS.jsonl
               [--screen-reach-q 2] [--require-crid]
 """
 import sys
@@ -93,11 +102,11 @@ def sha(p: Path) -> str:
 
 
 def load_executor(path: Path):
-    """The sanctioned executor as a module: the file is the one on disk,
+    """The pairing step the plan names, as a module: the file is the one on disk,
     unmodified, and it is run through its own command line entry point."""
     key = str(Path(path).resolve())
     if key not in _EXECUTORS:
-        spec = importlib.util.spec_from_file_location("sanctioned_executor", key)
+        spec = importlib.util.spec_from_file_location("pairing_step", key)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         _EXECUTORS[key] = mod
@@ -191,7 +200,7 @@ def run_batch(a) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--executor", type=Path, required=True)
     ap.add_argument("--inputs", type=Path, help="one input tree; the receipt goes to --out")
     ap.add_argument("--batch", type=Path, help="many input trees, one to a line (the known-answer tests); one line each goes to --out")
@@ -218,7 +227,7 @@ def main() -> int:
         c = confront_tree(tree, load_executor(a.executor), Path(tmp), a.tolerance_minutes, a.screen_reach_q, a.require_crid)
     r = c.pop("_executor", None)
     receipt = {
-        "computation": "swot-gauge-confrontation-with-gain (prototype)",
+        "computation": "gain of one record against another, after pairing (prototype)",
         "sanctioned": False,
         "code": {"executor_sha256": sha(a.executor), "gain_sha256": sha(HERE / "gain.py"),
                  "wrapper_sha256": sha(Path(__file__))},

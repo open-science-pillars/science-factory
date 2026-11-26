@@ -1,5 +1,0 @@
-[exploring: output of LOOK-006]
-tolerance 15 min: 50 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
-lowest third of stage (1.47 to 2.96 m): n=16, median -0.083 m, mean -0.165 m, sd 0.423 m, min -1.776, max +0.109; flags ['2', '2']
-middle third (2.96 to 6.32 m): n=16, median +0.004 m, mean +0.029 m, sd 0.100 m, min -0.158, max +0.228; flags ['2']
-highest third (6.33 to 10.33 m): n=18, median +0.043 m, mean +0.087 m, sd 0.216 m, min -0.054, max +0.947; flags []

@@ -1,2 +1,11 @@
 __pycache__/
 *.pyc
+
+# Runs are not kept in this repository: it is the factory, and every run is
+# made fresh. These are the folders the tools write a run into by convention,
+# ignored so that your own studies and explorations are never committed here
+# by accident. Real studies belong in the repository where the science lives.
+studies/
+explorations/
+knowledge-queue/
+record/

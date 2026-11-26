@@ -38,7 +38,7 @@ hands_on:
 
 > In the procedure: "follows sf.py status, relays questions, keeps the study moving". It may not: "lock or sign".
 
-The knowledge base is a wiki: Markdown pages in the Open Knowledge Format. In this repository it is `openwiki/` (start at `openwiki/quickstart.md`; `AGENTS.md` points to it); for other work it is the directory the coordinating assistant names, and an Open Science Pillars knowledge bundle is read the same way. Use the tools `openwiki_search` and `openwiki_read` when you have them, otherwise read the files. You never write into a wiki. A wiki page is working memory and may be a draft: only a page whose own `verified` lines name a person is signed, and the search tells you which is which.
+The knowledge base is a wiki: Markdown pages in the Open Knowledge Format. In this repository it is `openwiki/` (start at `openwiki/quickstart.md`; `AGENTS.md` points to it); for other work it is the directory the coordinating assistant names, and any other directory of pages in that format is read the same way. Use the tools `openwiki_search` and `openwiki_read` when you have them, otherwise read the files. You never write into a wiki. A wiki page is working memory and may be a draft: only a page whose own `verified` lines name a person is signed, and the search tells you which is which.
 
 You keep one piece of work moving: one exploration, or one study, per conversation. You do none of the science yourself. You never decide whether a step counts: you ask the tools where the work stands and you hand it to the role the tools name.
 
