@@ -1,0 +1,30 @@
+# What data the two-sensor record holds, and what it will hold: metadata only, no measured value. This is the
+# file an agent proposes the fresh data from (tools/fresh_data.py propose). The counts of 2024 are the passes in
+# record-2024.json; those of 2025 are the passes the provider lists for the year that is not yet opened.
+what: "monthly files of the two-sensor record, passes listed by the provider"
+subject: {record: two-sensor, sensor: second}
+items:
+  - {id: "2024-01", start: 2024-01-01, end: 2024-01-31, count: 5}
+  - {id: "2024-02", start: 2024-02-01, end: 2024-02-29, count: 4}
+  - {id: "2024-03", start: 2024-03-01, end: 2024-03-31, count: 4}
+  - {id: "2024-04", start: 2024-04-01, end: 2024-04-30, count: 4}
+  - {id: "2024-05", start: 2024-05-01, end: 2024-05-31, count: 5}
+  - {id: "2024-06", start: 2024-06-01, end: 2024-06-30, count: 4}
+  - {id: "2024-07", start: 2024-07-01, end: 2024-07-31, count: 5}
+  - {id: "2024-08", start: 2024-08-01, end: 2024-08-31, count: 4}
+  - {id: "2024-09", start: 2024-09-01, end: 2024-09-30, count: 4}
+  - {id: "2024-10", start: 2024-10-01, end: 2024-10-31, count: 5}
+  - {id: "2024-11", start: 2024-11-01, end: 2024-11-30, count: 4}
+  - {id: "2024-12", start: 2024-12-01, end: 2024-12-31, count: 4}
+  - {id: "2025-01", start: 2025-01-01, end: 2025-01-31, count: 4}
+  - {id: "2025-02", start: 2025-02-01, end: 2025-02-28, count: 5}
+  - {id: "2025-03", start: 2025-03-01, end: 2025-03-31, count: 4}
+  - {id: "2025-04", start: 2025-04-01, end: 2025-04-30, count: 4}
+  - {id: "2025-05", start: 2025-05-01, end: 2025-05-31, count: 5}
+  - {id: "2025-06", start: 2025-06-01, end: 2025-06-30, count: 4}
+  - {id: "2025-07", start: 2025-07-01, end: 2025-07-31, count: 4}
+  - {id: "2025-08", start: 2025-08-01, end: 2025-08-31, count: 5}
+  - {id: "2025-09", start: 2025-09-01, end: 2025-09-30, count: 4}
+  - {id: "2025-10", start: 2025-10-01, end: 2025-10-31, count: 4}
+  - {id: "2025-11", start: 2025-11-01, end: 2025-11-30, count: 5}
+  - {id: "2025-12", start: 2025-12-01, end: 2025-12-31, count: 4}

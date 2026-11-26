@@ -1,5 +1,5 @@
 # A lead file. Copy it to <exploration>/lead.yaml, fill every required key, then:
-#   uv run tools/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml
+#   uv run tools/explore.py lead --exploration <x> --by <you> --model <your model> --file <x>/lead.yaml
 # The tool adds the count of looks and of the comparisons they declared, the full record of each choice and how many
 # looks had run when it was written down, the order of looks and choices, what was read and what was set aside.
 # Every decimal number in the words below (the proposed plan apart) must be printed, whole, by a look under `evidence`,

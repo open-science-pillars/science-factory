@@ -62,11 +62,14 @@ jobs:
       # it where the runner's kernel has Landlock, and all of them also run with it switched off. The knowledge
       # helpers' self-test checks that factory/checkers.yaml parses; the one checker pinned there belongs to another
       # repository and is run only by the optional demo (demo-with-hydrology.yml), never here.
-      - name: The exploring tool, the knowledge helpers and the checks
+      # check_roles.py also parses every command the role files, the skills and AGENTS.md show, under each tool's own
+      # options as they are now, so a skill cannot drift from the tool it tells an agent to run.
+      - name: The exploring tool, the fresh-data tool, the knowledge helpers and the checks
         run: |
           uv run tools/explore.py selftest
           uv run tools/knowledge.py selftest
           uv run tools/wiki_server.py --selftest
+          uv run tools/fresh_data.py selftest
           uv run tools/check_roles.py
           uv run tools/check_roles.py --selftest
           uv run factory/harnesses/claude-code/render.py --check

@@ -22,6 +22,7 @@ may_call:
   - "tools/sf.py request-signature"
   - "tools/sf.py scorecard"
   - "tools/sf.py close"
+  - "tools/fresh_data.py show"
   - "role:analysis"
   - "role:review"
   - "role:curating"
@@ -71,7 +72,7 @@ Give the analysis assistant the request by itself. A page that already answers t
 
 After every hand-back, run `explore.py status` or `sf.py status` on the work and do what it says: its `who` names the next role. Do not skip a stage because a role says it is done; the tool says when it is done.
 
-- Status shows `before_a_lead`, or the analysis assistant hands back saying `lead` was refused for want of a reviewer: name the reviewer with `explore.py reviewer --exploration <x> --by <your name> --reviewer agent:review-<suffix>`, giving the name you will start the review assistant under, then hand the exploration back to the analysis assistant. Do it as soon as the exploration is started. The tool takes a review only from a name that was in the log as a reviewer before the lead it reviews was recorded, so a reviewer named late can review only a later version. For a second review by a fresh assistant, name the new name before the revised lead is recorded. You name the reviewer because you did none of the exploring; the tool refuses the name of anyone who did.
+- Status shows `before_a_lead`, or the analysis assistant hands back saying `lead` was refused for want of a reviewer: name the reviewer with `uv run tools/explore.py reviewer --exploration <x> --by <your name> --model <your model> --reviewer agent:review-<suffix>`, giving the name you will start the review assistant under, then hand the exploration back to the analysis assistant. Do it as soon as the exploration is started. The tool takes a review only from a name that was in the log as a reviewer before the lead it reviews was recorded, so a reviewer named late can review only a later version. For a second review by a fresh assistant, name the new name before the revised lead is recorded. You name the reviewer because you did none of the exploring; the tool refuses the name of anyone who did.
 - Status says `review`: start the review assistant in a fresh conversation, under the name you named as reviewer. Nobody else acts on the exploration meanwhile: the analysis assistant does not end it and the curating assistant does not start.
 - Status says `revise-or-end`: give the analysis assistant the review file and nothing else. It revises the lead, which is then reviewed again, or it ends the exploration on the lead that was reviewed.
 - Status says `hand-over`: decide with the scientist whether the lead is worth a test. If it is, run `explore.py hand-over`, then `sf.py start` with exactly what the hand-over printed, then hand the plan stage to the analysis assistant. When the plan is written, run `explore.py check-study`; a refusal goes back to the analysis assistant.

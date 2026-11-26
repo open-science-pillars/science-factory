@@ -11,7 +11,7 @@ Run every command from the repository root. `<x>` is the exploration's directory
 
 A person can explore with the same tool: act as `--by human:<your name>` and follow the same steps. Nothing below needs an assistant.
 
-**The order.** Read what is known before you set anything aside, and read only knowledge: signed pages and drafted pages (`knowledge.py about`, then the pages themselves), never data, never the contents of a data file, never an earlier answer to the same question. Take from the knowledge where the boundary of the set-aside should fall. Then set data aside with `explore.py start`, before any look, naming the page the boundary came from with `--boundary-from`. Then run `explore.py known` and `explore.py read`, which write into the log what was listed and what each page changes; the first look is refused until they have. What is set aside is never narrowed afterwards; if the knowledge gives no boundary, set aside the widest honest window and say so.
+**The order.** Read what is known before you set anything aside, and read only knowledge: signed pages and drafted pages (`knowledge.py about`, then the pages themselves), never data, never the contents of a data file, never an earlier answer to the same question. Take from the knowledge where the boundary of the set-aside should fall. Then propose the fresh data from metadata only (`fresh_data.py propose`, the skill `propose-fresh-data`), and set it aside with `explore.py start --fresh-data`, before any look, naming the page the boundary came from with `--boundary-from`. Then run `explore.py known` and `explore.py read`, which write into the log what was listed and what each page changes; the first look is refused until they have. What is set aside is never narrowed afterwards; if the knowledge gives no boundary, set aside the widest honest window and say so.
 
 ## 1. Read what is known, from knowledge only
 
@@ -19,16 +19,16 @@ Use the `read-what-is-known` skill with `knowledge.py about`, and read the pages
 
 ## 2. Set data aside, before any look
 
-Read the request for what has already been seen and what could be held out, and choose one of the ways docs/TWO-WAYS-OF-WORKING.md lists: a later period, a period of contrasting conditions, sites never opened, a new release, a different instrument or record, forecasts scored later. Prefer what a later confirming study would most plausibly want, and think about what the question is for: a question about whether a method travels wants other sites set aside, not only a later period at the same site.
+Read the request for what has already been seen. Then propose the fresh data with the skill `propose-fresh-data`: from metadata only, one of the next release, a later period, another site or region, or a random set aside, with your reasons in words and the size of test it allows. The proposing tool prints the arguments that set it aside; use them, and add `--fresh-data <the proposal>`. Other ways the tool knows (a period of contrasting conditions, a different instrument or record, forecasts scored later) are set aside the same way without a proposal; say why in `--why`. Prefer what a later confirming study would most plausibly want: a question about whether a method travels wants other sites set aside, not only a later period at the same site.
 
 ```
-uv run tools/explore.py start --exploration <x> --id <ID> --by <you> \
+uv run tools/explore.py start --exploration <x> --id <ID> --by <you> --model <your model> \
   --question "<one sentence ending in a question mark>" --request <the request file> \
   --subject <key=value,key=value: the thing the data is about> \
   --how "a later period" --set-aside-window <START:END, or START: to keep it open> \
   --why "<why this is the data to set aside>" --boundary-from <the page the boundary came from> \
   --working "<what will be explored, in words>" --working-window <START:END> \
-  --working-data <the file or folder that holds the data to explore>
+  --working-data <the file or folder that holds the data to explore> --fresh-data <x>/fresh-data.yaml
 ```
 
 - `--subject`: the keys are yours (for example `site=...,sensor=...`). A later plan's `pair` must carry the same keys and values; they are matched through case and spacing and through nothing else, so write them the way the plan will.
@@ -40,8 +40,8 @@ From here on you do not fetch, read, plot or ask about what was set aside, by an
 ## 3. Record what was read
 
 ```
-uv run tools/explore.py known --exploration <x> --by <you> --wiki <the wiki> [--drafts <the queue>]
-uv run tools/explore.py read --exploration <x> --by <you> --concept <the path as `known` printed it> \
+uv run tools/explore.py known --exploration <x> --by <you> --model <your model> --wiki <the wiki> [--drafts <the queue>]
+uv run tools/explore.py read --exploration <x> --by <you> --model <your model> --concept <the path as `known` printed it> \
   --takes "<what this page rules in, rules out or warns about here>" [--depth skimmed]
 ```
 
@@ -52,7 +52,7 @@ The first look is refused until `known` has run and at least one page is recorde
 A look is one script, run through the tool, with a reason:
 
 ```
-uv run tools/explore.py look --exploration <x> --by <you> --why "<what this look is trying to find out>" \
+uv run tools/explore.py look --exploration <x> --by <you> --model <your model> --why "<what this look is trying to find out>" \
   -- uv run looks/<script>.py <arguments>
 ```
 
@@ -77,7 +77,7 @@ uv run tools/explore.py look --exploration <x> --by <you> --why "<what this look
 Every time you pick one way over another (which observations to drop, which tolerance, which model form, which terms in a fit, which period to show), record it then:
 
 ```
-uv run tools/explore.py choice --exploration <x> --by <you> --choice "<what you chose>" \
+uv run tools/explore.py choice --exploration <x> --by <you> --model <your model> --choice "<what you chose>" \
   --alternative "<another way>" --alternative "<another>" --rests-on "<what it rests on>" --look LOOK-00N
 ```
 
@@ -90,7 +90,7 @@ When you can, run the alternative as a look too, so the lead can say how much th
 Anything missing, wrong or stale in the data or the knowledge, and any dead end:
 
 ```
-uv run tools/explore.py note --exploration <x> --by <you> --kind <missing|wrong|stale|contradiction|method|dead-end> \
+uv run tools/explore.py note --exploration <x> --by <you> --model <your model> --kind <missing|wrong|stale|contradiction|method|dead-end> \
   --about "<the product, field or page>" --text "<what, with numbers>" --evidence receipts/LOOK-00N.json
 ```
 
