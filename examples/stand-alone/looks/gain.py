@@ -11,7 +11,7 @@ import json
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("data")
     ap.add_argument("--exclude-flag-at-or-above", type=int, default=None)
     a = ap.parse_args()

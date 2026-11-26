@@ -35,7 +35,7 @@ GAIN_PUT_IN, CLOSE_ENOUGH = 1.03, 0.02   # the answer the record was made with (
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--keep", action="store_true")
     a = ap.parse_args()
     work = Path(tempfile.mkdtemp(prefix="stand-alone-")).resolve()
@@ -116,6 +116,10 @@ def main() -> int:
         step("a look that names the set-aside year is refused, and the refusal is logged",
              "set aside" in tool("explore.py", *look, "peek at the next year", "--", "uv", "run", gain_script, later, expect=2)
              and json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[-1])["kind"] == "look.refused")
+        step("a look that reaches the set-aside year through its folder, a pattern or a word after `=` is refused too",
+             "names a folder" in tool("explore.py", *look, "peek through the folder", "--", "uv", "run", gain_script, later.parent, expect=2)
+             and "holds a pattern" in tool("explore.py", *look, "peek through a pattern", "--", "uv", "run", gain_script, later.parent / "record-*.json", expect=2)
+             and "set aside" in tool("explore.py", *look, "peek after an equals sign", "--", "uv", "run", gain_script, f"--data={later}", expect=2))
         shutil.rmtree(later.parent)
         plot = str(ROOT / "skills" / "explore-a-record" / "scripts" / "plot_xy.py")
         tool("explore.py", *look, "a picture: what is left of the second sensor after its straight line on the reference, coloured by flag",
@@ -141,6 +145,11 @@ def main() -> int:
                                   "quantity_estimated": "the gain, with an interval", "difference_that_matters": "five percent, proposed; nobody has stated one",
                                   "rule_sketch": "supported if the interval lies inside 0.95 to 1.05, refuted if wholly outside, otherwise inconclusive"}}
         lead_file = x / "lead.yaml"
+        lead_file.write_text(yaml.safe_dump(lead, sort_keys=False))
+        step("a lead is refused until whoever coordinates has named the reviewer, and the explorer cannot name one",
+             "no reviewer is named" in tool("explore.py", "lead", *E, "--by", me, "--file", lead_file, expect=2)
+             and "did part of this exploration" in tool("explore.py", "reviewer", *E, "--by", me, "--reviewer", reviewer, expect=2))
+        tool("explore.py", "reviewer", *E, "--by", coordinator, "--reviewer", reviewer)
         bad = dict(lead, what_looks_true=lead["what_looks_true"].replace(f"{gain:.4f}", "1.2345"))
         lead_file.write_text(yaml.safe_dump(bad, sort_keys=False))
         step("a lead that quotes a number no look printed is refused", "1.2345" in tool("explore.py", "lead", *E, "--by", me, "--file", lead_file, expect=2))
@@ -167,7 +176,13 @@ def main() -> int:
         review.write_text("# Review (exploring)\n\nChecked the log and both looks. One hole: one year only.\n")
         step("the assistant that explored cannot review its own lead",
              "did part of this exploration" in tool("explore.py", "review", *E, "--by", me, "--verdict", "no-holes-found", "--file", review, expect=2))
+        step("a review under a name nobody named as a reviewer before the lead existed is refused",
+             "was not named as a reviewer" in tool("explore.py", "review", *E, "--by", "agent:review-fresh", "--verdict", "no-holes-found", "--file", review, expect=2))
         step("a logged look reproduces", "identical" in tool("explore.py", "recheck", *E, "--look", "LOOK-002"))
+        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review)
+        tool("explore.py", "correct", *E, "--by", me, "--old", "over 2024", "--new", "over the whole of 2024", "--why", "to say the year was read whole")
+        step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
+             "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review)
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the assistant that explored cannot make the hand-over",

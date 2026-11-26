@@ -208,7 +208,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--keep", type=Path, help="rebuild the old layout in this folder and leave it there to look at")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()

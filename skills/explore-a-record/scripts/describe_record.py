@@ -96,7 +96,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("file", type=Path, nargs="?")
     ap.add_argument("--max-distinct", type=int, default=8)
     ap.add_argument("--selftest", action="store_true")

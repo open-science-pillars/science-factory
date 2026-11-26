@@ -158,7 +158,7 @@ def receipt_for(tree: dict, tolerance_minutes: int, source: Path | None = None) 
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--inputs", type=Path)
     ap.add_argument("--tolerance-minutes", type=int, default=15)
     ap.add_argument("--out", type=Path)

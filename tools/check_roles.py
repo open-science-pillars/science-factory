@@ -33,8 +33,12 @@ What it checks:
               that role's may_call
   own places  every role that writes may write its account in record/<role>/ and in no
               other role's place, and the review role's `must_never_see`
-              names the analysis role's place as a path, so a runner can
-              refuse it
+              names the analysis role's account as paths, both in a
+              folder of its own and as flat files in record/, so a runner
+              can refuse it
+  reviewer    only the coordinating role names the reviewer of an
+              exploration, and it may call nothing that is part of the
+              exploring
   same words  where a role file and a skill both say in what order things
               are done (what is read before data is set aside, when an
               exploration is ended, where a review is written, when the
@@ -70,7 +74,9 @@ ONLY = {  # a command and the one role that may call it
     "tools/explore.py start": "analysis", "tools/explore.py look": "analysis", "tools/explore.py lead": "analysis",
     "tools/explore.py correct": "analysis", "tools/explore.py end": "analysis",
     "tools/explore.py hand-over": "coordinating", "tools/sf.py open-held-out": "coordinating",
+    "tools/explore.py reviewer": "coordinating",  # the reviewer is named by the role that does none of the exploring
 }
+NEVER_SEEN_BY_REVIEW = ("path:record/analysis/*", "path:record/*analysis*")  # the author's account: in its own folder, and as flat files in record/
 STAGE_COMMANDS = {  # the stage of the procedure, the role named in `done_by`, the command that stage needs
     ("ask", "coordinating"): ["tools/sf.py start"],
     ("plan", "analysis"): ["tools/sf.py check-plan"],
@@ -176,9 +182,18 @@ def problems(root: Path) -> list:
             for cmd in DOES_THE_WORK:
                 if cmd in calls:
                     p.append(f"{where}: the review assistant may call `{cmd}`, which does the work it is there to check")
-            if "path:record/analysis/*" not in [str(x) for x in fm["must_never_see"]]:
-                p.append(f"{where}: `must_never_see` does not name the analysis assistant's own account as a path (path:record/analysis/*), "
-                         "so no runner can keep the reviewer away from the author's account of the work")
+            for pat in NEVER_SEEN_BY_REVIEW:
+                if pat not in [str(x) for x in fm["must_never_see"]]:
+                    p.append(f"{where}: `must_never_see` does not name the analysis assistant's own account as a path ({pat}), "
+                             "so no runner can keep the reviewer away from the author's account of the work")
+        if "tools/explore.py reviewer" in calls:
+            for cmd in DOES_THE_WORK:
+                if cmd.startswith("tools/explore.py") and cmd in calls:
+                    p.append(f"{where}: the role that names the reviewer may call `{cmd}`, which is part of the exploring; "
+                             "whoever names the reviewer does none of it")
+        if name == "coordinating" and "tools/explore.py reviewer" not in calls:
+            p.append(f"{where}: may_call does not hold `tools/explore.py reviewer`: a lead is refused until the coordinating "
+                     "assistant has named the reviewer, so no exploration could reach one")
         writes = [str(w) for w in fm["writes"]]
         if writes and f"record/{name}/*.md" not in writes:  # a role that writes nothing (the coordinating role) has its tasks kept by the launcher
             p.append(f"{where}: `writes` does not give the role its own place for its account (record/{name}/*.md)")
@@ -290,6 +305,13 @@ def selftest(root: Path) -> int:
              lambda d: edit(d, "factory/procedure.yaml", "    done_by: curating assistant", "    done_by: librarian assistant"), "which has no role file")
         case("the review role's file stops naming the author's account as a place it must never see",
              lambda d: edit(d, "assistants/review.md", '  - "path:record/analysis/*"\n', ""), "does not name the analysis assistant's own account")
+        case("the review role's file stops naming the author's account where it is kept as flat files",
+             lambda d: edit(d, "assistants/review.md", '  - "path:record/*analysis*"\n', ""), "(path:record/*analysis*)")
+        case("the analysis role may name its own reviewer",
+             lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py reviewer"'),
+             "only the coordinating assistant may call")
+        case("the coordinating role can no longer name a reviewer",
+             lambda d: edit(d, "assistants/coordinating.md", '  - "tools/explore.py reviewer"\n', ""), "no exploration could reach one")
         case("a role loses its own place to write its account",
              lambda d: edit(d, "assistants/curating.md", '  - "record/curating/*.md"\n', ""), "its own place for its account")
         case("a role may write in another role's place",
@@ -322,7 +344,7 @@ def selftest(root: Path) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent, help="the repository (default: the one this file is in)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()

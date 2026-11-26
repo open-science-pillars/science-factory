@@ -1,0 +1,14 @@
+# The checkers `tools/knowledge.py check-drafts --checker` will run, each pinned by checksum.
+#
+# A checker is a program: whoever may call check-drafts would otherwise be able to have any file run, and to have
+# that file say the queue passed. So the tool runs a checker only when the bytes of the file it is given have a
+# checksum listed here, and it runs those bytes and no others. A file that is not listed is refused and not run.
+#
+# To take a new version of a checker: read it, then add its checksum here in a change that is reviewed like any
+# other change to the factory's files. No role may write this file (the per-call check keeps every role out of
+# factory/), and an entry is never added to make a failing queue pass.
+checkers:
+  - name: check_okf_v02.py
+    what: the organization's checker for the Open Knowledge Format v0.2
+    from: https://github.com/open-science-pillars/nasa-daac-knowledge, tools/check_okf_v02.py, at commit c04ae2e156ca8672c7724254a2c738bd252e9de6
+    sha256: cc11ab5fb2e7b6fbb5de1debe1af4ee10e55bb4615a24336fc3f98f496684d55

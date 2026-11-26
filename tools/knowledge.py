@@ -27,13 +27,19 @@ person signs.
                  any signature, has no sources, does not say what it was
                  drafted from, is a finding, or bears on the same subject as
                  a page already in the wiki without saying how it relates to
-                 it. With --checker it also runs the organization's own
-                 checker for its knowledge format (check_okf_v02.py) on the
-                 queue and refuses what that refuses. Writes the queue's
-                 index for the steward.
+                 it, or names as a source a path where no file is. With
+                 --checker it also runs the organization's own checker for
+                 its knowledge format (check_okf_v02.py) on the queue and
+                 refuses what that refuses. A checker is a program, so it is
+                 run only when the checksum of the file named is pinned in
+                 factory/checkers.yaml; any other file is refused and not
+                 run, and the bytes that were checked are the bytes that
+                 run. Writes the queue's index for the steward.
   import         copy the pages of another knowledge base into a wiki
                  directory, byte for byte, and write beside them where each
-                 came from, its checksum, its status and who signed it.
+                 came from, its checksum, its status and who signed it. A
+                 page in the wiki that a person signed is never written
+                 over by other words: such an import is refused whole.
   selftest       the tool tests itself (with --checker, the parts that need
                  the organization's checker too)
 
@@ -87,6 +93,7 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
 import argparse  # noqa: E402
 import datetime as dt  # noqa: E402
 import hashlib  # noqa: E402
+import importlib.util  # noqa: E402
 import json  # noqa: E402
 import math  # noqa: E402
 import re  # noqa: E402
@@ -98,6 +105,8 @@ from pathlib import Path  # noqa: E402
 import yaml  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+CHECKERS = HERE.parent / "factory" / "checkers.yaml"  # the checkers check-drafts will run, each pinned by checksum
+ADDRESS = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")  # a source that is an address (https:, doi:) and not a path
 NOT_CONCEPTS = ("index.md", "log.md", "DIGEST.md", "README.md", "INSTRUCTIONS.md")  # reserved documents, not pages
 HEADING = re.compile(r"^#\s+(.+?)\s*$", re.M)
 SIGNED_LINE = re.compile(r"^Signed-by:\s*(human:[A-Za-z0-9_.@/-]+)(?:[,\s]+(\S+))?", re.M)
@@ -382,20 +391,70 @@ def draft_problems(draft: tuple, queue: Path, bundles: list, bundle_entries: dic
     return problems, relations, over
 
 
-def check_drafts(queue: Path, bundles: list, checker: Path | None = None) -> tuple:
+def pinned_checkers(pins: Path = CHECKERS) -> dict:
+    """The checksums of the checkers this factory will run, each with the name it is listed under."""
+    try:
+        listed = (yaml.safe_load(pins.read_text(encoding="utf-8")) or {}).get("checkers") or []
+    except (OSError, yaml.YAMLError, AttributeError):
+        return {}
+    return {str(c["sha256"]).lower(): str(c.get("name") or "") for c in listed if isinstance(c, dict) and re.fullmatch(r"[0-9a-fA-F]{64}", str(c.get("sha256") or ""))}
+
+
+def run_checker(checker: Path, queue: Path, pins: Path = CHECKERS) -> tuple:
+    """(exit code, what it printed, what it wrote to standard error, its checksum). The file is read once; the bytes
+    that were read are the bytes whose checksum is looked up and the bytes that run, from a private copy, so the file
+    cannot be exchanged between the look-up and the run. A file whose checksum is not pinned is not run."""
+    try:
+        code_bytes = Path(checker).read_bytes()
+    except OSError:
+        raise Refused(f"the organization's checker is not at {checker} (it is tools/check_okf_v02.py in nasa-daac-knowledge)")
+    sha = hashlib.sha256(code_bytes).hexdigest()
+    pinned = pinned_checkers(pins)
+    if sha not in pinned:
+        raise Refused(f"`{checker}` is not a checker this factory runs: its checksum ({sha[:12]}...) is not pinned in "
+                      f"factory/checkers.yaml, so it is not run. check-drafts runs a checker only when its bytes are listed there "
+                      f"({', '.join(sorted(set(pinned.values()))) or 'none is listed'}); a new checker is pinned by a reviewed change "
+                      "to that file, never named on the command line by whoever wants the queue to pass")
+    private = Path(tempfile.mkdtemp(prefix="sf-checker-"))
+    try:
+        copy = private / (pinned[sha] or "checker.py")
+        copy.write_bytes(code_bytes)
+        run = subprocess.run([sys.executable, "-I", str(copy), str(queue)], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                             cwd=private)
+    finally:
+        shutil.rmtree(private, ignore_errors=True)
+    return run.returncode, run.stdout, run.stderr, sha
+
+
+def source_problems(name: str, p: Path, queue: Path, bundles: list, sources) -> list:
+    """A source that is a path names a file that exists: read from the folders above the queue (a path from the top
+    of the repository), from the draft's own folder, or from the folder the page would have in the wiki."""
+    out = []
+    rel_dir = p.parent.relative_to(queue)
+    for s_ in sources if isinstance(sources, list) else []:
+        res = str(s_.get("resource") or "").strip() if isinstance(s_, dict) else ""
+        if not res or ADDRESS.match(res):
+            continue
+        path = res.split("#", 1)[0]
+        bases = [p.parent, *list(queue.parents)[:8], queue] + [b / rel_dir for b in bundles]
+        if Path(path).is_absolute() or not any((b / path).exists() for b in bases):
+            out.append(f"{name}: the source `{res}` is a path and no file is there (read from the folders above the queue, the "
+                       "draft's own folder and its place in the wiki). A source exists: give the path of the receipt, or an address")
+    return out
+
+
+def check_drafts(queue: Path, bundles: list, checker: Path | None = None, pins: Path = CHECKERS) -> tuple:
     """(problems, the queue as a mapping). Nothing is written when there is a problem."""
     queue, bundles = Path(queue).resolve(), [Path(b).resolve() for b in bundles]
     if not queue.is_dir():
         raise Refused(f"the queue {queue} is not a directory")
-    if checker is not None and not Path(checker).is_file():
-        raise Refused(f"the organization's checker is not at {checker} (it is tools/check_okf_v02.py in nasa-daac-knowledge)")
-    problems, report = [], []
+    problems, report, checker_sha = [], [], None
     if checker is not None:
-        run = subprocess.run([sys.executable, "-I", str(checker), str(queue)], capture_output=True, text=True)
-        report = run.stdout.strip().splitlines()
-        if run.returncode != 0:
+        code, printed, complained, checker_sha = run_checker(Path(checker), queue, pins)
+        report = printed.strip().splitlines()
+        if code != 0:
             problems += ["the organization's checker: " + ln for ln in report if re.match(r"^[EF]\d", ln)] or [
-                "the organization's checker failed: " + (run.stderr.strip() or run.stdout.strip())[-300:]]
+                "the organization's checker failed: " + (complained.strip() or printed.strip())[-300:]]
     for p in sorted(queue.rglob("*.md")):
         if p.name not in NOT_CONCEPTS and front_matter(p)[0] is None:
             problems.append(f"{p.relative_to(queue).as_posix()}: no front matter that parses; a drafted page carries the queue's header")
@@ -413,6 +472,7 @@ def check_drafts(queue: Path, bundles: list, checker: Path | None = None) -> tup
         probs, relations, _ = draft_problems(d, queue, bundles, bundle_entries, generic)
         problems += probs
         p, fm, _ = d
+        problems += source_problems(p.relative_to(queue).as_posix(), p, queue, bundles, fm.get("sources"))
         key = " ".join(sorted(words(fm.get("title"))))
         if key in seen or p.stem in {q.stem for q in seen.values()}:
             problems.append(f"{p.relative_to(queue).as_posix()}: the queue already holds a draft with this title or name")
@@ -424,7 +484,7 @@ def check_drafts(queue: Path, bundles: list, checker: Path | None = None) -> tup
                         "relates_to": [{"concept": r["concept"], "relation": r["relation"], "why": r["why"]} for r in relations.values()],
                         "contradicts_a_concept": any(r["relation"] == "contradicts" for r in relations.values())})
     listing.sort(key=lambda d: (not d["contradicts_a_concept"], d["path"]))
-    return problems, {"for": "the steward", "drafts": listing, "signed": 0, "checker": ({"file": Path(checker).name, "sha256": sha_file(Path(checker)), "last_line": report[-1] if report else ""}
+    return problems, {"for": "the steward", "drafts": listing, "signed": 0, "checker": ({"file": Path(checker).name, "sha256": checker_sha, "last_line": report[-1] if report else ""}
                                                                             if checker is not None else None),
                       "says": "every page here is a draft. None is signed, and no assistant signs: a steward reads each, merges it "
                               "into the bundle by pull request, and signs with the organization's signing tool"}
@@ -461,7 +521,19 @@ def import_pages(source: Path, wiki: Path) -> list:
     source, wiki = Path(source).resolve(), Path(wiki).resolve()
     if not source.is_dir():
         raise Refused(f"{source} is not a directory")
-    out = []
+    out, in_the_way = [], []
+    for p, fm, body in concepts(source):  # look before anything is written: a signed page is never replaced by an import
+        dest = wiki / p.relative_to(source)
+        if dest.is_symlink() or (dest.exists() and not dest.is_file()):
+            in_the_way.append(f"{dest.relative_to(wiki).as_posix()} is a link or is not a file")
+        elif dest.is_file() and dest.read_bytes() != p.read_bytes():
+            there_fm, there_body = front_matter(dest)
+            signed, people = signed_by(there_fm or {}, there_body)
+            if signed:
+                in_the_way.append(f"{dest.relative_to(wiki).as_posix()} is signed by {', '.join(people)} and the page that would replace it differs")
+    if in_the_way:
+        raise Refused("nothing is imported: " + "; ".join(in_the_way[:6]) + (f"; and {len(in_the_way) - 6} more" if len(in_the_way) > 6 else "")
+                      + ". An import does not write over a page a person signed; a signed page is changed by its steward, by pull request")
     for p, fm, body in concepts(source):
         rel = p.relative_to(source)
         dest = wiki / rel
@@ -662,6 +734,80 @@ def selftest(checker: Path | None) -> int:
         ok("an imported wiki answers the same question with the same pages",
            {c["path"].rsplit("/", 1)[1] for c in about("How well does SWOT river height follow the gauge?", [tmp / "imported"])}
            == {c["path"].rsplit("/", 1)[1] for c in found})
+        # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) ----------------
+        draft()
+        ran_here = tmp / "CHECKER-RAN.txt"
+        evil = queue / "gotchas" / "evil_checker.py"
+        evil.write_text(f"from pathlib import Path\nPath({str(ran_here)!r}).write_text('ran')\nprint('F001 pretending to be a checker line')\n")
+        ok("a file named as the checker that is not pinned in the factory's files is refused, and it is not run",
+           _refuses(check_drafts, queue, [bundle], evil) and not ran_here.exists())
+        evil.unlink()
+        pins = tmp / "checkers.yaml"
+        good = tmp / "good_checker.py"
+        good.write_text("import sys\nprint('conformant, says the test checker')\nsys.exit(0)\n")
+        pins.write_text(yaml.safe_dump({"checkers": [{"name": "good_checker.py", "sha256": sha_file(good)}]}))
+        probs, q = check_drafts(queue, [bundle], good, pins)
+        ok("a checker whose checksum is pinned runs, and the queue records which bytes ran",
+           probs == [] and q["checker"]["sha256"] == sha_file(good) and q["checker"]["last_line"] == "conformant, says the test checker")
+        good.write_text(good.read_text() + f"from pathlib import Path\nPath({str(ran_here)!r}).write_text('ran')\n")
+        ok("the pinned file with one line added is another file: refused, and not run",
+           _refuses(check_drafts, queue, [bundle], good, pins) and not ran_here.exists())
+        other = tmp / "elsewhere" / "check_okf_v02.py"
+        other.parent.mkdir()
+        other.write_text(f"from pathlib import Path\nPath({str(ran_here)!r}).write_text('ran')\n")
+        ok("a file that only carries the pinned checker's name is refused, and not run",
+           _refuses(check_drafts, queue, [bundle], other) and _refuses(check_drafts, queue, [bundle], other, pins) and not ran_here.exists())
+        shipped = pinned_checkers()
+        ok("the factory's own list of pinned checkers parses and names the organization's checker",
+           "check_okf_v02.py" in shipped.values() and (checker is None or sha_file(Path(checker)) in shipped))
+        draft(sources=[{"id": "look", "resource": "explorations/NOPE/does-not-exist.json", "title": "nowhere"}])
+        ok("a draft whose source is a path with no file there is refused", any("no file is there" in p for p in check_drafts(queue, [bundle], None)[0]))
+        (tmp / "explorations" / "E1" / "receipts").mkdir(parents=True)
+        (tmp / "explorations" / "E1" / "receipts" / "LOOK-001.json").write_text("{}")
+        draft(sources=[{"id": "look", "resource": "explorations/E1/receipts/LOOK-001.json", "title": "the look"}])
+        ok("a draft whose source is a path from a folder above the queue passes when the file is there", check_drafts(queue, [bundle], None)[0] == [])
+        draft(sources=[{"id": "look", "resource": "../datasets/reach-product.md", "title": "a page of the wiki"}])
+        ok("a source may be a page of the wiki, by its path from the place the draft would have there", check_drafts(queue, [bundle], None)[0] == [])
+        draft(sources=[{"id": "look", "resource": str(tmp / "explorations/E1/receipts/LOOK-001.json"), "title": "an absolute path"}])
+        ok("a source given as a path from the top of the disk is refused: it is true on one machine only",
+           any("no file is there" in p for p in check_drafts(queue, [bundle], None)[0]))
+        draft()
+        # import never writes over a page a person signed
+        wiki2 = tmp / "wiki2"
+        import_pages(bundle, wiki2)
+        signed_page = wiki2 / "recipes" / "river-gauge-confrontation.md"
+        was = signed_page.read_bytes()
+        incoming = tmp / "incoming"
+        (incoming / "recipes").mkdir(parents=True)
+        (incoming / "gotchas").mkdir()
+        (incoming / "recipes" / "river-gauge-confrontation.md").write_text("---\ntype: recipe\ntitle: replaced\nstatus: draft\n---\n\n# Replaced\n\nUnsigned words.\n")
+        (incoming / "gotchas" / "datum.md").write_text("---\ntype: dataset-gotcha\ntitle: newer\nstatus: draft\n---\n\n# Newer\n")
+        unsigned_was = (wiki2 / "gotchas" / "datum.md").read_bytes()
+        ok("an import that would write over a signed page with other words is refused, and writes nothing at all",
+           _refuses(import_pages, incoming, wiki2) and signed_page.read_bytes() == was and (wiki2 / "gotchas" / "datum.md").read_bytes() == unsigned_was)
+        (incoming / "recipes" / "river-gauge-confrontation.md").write_text(
+            "---\ntype: recipe\ntitle: replaced\nverified: { by: human:someone-else, at: 2026-01-02T00:00:00Z }\nstatus: stable\n---\n\n# Replaced\n")
+        ok("a page that says it is signed does not replace a signed page either", _refuses(import_pages, incoming, wiki2) and signed_page.read_bytes() == was)
+        (incoming / "recipes" / "river-gauge-confrontation.md").unlink()
+        ok("a page nobody signed may be replaced by an import, and a signed page is copied again when it is the same bytes",
+           len(import_pages(incoming, wiki2)) == 1 and b"Newer" in (wiki2 / "gotchas" / "datum.md").read_bytes() and len(import_pages(bundle, tmp / "imported")) == len(got))
+        outside = tmp / "outside-the-wiki.md"
+        outside.write_text("kept")
+        (wiki2 / "gotchas" / "datum.md").unlink()
+        (wiki2 / "gotchas" / "datum.md").symlink_to(outside)
+        ok("an import does not write through a link in the wiki", _refuses(import_pages, incoming, wiki2) and outside.read_text() == "kept")
+
+        def parses(words: list) -> bool:
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    build_parser().parse_args(words)
+            except SystemExit:
+                return False
+            return True
+
+        ok("an option is taken only when it is spelled out: `--check` is not `--checker`",
+           parses(["check-drafts", "--queue", "q", "--wiki", "w", "--checker", "c"]) and not parses(["check-drafts", "--queue", "q", "--wiki", "w", "--check", "c"])
+           and not parses(["about", "--quest", "what?", "--wiki", "w"]))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
@@ -679,10 +825,11 @@ def _refuses(fn, *args) -> bool:
     return False
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def build_parser() -> argparse.ArgumentParser:
+    """Every command and every option, spelled out; no option is taken by its first letters."""
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("about")
+    p = sub.add_parser("about", allow_abbrev=False)
     p.add_argument("--question", required=True)
     p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, type=Path,
                    help="a wiki: a directory of Markdown pages (an Open Science Pillars knowledge bundle is one); repeatable")
@@ -691,19 +838,38 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=12)
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_about)
-    p = sub.add_parser("check-drafts")
+    p = sub.add_parser("check-drafts", allow_abbrev=False)
     p.add_argument("--queue", required=True)
     p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, help="the wiki the drafts would join; repeatable")
-    p.add_argument("--checker", default=None, help="the organization's checker for its knowledge format (tools/check_okf_v02.py in nasa-daac-knowledge); run when named")
+    p.add_argument("--checker", default=None, help="the organization's checker for its knowledge format (tools/check_okf_v02.py in nasa-daac-knowledge); run only when its checksum is pinned in factory/checkers.yaml")
     p.set_defaults(fn=cmd_check_drafts)
-    p = sub.add_parser("selftest")
+    p = sub.add_parser("selftest", allow_abbrev=False)
     p.add_argument("--checker", default=None)
-    p = sub.add_parser("import")
+    p = sub.add_parser("import", allow_abbrev=False)
     p.add_argument("--from", dest="source", required=True, help="the knowledge base to copy pages from")
     p.add_argument("--to", required=True, help="the wiki directory to copy them into")
     p.set_defaults(fn=cmd_import)
+    return ap
+
+
+def refuse_inside_a_look() -> None:
+    """A look runs a script on working data and calls no tool of this package; the study tool, beside this file,
+    holds the one reading of whether a process was started from inside a look."""
+    spec = importlib.util.spec_from_file_location("sf", HERE / "sf.py")
+    sf = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("sf", sf)
+    spec.loader.exec_module(sf)
+    why = sf.started_from_a_look()
+    if why:
+        raise Refused(f"this command was started from inside a look ({why}). A look runs a script on working data; it does "
+                      "not call the tools of this package")
+
+
+def main() -> int:
+    ap = build_parser()
     a = ap.parse_args()
     try:
+        refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest(Path(a.checker) if a.checker else None)
         return a.fn(a)

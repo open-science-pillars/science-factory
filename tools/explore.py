@@ -19,8 +19,9 @@ model. It makes five things true, whoever or whatever is exploring:
      what came out, in a log that is only ever added to and is chained by
      hash like the study log (the same code: this tool imports sf.py,
      which sits beside it in tools/).
-     A look that names what was set aside is refused, and the refusal is
-     logged.
+     A look that names what was set aside, or names anything in a way the
+     tool cannot confine, is refused, and the refusal is logged. A look runs
+     in a scratch folder that holds only what its command names.
   3. Choices are recorded with their alternatives and what they rest on,
      and the log keeps when: the lead sets every choice beside the looks
      that had already run when it was written down, so a choice logged
@@ -42,9 +43,12 @@ read (`knowledge.py about`, which reads pages and never data), so that the
 boundary of what is set aside comes from a page and not from a guess.
 `start` sets data aside. `known` and `read` then write into the log what
 was listed and read; the first look is refused until they have. Looks,
-choices and notes follow in any order. `lead` records a lead; a review
-assistant reviews it; a revised lead is reviewed again. `end` as a lead is
-refused until the latest lead has been reviewed, and `resolve` (the
+choices and notes follow in any order. `reviewer` names who will review,
+and is run by whoever coordinates, not by whoever explores. `lead` records
+a lead, and is refused until a reviewer is named; the named reviewer
+reviews it; a revised lead, and a lead corrected after its review, is
+reviewed again. `end` as a lead is refused until the lead as it stands has
+been reviewed, and `resolve` (the
 curating assistant's) is refused until the exploration has ended. Logs
 written before the tool held this order still check out; `check-log` says
 in a remark where an old log departs from it.
@@ -63,16 +67,20 @@ Commands.
                  refused until this has run
   read           say which concepts were read and what each changes
   look           run one script on working data; logged with checksums
-  recheck        run a logged look again, in a copy, and compare the output;
-                 adds nothing to the log (for the review assistant)
+  recheck        run a logged look again, on the same files by checksum, and
+                 compare the output; adds nothing to the log (for the
+                 review assistant), and says what was pinned
   choice         a choice, its alternatives, what it rests on
   note           something missing or wrong in the data or the knowledge
   lead           record the lead from a lead file (YAML)
   correct        replace one phrase in the recorded lead without a new
                  version: no number may change, and the lead shows the
-                 old and the new words
-  review         a review assistant that did none of the exploring records
-                 whether it found holes
+                 old and the new words; a correction made after a review
+                 undoes that review
+  reviewer       whoever coordinates the work names who will review, before a
+                 lead exists; `lead` is refused until this has run
+  review         a reviewer named that way, who did none of the exploring,
+                 records whether it found holes
   end            ended as a lead, a note, a method or a stop
   hand-over      what `sf.py start` needs, for a confirming study
   check-study    a study started from the lead keeps the fence
@@ -85,38 +93,86 @@ Commands.
 
 What a look is. A launcher the study tool knows (`{python}` followed by a
 script file, or `uv run` followed by a script file), then the script's own
-arguments, exactly as in a plan. It runs in the exploration directory with
-the environment the study tool builds for a command. What the script
-prints is the look's output, kept by checksum; what the launcher or the
-script writes to standard error (a warning, a traceback) is kept beside it
-and is not part of what a recheck compares. A picture the look writes into
-`figures/` (.svg, .png, .pdf, .jpg) is a figure of that look: the receipt
-lists it by checksum and a lead may show it. A line `comparisons: N` in
-the output says how many fits or cuts the look held, and the lead adds
-them up beside the count of looks.
+arguments, exactly as in a plan. Paths in the command are read from the
+exploration directory. The script does not run there. It runs in a scratch
+folder made for that one look, which holds the script and the files the
+command names (a file from outside the exploration is put under `outside/`
+and the word that named it is rewritten) and the files given with
+`--also-reads`, and nothing else: not the log, not the request, not a
+neighbour of the script. What the script prints is the look's output, kept
+by checksum; what it writes to standard error is kept beside it and is not
+part of what a recheck compares. What it writes in its folder is brought
+back into the exploration, except into the places the tool or a reviewer
+keeps (receipts/, verdicts/, review/, notes/, leads/, hand-over/, the log,
+the lead), and except a link, which is not followed. A picture it writes
+into `figures/` (.svg, .png, .pdf, .jpg) is a figure of that look: the
+receipt lists it by checksum and a lead may show it. A line
+`comparisons: N` in the output says how many fits or cuts the look held.
 
-What the lead's number check covers. Decimal numbers in the lead's own
-words (not in the proposed plan, whose numbers are proposals). Each must
-be printed, digit for digit and as a whole number, by a look the lead
-cites, or stand in a knowledge page the log records as read. Whole
-numbers, ratios in words ("2 of 52") and rounded numbers are not checked:
-a number rounded from a receipt is refused, so quote it as printed.
+What the lead's number check covers. Numbers in the lead's own words (not
+in the proposed plan, whose numbers are proposals), in every form a number
+with a fraction can be written: 7.7777, .8888, 8,8888, 8.888e0, 88888e-4,
+with a gap before the point, with a letter or a unit glued on; and a whole
+number given as a share (105 percent, 105%). Each must be printed, digit
+for digit, whole and in that form, by a look the lead cites, or stand in a
+page that was recorded as read and lies in a wiki `known` listed. A page
+the explorer wrote (in the exploration, in a role's own place, in a queue
+of drafts) backs nothing. Other whole numbers, ratios in words and numbers
+written out in words are not checked.
 
-What the fence checks, and what it cannot. Before a look runs, the tool
-reads every word of the command and every existing file the command names.
-It refuses a word that is a set-aside path, a set-aside site or release, or
-a date inside the set-aside window. A site is matched the ways people
-write it: `USGS-06935965` set aside also refuses the bare number
-`06935965`, as a word of its own, in a command, a script or a data file; a script or text file that names any
-of those; and a JSON data file whose `window`, or whose values under the
-time keys declared at the start, fall inside the set-aside window. After a
-look it reads every file the look left in the exploration directory the
-same way, and a file that crosses the fence spoils the exploration: no
-lead and no hand-over can come from it. What it cannot do is the first
-limit of the study tool, repeated here plainly: it cannot stop a script
-from reading public data from somewhere the command does not name, such
-as the network. Against that the barrier is instruction and the log.
-Names of who did what are typed, not proven, as in the study tool.
+What the fence does, in three layers, and what it cannot do.
+
+  Before a look runs, the tool reads every word of the command. It refuses
+  a word that is a set-aside path, site or release, or a date inside the
+  set-aside window; a site is matched the ways people write it
+  (`USGS-06935965` set aside also refuses the bare `06935965`). A word
+  names a file as itself or after an `=`, and every file so named, the
+  script and each `--also-reads` file are read: a script or text file that
+  names any of those things is refused, and so is a JSON data file whose
+  `window`, or whose values under the time keys declared at the start, or
+  in its rows, fall inside the set-aside window. Whatever could reach a
+  file the tool did not read is refused outright and not interpreted: a
+  folder, a pattern (* ? [ ] { }), a tilde path, a variable ($NAME),
+  several paths joined into one word, a path that leaves the exploration
+  and is not an existing file, and an environment variable that names an
+  existing path.
+
+  While it runs, the script is in the scratch folder described above. On
+  Linux with Landlock (kernel 5.13 or later) the kernel keeps the script,
+  and every process it starts, from opening anything but that folder, the
+  system's own folders, the interpreter, and the launcher's program, cache
+  and settings; the tool finds out by a probe whether that works here, and
+  each receipt says `kernel` or `scratch-only`. The exploration log is
+  held for as long as the script runs, so no command of this tool can
+  write to the exploration meanwhile; the study tool, this tool and the
+  knowledge tool refuse a
+  command whose ancestry holds a running look; and when the script ends,
+  whatever it left running is ended (on Linux, also a process that
+  detached itself).
+
+  After it has run, the tool reads what the look printed and every file it
+  left, the same way. Output or a file that crosses the fence spoils the
+  exploration (no lead and no hand-over can come from it), and that output
+  is withheld: it is neither kept nor shown. A change to the exploration
+  itself made from inside the script, the log included, spoils it too, and
+  the log is put back as it stood.
+
+  What it cannot do, said plainly. One user on one machine cannot be fenced
+  from their own files by a program they run. Where there is no kernel
+  fence (macOS, Windows, an old kernel) a script can open any path it
+  builds itself; the tool then catches only what comes back in the output
+  or in a file as a date in the window or a set-aside name, and a script
+  that prints a mean of set-aside rows and no date is not caught. With the
+  kernel fence, the script can still use the network, can still read
+  anything kept in the system's folders or in the launcher's cache, and
+  can ask a service already running on the machine to act for it. Times
+  kept as numbers and data that is not text are not read. A site under a
+  wholly different name is not matched. And nothing here sees a look made
+  outside the tool. Against all of that the barrier is instruction and the
+  log. Names of who did what are typed, not proven, as in the study tool:
+  the rule that a review comes from a reviewer named before the lead
+  existed stops a name invented at the review, not a person or a process
+  that types two names.
 
 Usage: explore.py <command> --exploration DIR [...]; explore.py selftest
 """
@@ -129,14 +185,18 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     sys.path[:] = [p for p in sys.path if p != _own]
 
 import argparse  # noqa: E402
+import contextlib  # noqa: E402
+import ctypes  # noqa: E402
 import datetime as dt  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
+import signal  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
+import time  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
@@ -182,7 +242,18 @@ FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in 
 ID_PREFIX = re.compile(r"^[A-Za-z]{2,10}[-_:]")      # the agency in front of a site number (USGS-, usgs:)
 COMPARISONS = re.compile(r"^comparisons:\s*(\d+)\s*$", re.I | re.M)
 DEPTHS = ("whole", "skimmed")
-NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over")  # kinds that do not make their actor part of the exploring
+NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.named")  # kinds that do not make their actor part of the exploring
+# A look runs in a scratch folder of its own, which holds its script and the files its command names and nothing else.
+PATTERN = set("*?[]{}")  # what a script could expand into names the tool never read
+JOINS = re.compile(r"[,:;@|]")  # what joins several paths into one word, or hides one behind a sign
+KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json")
+KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside")  # where a look leaves nothing
+PLACES_OF_THE_LAUNCHER = ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "UV_PYTHON_BIN_DIR",
+                          "UV_CONFIG_FILE", "UV_PYTHON", "UV_INSTALL_DIR")  # variables whose whole purpose is to name a path
+SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt", "/nix", "/proc", "/sys",
+                  "/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/run/systemd/resolve")
+CONFINED_BY_THE_KERNEL = "kernel"   # Landlock: the script could open the system's folders, the launcher's and its scratch folder, nothing else
+SCRATCH_ONLY = "scratch-only"       # no kernel fence here: the script ran in a scratch folder and could still open a path it built itself
 AFTER_END = ("note.resolved", "handed.over", "review.verdict")
 LEAD_KEYS = ("what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
              "pitfalls", "proposed_plan")
@@ -205,6 +276,24 @@ class Exploration(sf.Study):
         super().__init__(d)
         self.log = self.d / "exploration-log.jsonl"
         self.set_aside_path = self.d / "set-aside.json"
+
+    @contextlib.contextmanager
+    def held(self):
+        """The exploration log, held for one writer. A look holds it for as long as its script runs, so a command
+        of this tool started meanwhile (from inside the script, or beside it) is refused and does not wait."""
+        self.d.mkdir(parents=True, exist_ok=True)
+        with self.log.open("a+") as f:
+            if sf.fcntl:
+                for attempt in range(60):
+                    try:
+                        sf.fcntl.flock(f, sf.fcntl.LOCK_EX | sf.fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                else:
+                    raise Refused("the exploration log is held: a look is running in this exploration, and no command writes "
+                                  "to the exploration until it has ended. A look does not call the tools")
+            yield f
 
     def add(self, actor: str, kind: str, data: dict) -> dict:
         self.check_actor(actor)
@@ -434,6 +523,18 @@ def reviewed(ev: list) -> bool:
     return bool(lead) and any(e["kind"] == "review.verdict" and e["seq"] > lead["seq"] for e in ev)
 
 
+def review_stands(ev: list) -> bool:
+    """Has a review assistant looked at the lead as it stands now? A new version and a correction of wording both
+    come after the review that went before them: the review covers the words the reviewer saw and no others."""
+    now = lead_on_file(ev)
+    return bool(now) and any(e["kind"] == "review.verdict" and e["seq"] > now["seq"] for e in ev)
+
+
+def reviewers(ev: list, before: int) -> dict:
+    """Who was named as a reviewer of this exploration before a given point of the log, and by whom."""
+    return {e["data"]["reviewer"].casefold(): e["actor"] for e in ev if e["kind"] == "reviewer.named" and e["seq"] < before}
+
+
 def listed_not_read(ev: list) -> list:
     """Pages `known` listed that no `read` has recorded, by checksum."""
     read = {e["data"]["sha256"] for e in ev if e["kind"] == "knowledge.read"}
@@ -487,6 +588,281 @@ def count(ev: list, kind: str) -> int:
 def open_notes(ev: list) -> list:
     done = {e["data"]["id"] for e in ev if e["kind"] == "note.resolved"}
     return [e for e in ev if e["kind"] == "note.raised" and e["data"]["id"] not in done]
+
+
+# ---- a look runs in a folder of its own ---------------------------------------
+def inside(folder: Path, f: Path) -> bool:
+    """Is a path, read as it is written and not through its links, inside a folder?"""
+    return Path(os.path.normpath(f)).is_relative_to(Path(os.path.normpath(folder)))
+
+
+def word_problems(x: Exploration, word: str) -> tuple:
+    """Read one word of a look's command the way the fence reads it: (why it cannot be confined, the existing files
+    it names). A word names a file as itself or after an `=`. Everything else a script could turn into a path the
+    tool never read is refused: a folder, a pattern, a tilde, a variable, several paths joined into one word, and a
+    path that leaves the exploration and is not an existing file."""
+    problems, files = [], []
+    whole = (x.d / word).exists() or (x.d / word).is_symlink() or "=" not in word
+    for c in [word if whole else word.split("=", 1)[1]]:
+        if not c or c == "{python}":
+            continue
+        f = x.d / c
+        if c.startswith("~"):
+            problems.append(f"the word `{word}` is a tilde path, which a script would expand itself: name the file by its path")
+        elif "$" in c or re.fullmatch(r"%\w+%", c):
+            problems.append(f"the word `{word}` names a variable, which a script would expand itself: name the file by its path")
+        elif set(c) & PATTERN:
+            problems.append(f"the word `{word}` holds a pattern ({' '.join(sorted(set(c) & PATTERN))}), which a script would expand "
+                            "into files the tool never read: name each file")
+        elif c.casefold().startswith("file:"):
+            problems.append(f"the word `{word}` is a file address: name the file by its path")
+        elif f.is_symlink() or f.exists():
+            if f.is_file():
+                files.append((c, f))
+            elif f.is_dir():
+                problems.append(f"the word `{word}` names a folder (`{c}`): a look names each file it reads, so the tool can read it first")
+            else:
+                problems.append(f"the word `{word}` names something that is neither a file nor a folder")
+        else:
+            pieces = [q for q in JOINS.split(c) if q and q != c]
+            held = [q for q in pieces if (x.d / q).exists() and ("/" in q or (x.d / q).is_file())]
+            if held:
+                problems.append(f"the word `{word}` holds the path `{held[0]}` joined to other things: name each file as a word of "
+                                "its own, or after an `=`")
+            elif Path(c).is_absolute() or ".." in Path(c).parts or any(".." in Path(q).parts or Path(q).is_absolute() for q in pieces):
+                problems.append(f"the word `{word}` names a place outside the exploration that is not an existing file: a look "
+                                "reads the files its command names and writes inside its own folder")
+    return problems, files[:1]
+
+
+def environment_problems(env: dict, sa: dict) -> list:
+    """Why the environment a look would be given cannot be passed on: a variable that names an existing path is a
+    way to hand a script a file the tool never read."""
+    p = []
+    for k, v in sorted(env.items()):
+        if k in PLACES_OF_THE_LAUNCHER:  # the launcher's own places: a file among them is read like a named file
+            p += file_problems(Path(v), sa, f"the file the variable {k} names") if os.path.isfile(v) else []
+            continue
+        if (k in ("PATH", "HOME", "TMPDIR", "TERM", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TZ") or k.startswith("XDG_")
+                or k.upper() in sf.CERTIFICATES_AND_PROXIES):
+            continue
+        if os.sep in v and os.path.exists(os.path.expanduser(v)):
+            p.append(f"the variable {k} names an existing path ({v}), which a script could read without the command naming it: "
+                     "unset it, and name the file in the command")
+        p += text_problems(v, sa, f"the variable {k}")
+    return p
+
+
+def place(x: Exploration, src: Path, taken: dict, prefix: str = "") -> str:
+    """Where a file goes in the scratch folder: its own place when it is inside the exploration, `outside/` when not."""
+    if inside(x.d, src) and Path(os.path.normpath(src)) != x.d:
+        at = Path(os.path.normpath(src)).relative_to(x.d).as_posix()
+    else:
+        at = f"outside/{prefix}{src.name}"
+    if at in taken and taken[at] != src:
+        raise Refused(f"two files of this look would land at `{at}` in its scratch folder ({taken[at]} and {src}): give them different names")
+    if at.split("/")[0] == "outside" and inside(x.d, src):
+        raise Refused(f"`{at}`: a look keeps the folder `outside/` for files from outside the exploration; name that file another way")
+    taken[at] = src
+    return at
+
+
+def landlock() -> int:
+    """The version of the kernel's Landlock this machine has, or 0: Linux 5.13 and later, where it is switched on."""
+    if not sys.platform.startswith("linux"):
+        return 0
+    try:
+        v = ctypes.CDLL(None, use_errno=True).syscall(444, None, 0, 1)
+    except (OSError, AttributeError):
+        return 0
+    return v if v > 0 else 0
+
+
+def confine(read: list, write: list) -> None:
+    """Run in the child, before the script starts: from here on this process and everything it starts may open only
+    what is listed. Nothing it does afterwards can widen that. A failure ends the child, so nothing runs unconfined
+    that was meant to be confined."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    v = libc.syscall(444, None, 0, 1)
+    handled = (1 << (13 if v == 1 else 14 if v == 2 else 15 if v in (3, 4) else 16)) - 1  # every kind of file access this kernel knows
+    attr = ctypes.c_uint64(handled)
+    ruleset = libc.syscall(444, ctypes.byref(attr), 8, 0)
+    if ruleset < 0:
+        os._exit(120)
+
+    class Rule(ctypes.Structure):
+        _pack_ = 1
+        _fields_ = [("allowed", ctypes.c_uint64), ("fd", ctypes.c_int32)]
+
+    for paths, access in ((read, 1 | 4 | 8), (write, handled)):  # execute, read a file, list a folder; or everything
+        for q in paths:
+            try:
+                fd = os.open(q, os.O_PATH | os.O_CLOEXEC)
+            except OSError:
+                continue
+            allowed = access & handled if os.path.isdir(q) else access & handled & (1 | 2 | 4 | (1 << 14) | (1 << 15))
+            rule = Rule(allowed, fd)
+            if libc.syscall(445, ruleset, 1, ctypes.byref(rule), 0) != 0:
+                os._exit(121)
+            os.close(fd)
+    if libc.prctl(38, 1, 0, 0, 0) != 0 or libc.syscall(446, ruleset, 0) != 0:
+        os._exit(122)
+
+
+def open_to_a_look(x: Exploration, env: dict) -> tuple:
+    """(what a confined look may read, what it may write besides its scratch folder): the system's own folders, the
+    interpreter, and the launcher's program, cache, settings and certificates. A folder that holds the exploration
+    is never among them."""
+    home = Path(env.get("HOME") or os.path.expanduser("~"))
+    read = [q for q in SYSTEM_FOLDERS if os.path.exists(q)] + [sys.base_prefix, sys.prefix]
+    uv = shutil.which("uv", path=env.get("PATH"))
+    if uv:
+        read += [str(Path(uv).parent), str(Path(uv).resolve().parent)]
+    read += [env.get("UV_PYTHON_INSTALL_DIR") or str(Path(env.get("XDG_DATA_HOME") or home / ".local/share") / "uv"),
+             str(Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "uv"), "/etc/uv"]
+    read += [env[k] for k in env if k.upper() in sf.CERTIFICATES_AND_PROXIES[:4] and os.path.exists(env[k])]
+    read += [env[k] for k in ("UV_CONFIG_FILE", "UV_TOOL_DIR") if env.get(k)]
+    cache = env.get("UV_CACHE_DIR") or str(Path(env.get("XDG_CACHE_HOME") or home / ".cache") / "uv")
+    never = [x.d, home] + [Path(q) for q in x.set_aside().get("paths") or []]
+    ok = lambda q: os.path.exists(q) and not any(n.resolve().is_relative_to(Path(q).resolve()) for n in never)  # noqa: E731
+    return [q for q in dict.fromkeys(read) if ok(q)], [q for q in [cache] if ok(q)]
+
+
+def children() -> list:
+    """The processes whose parent is this one, as (pid, still running). Read from /proc; empty where there is none."""
+    out = []
+    try:
+        names = os.listdir("/proc")
+    except OSError:
+        return out
+    for name in names:
+        if name.isdigit():
+            try:
+                after = Path(f"/proc/{name}/stat").read_text().rsplit(")", 1)[1].split()
+            except (OSError, IndexError):
+                continue
+            if int(after[1]) == os.getpid():
+                out.append((int(name), after[0] != "Z"))
+    return out
+
+
+def run_apart(run: list, cwd: Path, env: dict, scratch: Path, fence: tuple | None, merged: bool = False) -> tuple:
+    """Run one command for a look and wait until nothing it started is left: (exit code, what it printed, what it
+    wrote to standard error, how many processes it left running that had to be ended). The command runs in a
+    process group of its own. On Linux this process also adopts whatever the command leaves behind when it exits
+    (a process that detached itself to act after the look), and ends it."""
+    if sys.platform.startswith("linux"):
+        try:
+            ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER: orphans of the look come to us
+        except (OSError, AttributeError):
+            pass
+    out_f, err_f = scratch / "stdout.txt", scratch / "stderr.txt"
+    try:
+        with out_f.open("w") as o, err_f.open("w") as e:
+            proc = subprocess.Popen(run, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=o, stderr=subprocess.STDOUT if merged else e,
+                                    start_new_session=True, preexec_fn=(lambda: confine(*fence)) if fence else None)
+            code = proc.wait()
+    except (OSError, subprocess.SubprocessError) as failure:
+        return 127, "", f"could not run: {failure}", 0
+    ended = 0
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    for _ in range(200):  # until nothing is left; a process that starts another while it is being ended is met again
+        left = children()
+        if not left:
+            break
+        for pid, running in left:
+            ended += running
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, signal.SIGKILL)
+            with contextlib.suppress(ChildProcessError):
+                os.waitpid(pid, 0)
+    return code, out_f.read_text(errors="replace"), "" if merged else err_f.read_text(errors="replace"), ended
+
+
+_PROBED = {}
+
+
+def kernel_fence(x: Exploration, launcher_words: list, env: dict) -> tuple | None:
+    """The folders a look is confined to by the kernel, or None when this machine cannot do that. Whether it can is
+    found by trying: a probe script is run through the same launcher under the same confinement, and it must run and
+    must fail to read a file put outside for it. The answer does not depend on the look's own script."""
+    if not landlock():
+        return None
+    fence = open_to_a_look(x, env)
+    key = (tuple(launcher_words), tuple(fence[0]), tuple(fence[1]))
+    if key not in _PROBED:
+        probe = Path(tempfile.mkdtemp(prefix="sf-look-probe-"))
+        try:
+            (probe / "work").mkdir()
+            (probe / "tmp").mkdir()
+            (probe / "kept-out.txt").write_text("kept out")
+            (probe / "work" / "probe.py").write_text(
+                "import sys\ntry:\n    open(sys.argv[1]).read()\n    print('read it')\nexcept PermissionError:\n    print('kept out')\n")
+            code, out, _err, _n = run_apart([*launcher_words, "probe.py", str(probe / "kept-out.txt")], probe / "work",
+                                            {**env, "TMPDIR": str(probe / "tmp")}, probe, (fence[0], fence[1] + [str(probe / "work"), str(probe / "tmp")]))
+            _PROBED[key] = code == 0 and out.strip() == "kept out"
+        finally:
+            shutil.rmtree(probe, ignore_errors=True)
+    return fence if _PROBED[key] else None
+
+
+def kept_place(rel: str) -> bool:
+    return rel in KEPT_FILES or rel.split("/")[0] in KEPT_PLACES
+
+
+def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: list, placed: list, merged: bool = False) -> dict:
+    """Run a look's command in a new scratch folder that holds the files it was given and nothing else, with the
+    exploration log held so that no command of this tool can write to the exploration meanwhile. Returns what
+    happened; the scratch folder is gone afterwards. Nothing the script wrote is put into the exploration here."""
+    scratch = Path(tempfile.mkdtemp(prefix="sf-look-")).resolve()
+    work = scratch / "work"
+    try:
+        for sub in ("work", "tmp", "cache", "work/figures"):
+            (scratch / sub).mkdir(parents=True)
+        for f in placed:
+            dest = work / f["at"]
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(Path(os.path.normpath(x.d / f["from"])), dest)
+        env = {k: os.environ[k] for k in sf.passed_names()}
+        fence = kernel_fence(x, launcher_words, env)
+        env.update(PYTHONPYCACHEPREFIX=str(scratch / "cache"), PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1",
+                   TMPDIR=str(scratch / "tmp"), SF_INSIDE_A_LOOK=x.d.name)
+        before = x.listing()
+        with x.held():  # the log is held for as long as the script runs: a tool called from inside it cannot add to the log
+            log_before = x.log.read_bytes()
+            code, out, err, ended = run_apart([sys.executable if w == "{python}" else w for w in argv_as_run], work, env, scratch,
+                                              (fence[0], fence[1] + [str(work), str(scratch / "tmp"), str(scratch / "cache")]) if fence else None, merged)
+            log_changed = not x.log.is_file() or x.log.is_symlink() or x.log.read_bytes() != log_before
+        if log_changed:  # put back, byte for byte, what stood before the script ran
+            if x.log.is_symlink() or x.log.is_dir():
+                x.log.unlink() if x.log.is_symlink() else shutil.rmtree(x.log)
+            x.log.write_bytes(log_before)
+        after = x.listing()
+        meddled = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        for k in meddled:  # a file the script put into the exploration itself is taken out again; one it changed cannot be put back
+            if k not in before:
+                with contextlib.suppress(OSError):
+                    (x.d / k).unlink()
+        given = {f["at"]: f["sha256"] for f in placed}
+        new, changed, odd = {}, [], []
+        for base, dirs, files in os.walk(work):
+            dirs.sort()
+            for name in sorted(files) + [d for d in dirs if (Path(base) / d).is_symlink()]:
+                q = Path(base) / name
+                rel = q.relative_to(work).as_posix()
+                if q.is_symlink() or not q.is_file():
+                    odd.append(rel)
+                elif rel in given:
+                    if sf.sha_file(q) != given[rel]:
+                        changed.append(rel)
+                else:
+                    new[rel] = q
+        return {"code": code, "out": out, "err": err, "ended": ended, "confined": CONFINED_BY_THE_KERNEL if fence else SCRATCH_ONLY,
+                "log_changed": log_changed, "meddled": meddled, "new": new, "changed": changed, "odd": odd, "scratch": scratch}
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
 
 
 # ---- commands -----------------------------------------------------------
@@ -661,20 +1037,6 @@ def cmd_read(x: Exploration, a) -> None:
           f"recorded ({WAY})")
 
 
-def named_files(x: Exploration, argv: list) -> dict:
-    """Every existing file a command names, by the word that names it, read from the exploration directory."""
-    out = {}
-    for word in argv:
-        word = str(word)
-        for tok in [word] + ([word.split("=", 1)[1]] if word.startswith("-") and "=" in word else []):
-            if not tok or tok == "{python}":
-                continue
-            f = x.d / tok
-            if f.is_file():
-                out[tok] = f
-    return out
-
-
 def cmd_look(x: Exploration, a) -> None:
     ev = x.events()
     start = x.started()
@@ -702,66 +1064,109 @@ def cmd_look(x: Exploration, a) -> None:
     here = set_aside_present(sa)
     if here:
         raise Refused(f"set-aside data is in the workspace ({here[0]}); an exploration does not fetch it and does not run beside it")
-    files = named_files(x, argv)
-    problems = []
+    at_script = argv.index(script, 1)
+    problems, named, taken = [], [], {}
     for word in argv:
         problems += text_problems(word, sa, f"the word `{word}`")
+    for i, word in enumerate(argv[at_script + 1:], at_script + 1):
+        why_not, files = word_problems(x, word)
+        problems += why_not
+        named += [(i, c, f) for c, f in files]
+    also = [str(w) for w in getattr(a, "also_reads", None) or []]
+    for w in also:
+        if not (x.d / w).is_file() or set(w) & PATTERN or w.startswith("~"):
+            problems.append(f"`--also-reads {w}` does not name one existing file (paths are read from the exploration directory)")
+    problems += environment_problems({k: os.environ[k] for k in sf.passed_names()}, sa)
+    files = {script: x.d / script, **{c: f for _i, c, f in named}, **{w: x.d / w for w in also if (x.d / w).is_file()}}
     for tok, f in files.items():
         problems += file_problems(f, sa, tok)
     if problems:
         x.add(a.by, "look.refused", {"argv": argv, "why": a.why, "refused_because": problems})
-        raise Refused("this look names what was set aside, so it is not run (the refusal is logged): " + "; ".join(problems[:4]))
+        raise Refused("this look names what was set aside, or names it in a way the tool cannot confine, so it is not run "
+                      "(the refusal is logged): " + "; ".join(problems[:4]))
+    # what goes into the scratch folder, and the command as it runs there: a file from outside the exploration is
+    # given to the script under `outside/`, and the word that named it is rewritten to say so
+    placed, argv_as_run = [], list(argv)
+
+    def give(word: str, f: Path, role: str, prefix: str = "") -> str:
+        at = place(x, f, taken, prefix)
+        placed.append({"word": word, "from": os.path.relpath(f, x.d), "at": at, "sha256": sf.sha_file(f), "bytes": f.stat().st_size, "role": role})
+        return at
+
+    argv_as_run[at_script] = give(script, x.d / script, "script")
+    for n, (i, c, f) in enumerate(named, 1):
+        at = give(c, f, "named", f"{n:02d}-")
+        if at != Path(os.path.normpath(c)).as_posix():
+            argv_as_run[i] = argv_as_run[i][:len(argv_as_run[i]) - len(c)] + at
+    for w in also:
+        give(w, x.d / w, "also-reads")
     n = count(ev, "look.run") + 1
     lid = f"LOOK-{n:03d}"
-    before = x.listing()
-    out_rel = f"receipts/{lid}.out.txt"
-    cache = tempfile.mkdtemp(prefix="sf-no-bytecode-")
-    env = {k: os.environ[k] for k in sf.passed_names()}
-    env.update(PYTHONPYCACHEPREFIX=cache, PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
-    run = [sys.executable if w == "{python}" else w for w in argv]
+    out_rel, err_rel = f"receipts/{lid}.out.txt", f"receipts/{lid}.err.txt"
+    ran = run_in_scratch(x, sa, argv_as_run, argv[:at_script], placed)
     try:
-        # what the script prints is the look's output; what goes to standard error (a launcher's warning, a traceback)
-        # is kept beside it, so the same look gives the same output on a machine whose launcher warns and one whose does not
-        done = subprocess.run(run, cwd=x.d, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True, errors="replace")
-        code, out, err = done.returncode, done.stdout, done.stderr
-    except OSError as failure:
-        code, out, err = 127, "", f"could not run: {failure}"
+        code, out, err = ran["code"], ran["out"], ran["err"]
+        crossing, wrote, not_kept = [], {}, []
+        crossing += text_problems(out, sa, "what the look printed") + text_problems(err, sa, "what the look wrote to standard error")
+        withheld = bool(crossing)  # set-aside data that came back in the output is not kept and is not shown to whoever ran the look
+        if ran["log_changed"]:
+            crossing.append("the exploration log was changed while the look ran, and the tool put it back as it stood: a look does not call the tools")
+        if ran["meddled"]:
+            crossing.append("the look changed files in the exploration itself, outside its scratch folder ("
+                            + ", ".join(ran["meddled"][:5]) + "): a look writes only into its own folder. A file it added was "
+                            "taken out again; a file it changed or removed could not be put back")
+        for rel, q in sorted(ran["new"].items()):
+            if kept_place(rel):
+                not_kept.append({"file": rel, "why": "a look leaves nothing in a place the tool or another role keeps"})
+                continue
+            crossed = file_problems(q, sa, rel, figure=rel.startswith("figures/"))
+            if crossed:
+                crossing += crossed
+                not_kept.append({"file": rel, "why": "it crosses the fence"})
+                continue
+            wrote[rel] = sf.sha_file(q)
+            (x.d / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(q, x.d / rel)
+        not_kept += [{"file": rel, "why": "a link, or not a plain file"} for rel in ran["odd"]]
+        not_kept += [{"file": rel, "why": "a file the look was given, changed in the scratch folder; the original is untouched"} for rel in ran["changed"]]
     finally:
-        shutil.rmtree(cache, ignore_errors=True)
+        shutil.rmtree(ran["scratch"], ignore_errors=True)
+    if withheld:
+        out = err = "[withheld by the tool: what the look printed crosses the fence, so it is neither kept nor shown]\n"
     (x.d / out_rel).write_text(f"[{WAY}: output of {lid}]\n" + out)
-    err_rel = f"receipts/{lid}.err.txt"
     if err.strip():
         (x.d / err_rel).write_text(f"[{WAY}: standard error of {lid}; not part of the output a recheck compares]\n" + err)
-    after = x.listing()
-    wrote = {k: v for k, v in after.items() if before.get(k) != v and k not in (out_rel, err_rel)}
     figures = [{"file": rel, "sha256": sha_, "bytes": (x.d / rel).stat().st_size} for rel, sha_ in sorted(wrote.items())
                if rel.startswith("figures/") and Path(rel).suffix.lower() in FIGURES]
-    crossing = []
-    for rel in wrote:
-        crossing += file_problems(x.d / rel, sa, rel, figure=rel.startswith("figures/"))
     crossing += [f"set-aside data appeared at {p}" for p in set_aside_present(sa)]
-    inputs = [{"word": tok, "sha256": sf.sha_file(f), "bytes": f.stat().st_size} for tok, f in files.items()]
+    inputs = [{"word": f["word"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in placed if f["role"] != "script"]
     declared = sum(int(n) for n in COMPARISONS.findall(out))
-    receipt = {"id": lid, "why": a.why, "argv": argv, "launcher": launcher, "script": {"word": script, "sha256": sf.sha_file(x.d / script)},
+    how = {"folder": "a scratch folder that held the files below and nothing else", "confined": ran["confined"], "placed": placed,
+           "argv_as_run": argv_as_run, "not_kept": not_kept, "processes_ended": ran["ended"],
+           "variables_that_name_places": {k: os.environ[k] for k in sf.passed_names() if k in PLACES_OF_THE_LAUNCHER}}
+    receipt = {"id": lid, "why": a.why, "argv": argv, "launcher": launcher, "script": {"word": script, "sha256": placed[0]["sha256"]},
                "inputs": inputs, "exit_code": code, "output": {"file": out_rel, "sha256": sf.sha_file(x.d / out_rel)},
                "standard_error": {"file": err_rel, "sha256": sf.sha_file(x.d / err_rel)} if err.strip() else None,
-               "figures": figures, "comparisons_declared": declared, "wrote": wrote, "at": sf.now(), "by": a.by}
+               "figures": figures, "comparisons_declared": declared, "wrote": wrote, "ran_in": how, "at": sf.now(), "by": a.by}
     sha = write_json(x.d / f"receipts/{lid}.json", receipt)
     x.add(a.by, "look.run", {"id": lid, "why": a.why, "argv": argv, "script_sha": receipt["script"]["sha256"], "inputs": inputs,
                              "exit_code": code, "output_sha": receipt["output"]["sha256"], "receipt_sha": sha,
                              "streams": "separate", "err_sha": receipt["standard_error"]["sha256"] if err.strip() else None,
                              "figures": figures, "comparisons_declared": declared,
-                             "wrote": wrote, "out_head": out[:1500]})
+                             "wrote": wrote, "ran_in": how, "out_head": out[:1500]})
     if crossing:
         x.add(a.by, "fence.breached", {"look": lid, "what": crossing})
     print(out, end="" if out.endswith("\n") or not out else "\n")
     if err.strip():
         print(err, end="" if err.endswith("\n") else "\n", file=sys.stderr)
     print(f"[{lid} logged ({WAY}), exit {code}, {len(inputs)} file(s) named, output in {out_rel}"
-          + (f", {len(figures)} figure(s): {', '.join(f_['file'] for f_ in figures)}" if figures else "") + "]")
+          + (f", {len(figures)} figure(s): {', '.join(f_['file'] for f_ in figures)}" if figures else "")
+          + ("; the script could open only the system's folders and its own scratch folder" if ran["confined"] == CONFINED_BY_THE_KERNEL
+             else "; NOT confined by the kernel on this machine: the script ran in a scratch folder, and a path it built itself was not stopped")
+          + (f"; {len(not_kept)} file(s) it wrote were not kept" if not_kept else "")
+          + (f"; {ran['ended']} process(es) it left running were ended" if ran["ended"] else "") + "]")
     if crossing:
-        raise Refused(f"{lid} left set-aside data in the exploration ({crossing[0]}). The exploration is spoiled: no lead and "
+        raise Refused(f"{lid} crossed the fence ({crossing[0]}). The exploration is spoiled: no lead and "
                       "no hand-over can come from it, and the data it held out is no longer held out for this subject")
 
 
@@ -786,30 +1191,51 @@ def cmd_recheck(x: Exploration, a) -> None:
             raise Refused(f"`{i['word']}` is not the file {d['id']} read; nothing is run")
     if set_aside_present(sa):
         raise Refused("set-aside data is in the workspace; nothing is run")
-    cache = tempfile.mkdtemp(prefix="sf-no-bytecode-")
-    env = {k: os.environ[k] for k in sf.passed_names()}
-    env.update(PYTHONPYCACHEPREFIX=cache, PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
-    copy = x.d.parent / f".recheck-{os.getpid()}"  # a copy at the same depth, so the look's relative paths still resolve
-    separate = d.get("streams") == "separate"  # a look logged before the tool kept standard error apart has both in its output
-    try:
-        shutil.copytree(x.d, copy, symlinks=True)
-        done = subprocess.run([sys.executable if w == "{python}" else w for w in d["argv"]], cwd=copy, env=env,
-                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE if separate else subprocess.STDOUT, text=True, errors="replace")
-    finally:
-        shutil.rmtree(cache, ignore_errors=True)
-        shutil.rmtree(copy, ignore_errors=True)
     head = f"[{WAY}: output of {d['id']}]\n"
-    same = sf.sha_text(head + done.stdout) == d["output_sha"] and done.returncode == d["exit_code"]
-    how = "the output is identical to what was logged"
-    if not same and not separate and done.returncode == d["exit_code"]:
-        # an old receipt holds the launcher's warnings in its output; they come and go with the machine, the numbers do not
-        logged = (x.d / f"receipts/{d['id']}.out.txt").read_text(errors="replace")
-        if sf.sha_text(logged) == d["output_sha"] and without_warnings(logged) == without_warnings(head + done.stdout):
-            same, how = True, ("the output is identical to what was logged once the launcher's `warning:` lines are set aside "
-                               "(this look was logged before the tool kept standard error apart)")
-    print(done.stdout, end="" if done.stdout.endswith("\n") else "\n")
-    print(f"[recheck of {d['id']} ({WAY}): exit {done.returncode}; " + (how + "]" if same else "THE OUTPUT DIFFERS from what was logged]"))
+    how_run = d.get("ran_in")
+    if how_run:  # the look ran in a scratch folder: the same folder is built again from the same files, by checksum
+        for f in how_run["placed"]:
+            if sf.sha_file(Path(os.path.normpath(x.d / f["from"]))) != f["sha256"]:
+                raise Refused(f"`{f['from']}` is not the file {d['id']} was given; nothing is run")
+        at_script = d["argv"].index(receipt["script"]["word"], 1)
+        ran = run_in_scratch(x, sa, how_run["argv_as_run"], d["argv"][:at_script], how_run["placed"])
+        shutil.rmtree(ran["scratch"], ignore_errors=True)
+        if ran["log_changed"] or ran["meddled"]:
+            raise Refused(f"the script of {d['id']} changed the exploration while it was run again ("
+                          + ", ".join((["the log, which the tool put back"] if ran["log_changed"] else []) + ran["meddled"][:5])
+                          + "): a look writes only into its own scratch folder")
+        code, out = ran["code"], ran["out"]
+        pinned = (f"it ran in a scratch folder holding the {len(how_run['placed'])} file(s) the look was given, each the same by checksum, "
+                  + ("and the kernel kept it from opening anything else but the system's folders"
+                     if ran["confined"] == CONFINED_BY_THE_KERNEL else
+                     "but this machine has no kernel fence, so a file the script opens by a path it builds itself is not pinned"))
+        same = sf.sha_text(head + out) == d["output_sha"] and code == d["exit_code"]
+        how = "the output is identical to what was logged"
+    else:  # a look logged before looks ran in a scratch folder: run the old way, in a copy of the exploration
+        cache = tempfile.mkdtemp(prefix="sf-no-bytecode-")
+        env = {k: os.environ[k] for k in sf.passed_names()}
+        env.update(PYTHONPYCACHEPREFIX=cache, PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1", SF_INSIDE_A_LOOK=x.d.name)
+        copy = x.d.parent / f".recheck-{os.getpid()}"  # a copy at the same depth, so the look's relative paths still resolve
+        separate = d.get("streams") == "separate"  # a look logged before the tool kept standard error apart has both in its output
+        try:
+            shutil.copytree(x.d, copy, symlinks=True)
+            code, out, _err, _ended = run_apart([sys.executable if w == "{python}" else w for w in d["argv"]], copy, env, Path(cache),
+                                                None, merged=not separate)
+        finally:
+            shutil.rmtree(cache, ignore_errors=True)
+            shutil.rmtree(copy, ignore_errors=True)
+        pinned = ("this look was logged before looks ran in a scratch folder: only its script and the files its command names are "
+                  "the same by checksum, and a file the script opens without the command naming it is not pinned")
+        same = sf.sha_text(head + out) == d["output_sha"] and code == d["exit_code"]
+        how = "the output is identical to what was logged"
+        if not same and not separate and code == d["exit_code"]:
+            # an old receipt holds the launcher's warnings in its output; they come and go with the machine, the numbers do not
+            logged = (x.d / f"receipts/{d['id']}.out.txt").read_text(errors="replace")
+            if sf.sha_text(logged) == d["output_sha"] and without_warnings(logged) == without_warnings(head + out):
+                same, how = True, ("the output is identical to what was logged once the launcher's `warning:` lines are set aside "
+                                   "(this look was logged before the tool kept standard error apart)")
+    print(out, end="" if out.endswith("\n") else "\n")
+    print(f"[recheck of {d['id']} ({WAY}): exit {code}; " + (how if same else "THE OUTPUT DIFFERS from what was logged") + f"; {pinned}]")
     if not same:
         raise Refused(f"{d['id']} does not reproduce: run again, the same script on the same files gives another output")
 
@@ -917,10 +1343,17 @@ def lead_problems(lead, ev: list) -> list:
     return p
 
 
-DECIMAL = re.compile(r"(?<![\w.])\d+\.\d+(?![\w]|\.\d)")
+# A number as a lead may quote it, in every form one can be written: 7.7777, .8888, 8,8888, 8.888e0, 88888e-4, and
+# with a gap before the point (8 .8888). What stands before or after it (a letter, a unit, a sign) does not hide it.
+QUOTED = re.compile(r"(?<![\d.,])(?:\d+\s+\.\d+|(?:\d+,\d+|\d*\.\d+)(?:[eE][+-]?\d+)?|(?<![A-Za-z])\d+[eE][+-]?\d+)")
+PERCENT = re.compile(r"(?<![\d.,])(\d+)\s*(?:%|per ?cent\b|per-cent\b)", re.I)  # a whole number given as a share
+PRINTED = re.compile(r"(?<![\d.])(?:\d+,\d+|\d*\.\d+|\d+)(?:[eE][+-]?\d+)?(?!\d)")  # a number as a look printed it, whole
+NOT_KNOWLEDGE = ("explorations", "looks", "record", "knowledge-queue")  # a page under one of these is somebody's working file
 
 
-PRINTED = re.compile(r"(?<![\d.])\d+\.\d+(?!\d)")  # a decimal number as a look printed it, whole
+def as_written(number: str) -> str:
+    """One spelling for comparing: no gap, a point for a decimal comma, a small e."""
+    return re.sub(r"\s+", "", number).replace(",", ".").lower()
 
 
 def own_words(lead: dict) -> list:
@@ -933,19 +1366,36 @@ def own_words(lead: dict) -> list:
     return texts
 
 
+def backing_pages(x: Exploration, ev: list) -> list:
+    """The pages recorded as read that can back a number: each stands, unchanged, inside a wiki that `known` listed,
+    and is not a file of this exploration, of a queue of drafts or of any role's own place. A page the explorer could
+    have written (a note in `looks/`, an account in `record/`, a draft) backs nothing."""
+    wikis = {Path(os.path.normpath(x.d / b)).resolve() for e in ev if e["kind"] == "knowledge.listed" for b in e["data"].get("bundles") or []}
+    out = []
+    for e in ev:
+        if e["kind"] == "knowledge.read":
+            f = Path(os.path.normpath(x.d / e["data"]["path"])).resolve()
+            if (f.is_file() and sf.sha_file(f) == e["data"]["sha256"] and any(f.is_relative_to(w) for w in wikis)
+                    and not f.is_relative_to(x.d) and not set(f.parts) & set(NOT_KNOWLEDGE)):
+                out.append(f)
+    return out
+
+
 def unbacked_numbers(x: Exploration, lead: dict, ev: list | None = None) -> list:
-    """Decimal numbers in the lead's own words that no look it cites printed and no knowledge page recorded as read holds.
-    A number counts only when it was printed whole: 1.4 is not backed by a look that printed 1.4826."""
+    """Numbers in the lead's own words that no look it cites printed and no knowledge page recorded as read holds.
+    A number counts only when it was printed whole and in the form the lead gives it: 1.4 is not backed by a look that
+    printed 1.4826, and .8888 is not backed by 0.8888. A whole number given as a share (105 percent) is checked too."""
     backed = set()
+    texts = []
     for lid in lead.get("evidence") or []:
         f = x.d / f"receipts/{lid}.out.txt"
-        backed |= set(PRINTED.findall(f.read_text(errors="replace"))) if f.is_file() else set()
-    for e in ev or []:  # a number quoted from a page that was read (a distance, a stated precision) is backed by the page
-        if e["kind"] == "knowledge.read":
-            f = Path(os.path.normpath(x.d / e["data"]["path"]))
-            if f.is_file() and sf.sha_file(f) == e["data"]["sha256"]:
-                backed |= set(PRINTED.findall(f.read_text(errors="replace")))
-    return sorted({n for t in own_words(lead) for n in DECIMAL.findall(t) if n not in backed})
+        texts += [f.read_text(errors="replace")] if f.is_file() else []
+    texts += [f.read_text(errors="replace") for f in backing_pages(x, ev or [])]
+    for t in texts:
+        backed |= {as_written(n) for n in PRINTED.findall(t)}
+    loose = {n.strip() for t in own_words(lead) for n in QUOTED.findall(t) if as_written(n) not in backed}
+    loose |= {m.group(0).strip() for t in own_words(lead) for m in PERCENT.finditer(t) if m.group(1) not in backed}
+    return sorted(loose)
 
 
 def render_lead(lead: dict) -> str:
@@ -1022,6 +1472,11 @@ def cmd_lead(x: Exploration, a) -> None:
     start = x.started()
     if breached(ev):
         raise Refused("this exploration is spoiled (set-aside data reached it); no lead comes from it")
+    if not reviewers(ev, len(ev)):
+        raise Refused("no reviewer is named for this exploration. Whoever coordinates the work names the reviewer before a lead "
+                      "exists (`explore.py reviewer --by <the coordinating assistant> --reviewer agent:review-...`), so that the "
+                      "name a review comes under was not chosen by the author once the lead was written. Hand the exploration "
+                      "back for that, then record the lead")
     src = Path(a.file).resolve()
     if not src.is_file():
         raise Refused(f"the lead file {a.file} does not exist")
@@ -1035,9 +1490,10 @@ def cmd_lead(x: Exploration, a) -> None:
     loose = unbacked_numbers(x, given, ev)
     if loose:
         raise Refused("the lead quotes numbers that none of the looks it cites under `evidence` printed (whole, digit for digit) "
-                      "and that no knowledge page recorded as read holds: " + ", ".join(loose[:12])
-                      + ". Every number in a lead comes from a look or a page that was read; cite the look, run it, or quote "
-                      "the number as it was printed and not rounded")
+                      "and that no page of a listed wiki recorded as read holds: " + "; ".join(loose[:12])
+                      + ". Every number in a lead comes from a look or a page of the knowledge base that was read; cite the look, "
+                      "run it, or quote the number as it was printed: not rounded, not in another form (a decimal comma, an "
+                      "exponent, a missing zero), and a share (`5 percent`) only when a look printed that number")
     drawn = {f["file"]: (e["data"]["id"], f["sha256"]) for e in ev if e["kind"] == "look.run" for f in e["data"].get("figures") or []}
     for fig in given.get("figures") or []:
         if sf.sha_file(x.d / fig["file"]) != drawn[fig["file"]][1]:
@@ -1082,7 +1538,8 @@ def cmd_correct(x: Exploration, a) -> None:
         raise Refused("a correction names the words as they stand (`--old`), the words to put in their place (`--new`) and why (`--why`)")
     if max(len(old), len(new)) > 300:
         raise Refused("a correction is one phrase (300 characters at most); a larger change is a new version of the lead")
-    if re.findall(r"\d+(?:\.\d+)?", old) != re.findall(r"\d+(?:\.\d+)?", new):
+    digits = lambda t: re.findall(r"\d+|[.,](?=\d)|(?<=\d)[eE](?=[+-]?\d)|(?<=[eE])[+-](?=\d)|%|\bper ?cent\b", t)  # noqa: E731
+    if digits(old) != digits(new):
         raise Refused("a correction changes words, never numbers: the numbers in `--old` and `--new` differ. A changed number "
                       "is a new version of the lead, which is reviewed again")
     for rx, instead in MISLEADING:
@@ -1123,7 +1580,9 @@ def cmd_correct(x: Exploration, a) -> None:
     x.add(a.by, "lead.corrected", {"version": version, "n": n, "old": old, "new": new, "why": why, "json_sha": sha,
                                    "md_sha": sf.sha_file(x.d / "lead.md")})
     print(f"lead version {version} corrected ({WAY}; correction {n}): one phrase, no number changed. The lead file you wrote "
-          "(lead.yaml) is yours to bring in line, so a later version starts from the corrected words.")
+          "(lead.yaml) is yours to bring in line, so a later version starts from the corrected words."
+          + (" A review recorded before this correction no longer covers the lead: it is reviewed again before the exploration "
+             "ends as a lead." if any(e["kind"] == "review.verdict" and e["seq"] > lead_ev["seq"] for e in ev) else ""))
 
 
 def cmd_review(x: Exploration, a) -> None:
@@ -1135,6 +1594,17 @@ def cmd_review(x: Exploration, a) -> None:
         raise Refused("there is nothing to review yet: no lead is recorded and the exploration has not ended")
     if a.by.casefold() in did_the_work(ev):
         raise Refused(f"{a.by} did part of this exploration; the review is by an assistant that did none of it")
+    target = last(ev, "lead.recorded") or last(ev, "exploration.ended")
+    named = reviewers(ev, target["seq"])
+    if a.by.casefold() not in named:
+        raise Refused(f"{a.by} was not named as a reviewer of this exploration before "
+                      + (f"lead version {target['data']['version']} was recorded" if target["kind"] == "lead.recorded" else "it ended")
+                      + ". A review comes from a reviewer the coordinating step named in the log beforehand (`explore.py reviewer`), "
+                      "never from a name first typed at the review"
+                      + (f". Named in time: {', '.join(sorted(named))}" if named else ""))
+    if named[a.by.casefold()].casefold() in did_the_work(ev):
+        raise Refused(f"{a.by} was named as a reviewer by {named[a.by.casefold()]}, who did part of this exploration; a reviewer "
+                      "is named by someone who did none of it")
     src = Path(a.file).resolve()
     if not src.is_file():
         raise Refused(f"the review file {a.file} does not exist")
@@ -1144,8 +1614,32 @@ def cmd_review(x: Exploration, a) -> None:
         shutil.copyfile(src, dest)
     lead = last(ev, "lead.recorded")
     x.add(a.by, "review.verdict", {"n": n, "verdict": a.verdict, "file": f"verdicts/{dest.name}", "sha": sf.sha_file(dest),
-                                   "of_lead_version": lead["data"]["version"] if lead else None})
+                                   "of_lead_version": lead["data"]["version"] if lead else None,
+                                   "of_lead_json_sha": lead_on_file(ev)["data"]["json_sha"] if lead else None,
+                                   "corrections_seen": sum(1 for e in ev if lead and e["kind"] == "lead.corrected" and e["seq"] > lead["seq"])})
     print(f"review {n} recorded ({WAY}): {a.verdict}")
+
+
+def cmd_reviewer(x: Exploration, a) -> None:
+    """Name who will review this exploration. It is done by whoever coordinates the work, before a lead exists."""
+    ev = x.events()
+    x.started()
+    x.check_actor(a.by)
+    x.check_actor(a.reviewer)
+    worked = did_the_work(ev)
+    if a.by.casefold() in worked:
+        raise Refused(f"{a.by} did part of this exploration; the reviewer is named by the coordinating step, which did none of it")
+    if a.reviewer.casefold() in worked:
+        raise Refused(f"{a.reviewer} did part of this exploration; a reviewer did none of it")
+    if a.reviewer.casefold() == a.by.casefold():
+        raise Refused("whoever names the reviewer is not the reviewer")
+    if a.reviewer.casefold() in reviewers(ev, len(ev)):
+        raise Refused(f"{a.reviewer} is already named as a reviewer of this exploration")
+    x.add(a.by, "reviewer.named", {"reviewer": a.reviewer})
+    lead = last(ev, "lead.recorded")
+    print(f"reviewer named ({WAY}): {a.reviewer}"
+          + (f". Lead version {lead['data']['version']} was recorded before this, so {a.reviewer} can review the next version, not that one"
+             if lead else ". A review of any lead recorded from now on is taken from this name"))
 
 
 def cmd_end(x: Exploration, a) -> None:
@@ -1162,6 +1656,9 @@ def cmd_end(x: Exploration, a) -> None:
         if not reviewed(ev):
             raise Refused("the latest lead has not been reviewed: an exploration ends as a lead only after a review assistant "
                           "has looked at the lead it ends on. Hand it back for review; `end` comes after the review is answered")
+        if not review_stands(ev):
+            raise Refused("the lead was corrected after it was reviewed: the review covers the words the reviewer saw, not the "
+                          "words that stand now. Hand it back for review; `end` comes after the corrected lead has been reviewed")
     if a.outcome == "note" and not count(ev, "note.raised"):
         raise Refused("no note is recorded; record it with `note`")
     if a.outcome == "method":
@@ -1189,6 +1686,8 @@ def handover_problems(x: Exploration, ev: list) -> list:
         verdicts = [e for e in ev if e["kind"] == "review.verdict" and e["seq"] > lead["seq"]]
         if not verdicts:
             p.append("no review assistant has looked at the latest lead")
+        elif not review_stands(ev):
+            p.append("the lead was corrected after its latest review, so no review covers the lead as it stands")
         for name, key in (("lead.json", "json_sha"), ("lead.md", "md_sha")):
             if sf.sha_file(x.d / name) != lead_on_file(ev)["data"][key]:
                 p.append(f"{name} is not the lead that was recorded")
@@ -1230,7 +1729,11 @@ def cmd_hand_over(x: Exploration, a) -> None:
         "**Held out.** Only what the exploration set aside: " + (f"{w['start']} to {'onward' if w.get('open_ended') else w['end']}" if w
                                                                else ", ".join(sa.get("sites") or sa.get("releases") or [])) + f". {sa.get('why')}", "",
         f"**The review of the lead.** {verdict['data']['verdict']} ({verdict['data']['file']} in the exploration), recorded "
-        f"under the name {verdict['actor']}; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
+        f"under the name {verdict['actor']}"
+        + (f", who was named as a reviewer by {reviewers(ev, len(ev)).get(verdict['actor'].casefold())} before the lead was recorded"
+           if verdict["actor"].casefold() in reviewers(ev, len(ev)) else "")
+        + (f". The lead's wording was corrected {len(lead['corrections'])} time(s) before that review, and not since" if lead.get("corrections") else "")
+        + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
         "Names are typed, not proven: whether the reviewer was a separate assistant with a fresh context is in the run's record, not in this line.", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
@@ -1387,6 +1890,8 @@ def stage_of(x: Exploration) -> dict:
               "looks_refused_at_the_fence": count(ev, "look.refused"), "choices": count(ev, "choice.recorded"),
               "knowledge_read": count(ev, "knowledge.read"), "listed_and_not_read": len(listed_not_read(ev)),
               "open_notes": [e["data"]["id"] for e in open_notes(ev)]}
+    if count(ev, "reviewer.named"):
+        counts["reviewers_named"] = sorted({e["data"]["reviewer"] for e in ev if e["kind"] == "reviewer.named"})
     if lead and count(ev, "lead.corrected"):
         counts["wording_corrections_to_the_latest_lead"] = sum(1 for e in ev if e["kind"] == "lead.corrected" and e["seq"] > lead["seq"])
     if breached(ev) and not ended:
@@ -1408,7 +1913,10 @@ def stage_of(x: Exploration) -> dict:
             here["handed_over_to"] = over["data"]["study_id"]
     elif not lead:
         here = {"stage": "explore", "who": "analysis assistant", "does": "look, record choices and notes, then write up the lead or end as a note, a method or a stop"}
-    elif not verdict or verdict["seq"] < lead["seq"]:
+        if not reviewers(ev, len(ev)):
+            here["before_a_lead"] = ("the coordinating assistant names the reviewer (explore.py reviewer); `lead` is refused until "
+                                     "a reviewer is named")
+    elif not verdict or verdict["seq"] < lead_on_file(ev)["seq"]:
         here = {"stage": "review", "who": "review assistant", "does": "pick holes in the lead (explore.py review)",
                 "not_yet": "the analysis assistant does not `end`, and the curating assistant does not `resolve`, until the latest lead is reviewed"}
     else:
@@ -1484,6 +1992,10 @@ def check_log(x: Exploration, posted: list | None = None) -> list:
         seq, _, h = str(mark).partition(":")
         if not (seq.isdigit() and int(seq) < len(ev) and ev[int(seq)]["hash"] == h):
             p.append(f"the log does not contain the posted fingerprint {mark}")
+    _tracked, committed = x.committed_log()
+    if committed is not None and not x.log.read_text().startswith(committed):
+        p.append("the exploration log is not the log that was last committed with more added to it: it was rewritten or cut "
+                 "short since the commit. A log is only ever added to")
     return p
 
 
@@ -1537,7 +2049,8 @@ class A:
                         subject="reach_id=R1,gauge=G1", working="calendar 2024", why="the next period, never read", studies=None,
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
-                        bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None)
+                        bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
+                        also_reads=None, reviewer=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
 
@@ -1551,7 +2064,6 @@ def _refusal(fn, *args) -> str:
 
 
 def selftest() -> int:
-    import contextlib
     import io
     results = []
 
@@ -1563,7 +2075,7 @@ def selftest() -> int:
             return fn(*args)
 
     def said(fn, *args) -> str:
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return _refusal(fn, *args)
 
     tmp = Path(tempfile.mkdtemp(prefix="explore-selftest-")).resolve()
@@ -1594,9 +2106,11 @@ def selftest() -> int:
         declared = tmp / "a_b_declared.json"
         declared.write_text(json.dumps({"window": {"start": "2025-01-01", "end": "2025-12-31"}, "rows": []}))
 
-        def fresh(name: str, **kw) -> Exploration:
+        def fresh(name: str, reviewer: str | None = "agent:tester-review", **kw) -> Exploration:
             x = Exploration(work / "explorations" / name)
             quiet(cmd_start, x, A(request=str(req), id=name, **kw))
+            if reviewer:  # the coordinating step names the reviewer before any lead exists
+                quiet(cmd_reviewer, x, A(by="agent:tester-coordinating", reviewer=reviewer))
             return x
 
         def script(x: Exploration, name: str, body: str) -> str:
@@ -2027,6 +2541,280 @@ def selftest() -> int:
         sm = script(m, "method.py", "print('m')\n")
         quiet(cmd_end, m, A(outcome="method", summary="a method that pairs passes", file=sm))
         ok("an exploration can end as a method, bound by checksum", last(m.events(), "exploration.ended")["data"]["method"]["sha256"] == sf.sha_file(m.d / sm))
+        # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) ----------------
+        # B1: set-aside data reached through a folder, a pattern, a tilde, a key=value word, a variable, a built path
+        k = fresh("E-7", subject="reach_id=R11,gauge=G11")
+        known(k)
+        held_dir = tmp / "kept-apart"
+        held_dir.mkdir()
+        shutil.copyfile(later, held_dir / "record.json")
+        anyp = script(k, "any.py", "import glob, json, os, sys\nfor a in sys.argv[1:]:\n    a = os.path.expanduser(os.path.expandvars(a.split('=', 1)[-1]))\n"
+                                   "    names = glob.glob(a) if set(a) & set('*?[') else [a]\n    for n in names:\n"
+                                   "        if os.path.isdir(n):\n            names += [os.path.join(n, f) for f in os.listdir(n)]\n            continue\n"
+                                   "        print('rows', len(json.load(open(n))['rows']))\n")
+        n_looks = count(k.events(), "look.run")
+        ok("a look that names a folder is refused: a folder is a way to reach a file the fence never read",
+           "names a folder" in look(k, ["{python}", anyp, str(held_dir)]) and "names a folder" in look(k, ["{python}", anyp, str(held_dir) + "/."]))
+        ok("a look that names set-aside data after an `=` is refused, because the file after the `=` is read by the fence",
+           "inside the set-aside window" in look(k, ["{python}", anyp, f"data={held_dir / 'record.json'}"])
+           and "inside the set-aside window" in look(k, ["{python}", anyp, f"--data={held_dir / 'record.json'}"]))
+        ok("a look that names a pattern is refused", "holds a pattern" in look(k, ["{python}", anyp, str(held_dir / "rec*.json")])
+           and "holds a pattern" in look(k, ["{python}", anyp, str(held_dir / "{record,other}.json")]))
+        ok("a look that names a tilde path is refused", "tilde path" in look(k, ["{python}", anyp, "~/somewhere/record.json"])
+           and "tilde path" in look(k, ["{python}", anyp, "data=~/somewhere/record.json"]))
+        ok("a look that names a variable for the script to expand is refused", "names a variable" in look(k, ["{python}", anyp, "$HOME/somewhere/record.json"]))
+        ok("a look that hides a path behind a sign, or joins several into one word, is refused",
+           "joined to other things" in look(k, ["{python}", anyp, f"@{held_dir / 'record.json'}"])
+           and "joined to other things" in look(k, ["{python}", anyp, f"{data},{held_dir / 'record.json'}"]))
+        ok("a look that names a place outside the exploration that is not an existing file is refused",
+           "outside the exploration" in look(k, ["{python}", anyp, "../../../nowhere/record.json"]))
+        os.environ["UV_SF_SELFTEST_DATA"] = str(held_dir / "record.json")
+        try:
+            ok("a look is refused when a variable it would be given names an existing path", "the variable UV_SF_SELFTEST_DATA" in look(k, ["{python}", anyp]))
+        finally:
+            del os.environ["UV_SF_SELFTEST_DATA"]
+        ok("none of those looks ran, and every refusal is in the log", count(k.events(), "look.run") == n_looks and count(k.events(), "look.refused") >= 11)
+        ok("a file named after an `=` runs when it is working data, and is logged as a file the look was given",
+           look(k, ["{python}", anyp, f"data={data}"]) == "" and last(k.events(), "look.run")["data"]["inputs"][0]["sha256"] == sf.sha_file(data)
+           and "rows 12" in last(k.events(), "look.run")["data"]["out_head"])
+        ran_in = last(k.events(), "look.run")["data"]["ran_in"]
+        ok("a look runs in a scratch folder that holds its script and the files it names, and the log says where each was put",
+           [f["at"] for f in ran_in["placed"]] == ["looks/any.py", "outside/01-a_b_2024.json"] and ran_in["argv_as_run"][-1] == "data=outside/01-a_b_2024.json"
+           and ran_in["confined"] in (CONFINED_BY_THE_KERNEL, SCRATCH_ONLY))
+        (k.d / "side.json").write_text(json.dumps({"rows": [1, 2, 3]}))
+        lister = script(k, "lister.py", "import os\nprint(sorted(os.path.join(b, f) for b, _d, fs in os.walk('.') for f in fs))\n")
+        look(k, ["{python}", lister])
+        ok("the scratch folder holds nothing the command did not name: not the log, not the request, not a file beside the script",
+           "side.json" not in last(k.events(), "look.run")["data"]["out_head"] and "exploration-log" not in last(k.events(), "look.run")["data"]["out_head"]
+           and "any.py" not in last(k.events(), "look.run")["data"]["out_head"] and "lister.py" in last(k.events(), "look.run")["data"]["out_head"])
+        built = script(k, "built.py", "import json, os\np = os.path.join(" + ", ".join(repr(q) for q in (held_dir / "record.json").parts) + ")\n"
+                                      "rows = json.load(open(p))['rows']\nprint('first time', rows[0]['time'])\n")
+        said_built = look(k, ["{python}", built])
+        e = last(k.events(), "look.run")
+        ok("a script that builds the path of set-aside data itself gets nothing usable: the kernel keeps it out where it can, and "
+           "where it cannot the set-aside values in what the look printed spoil the exploration and are withheld",
+           "2025-06-01" not in (k.d / f"receipts/{e['data']['id']}.out.txt").read_text() and "2025-06-01" not in e["data"]["out_head"]
+           and ((e["data"]["ran_in"]["confined"] == CONFINED_BY_THE_KERNEL and e["data"]["exit_code"] != 0 and not breached(k.events()))
+                or (e["data"]["ran_in"]["confined"] == SCRATCH_ONLY and "spoiled" in said_built and breached(k.events()))))
+
+        # the same attacks on a machine with no kernel fence, which the self-test stands in for by switching it off
+        real_landlock = globals()["landlock"]
+        globals()["landlock"] = lambda: 0
+        try:
+            kb = fresh("E-8", subject="reach_id=R12,gauge=G12")
+            known(kb)
+            builtb = script(kb, "built.py", (k.d / built).read_text())
+            ok("with no kernel fence, a script that reads set-aside data by a path it built spoils the exploration when it prints it, "
+               "and what it printed is withheld from the record and from whoever ran the look",
+               "spoiled" in look(kb, ["{python}", builtb]) and last(kb.events(), "look.run")["data"]["ran_in"]["confined"] == SCRATCH_ONLY
+               and "what the look printed names a date inside the set-aside window" in last(kb.events(), "fence.breached")["data"]["what"][0]
+               and "2025-06-01" not in (kb.d / "receipts/LOOK-001.out.txt").read_text() and "withheld" in (kb.d / "receipts/LOOK-001.out.txt").read_text())
+            kc = fresh("E-9", subject="reach_id=R13,gauge=G13")
+            known(kc)
+            log_was = kc.log.read_bytes()
+            forge = script(kc, "forge.py", "import json\nfrom pathlib import Path\n"
+                                           f"d = Path({str(kc.d)!r})\n"
+                                           "(d / 'verdicts' / 'REVIEW-001.md').write_text('no holes')\n"
+                                           "with (d / 'exploration-log.jsonl').open('a') as f:\n"
+                                           "    f.write(json.dumps({'kind': 'review.verdict', 'actor': 'agent:review-b'}) + chr(10))\n")
+            said_forge = look(kc, ["{python}", forge])
+            ok("with no kernel fence, a script that writes into the exploration itself (a forged line in the log, a forged verdict) "
+               "spoils the exploration, and the log is put back as it stood",
+               "spoiled" in said_forge and kc.log.read_bytes().startswith(log_was) and not any(e_["kind"] == "review.verdict" for e_ in kc.events())
+               and not (kc.d / "verdicts" / "REVIEW-001.md").exists()
+               and any("put it back" in q for q in last(kc.events(), "fence.breached")["data"]["what"])
+               and any("verdicts/REVIEW-001.md" in q for q in last(kc.events(), "fence.breached")["data"]["what"]))
+        finally:
+            globals()["landlock"] = real_landlock
+
+        # a look leaves nothing where the tool or another role keeps its files, and no process behind it
+        kd = fresh("E-10", subject="reach_id=R14,gauge=G14")
+        known(kd)
+        places = script(kd, "places.py", "import os\nfrom pathlib import Path\n"
+                                         "for p in ('verdicts/REVIEW-001.md', 'review/r.md', 'exploration-log.jsonl', 'lead.md', 'receipts/LOOK-009.json', 'notes/NOTE-001.json'):\n"
+                                         "    Path(p).parent.mkdir(parents=True, exist_ok=True)\n    Path(p).write_text('forged')\n"
+                                         "Path('figures').mkdir(exist_ok=True)\nos.symlink('/etc/hostname', 'figures/link.svg')\n"
+                                         "Path('table.csv').write_text('a,b' + chr(10) + '1,2' + chr(10))\nprint('done')\n")
+        ok("a look runs", look(kd, ["{python}", places]) == "")
+        e = last(kd.events(), "look.run")
+        ok("what a look writes where the tool or a reviewer keeps files is not kept, a link it leaves is not followed, and its own files are",
+           not (kd.d / "verdicts/REVIEW-001.md").exists() and not (kd.d / "review/r.md").exists() and not (kd.d / "lead.md").exists()
+           and not (kd.d / "receipts/LOOK-009.json").exists() and not (kd.d / "figures/link.svg").exists() and (kd.d / "table.csv").is_file()
+           and list(e["data"]["wrote"]) == ["table.csv"] and len(e["data"]["ran_in"]["not_kept"]) == 7 and check_log(kd) == [])
+        if sys.platform.startswith("linux"):
+            stay = script(kd, "stay.py", "import subprocess, sys\np = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True,\n"
+                                         "                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\nprint('left', p.pid)\n")
+            look(kd, ["{python}", stay])
+            e = last(kd.events(), "look.run")
+            left = int(e["data"]["out_head"].split("left")[1].split()[0])
+            ok("a process a look detaches, to act once the look is over, is ended with the look",
+               e["data"]["ran_in"]["processes_ended"] >= 1 and not Path(f"/proc/{left}").exists())
+        else:
+            ok("a process a look detaches is ended with the look (checked on Linux only; elsewhere its process group is ended)", True)
+
+        # M4: a file a script reads without the command naming it is declared, read by the fence and pinned
+        knob = script(kd, "knob.py", "print('gain', float(open('knob.txt').read()))\n")
+        (kd.d / "knob.txt").write_text("1.25\n")
+        look(kd, ["{python}", knob])
+        ok("a script that reads a file its command does not name does not find it in its scratch folder",
+           last(kd.events(), "look.run")["data"]["exit_code"] != 0)
+        ok("the same look runs when the file is declared with --also-reads, and the receipt holds it by checksum",
+           said(cmd_look, kd, A(argv=["--", "{python}", knob], why="the gain with its setting", also_reads=["knob.txt"])) == ""
+           and "gain 1.25" in last(kd.events(), "look.run")["data"]["out_head"]
+           and any(f["at"] == "knob.txt" and f["role"] == "also-reads" for f in last(kd.events(), "look.run")["data"]["ran_in"]["placed"]))
+        knob_look = last(kd.events(), "look.run")["data"]["id"]
+        ok("that look reproduces", said(cmd_recheck, kd, A(look=knob_look)) == "")
+        (kd.d / "knob.txt").write_text("1.50\n")
+        ok("a recheck is refused when a file the look read without naming it has changed: it is not run on another setting",
+           "is not the file" in said(cmd_recheck, kd, A(look=knob_look)))
+        (kd.d / "knob.txt").write_text("1.25\n")
+        ok("a file declared with --also-reads is read by the fence like any other",
+           "inside the set-aside window" in said(cmd_look, kd, A(argv=["--", "{python}", knob], why="x", also_reads=[str(later)])))
+
+        # S2: a look cannot call the tools, and a review comes only from a reviewer named before the lead existed
+        fake = tmp / "fake" / "explore.py"  # a process whose command line reads `explore.py look`, as a real look's does
+        fake.parent.mkdir()
+        fake.write_text("import os, subprocess, sys\nenv = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'SF_'))}\n"
+                        "for tool in sys.argv[2:]:\n"
+                        "    r = subprocess.run([sys.executable, tool, 'status', '--study' if tool.endswith('sf.py') else '--exploration', 'x'],\n"
+                        "                       env=env, capture_output=True, text=True)\n"
+                        "    print(r.returncode, 'inside a look' in r.stderr)\n")
+        nested = subprocess.run([sys.executable, str(fake), "look", str(HERE / "sf.py"), str(HERE / "explore.py")], capture_output=True, text=True,
+                                env={k_: v for k_, v in os.environ.items() if not k_.startswith("SF_")})
+        ok("a tool started from under a look refuses, whatever the script took out of its environment: it reads its own ancestry",
+           nested.stdout.split() == ["2", "True", "2", "True"])
+        kn = subprocess.run([sys.executable, str(HERE / "knowledge.py"), "about", "--question", "does A follow B?", "--wiki", str(bundle)],
+                            capture_output=True, text=True, env={**os.environ, "SF_INSIDE_A_LOOK": "E"})
+        ok("the knowledge tool refuses inside a look too", kn.returncode == 2 and "inside a look" in kn.stderr)
+        r = fresh("E-11", subject="reach_id=R15,gauge=G15", reviewer=None)
+        known(r)
+        selfreview = script(r, "selfreview.py",
+                            "import os, subprocess, sys\nenv = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'SF_'))}\n"
+                            f"x, tool = {str(r.d)!r}, {str(HERE / 'explore.py')!r}\n"
+                            "for words in (['reviewer', '--exploration', x, '--by', 'agent:coordinating-b', '--reviewer', 'agent:review-b'],\n"
+                            "              ['note', '--exploration', x, '--by', 'agent:review-b', '--kind', 'missing', '--about', 'a', '--text', 'b']):\n"
+                            "    r = subprocess.run([sys.executable, tool, *words], env=env, capture_output=True, text=True)\n"
+                            "    print('nested exit', r.returncode)\nprint('rows 12')\n")
+        real = subprocess.run([sys.executable, str(HERE / "explore.py"), "look", "--exploration", str(r.d), "--by", "agent:tester-analysis", "--why",
+                               "a look that tries to call the tool", "--", "{python}", selfreview], capture_output=True, text=True)
+        ok("a look whose script shells out to this tool gets nowhere: both calls fail, and nothing but the look is added to the log",
+           real.returncode == 0 and real.stdout.count("nested exit") == 2 and "nested exit 0" not in real.stdout
+           and [e_["kind"] for e_ in r.events()][-1] == "look.run" and not count(r.events(), "reviewer.named") and not count(r.events(), "note.raised"))
+        with r.held():
+            waiting = subprocess.run([sys.executable, str(HERE / "explore.py"), "note", "--exploration", str(r.d), "--by", "agent:tester-analysis",
+                                      "--kind", "missing", "--about", "a", "--text", "b"], capture_output=True, text=True)
+        ok("while a look holds the exploration log, a command that would write to it is refused and does not wait",
+           waiting.returncode == 2 and "log is held" in waiting.stderr and not count(r.events(), "note.raised"))
+        rl = {"what_looks_true": "A follows B closely over the year, on changes, across 12 rows.", "how_it_was_found": "By pairing the two records and counting rows.",
+              "evidence": ["LOOK-001"], "choices_that_would_change_it": [], "choices_that_would_not": [], "pitfalls": [],
+              "proposed_plan": {"question": "Is the gain of A on B within five percent of one?", "quantity_estimated": "the gain",
+                                "difference_that_matters": "five percent", "rule_sketch": "interval inside the band"}}
+        rf = r.d / "lead.yaml"
+        rf.write_text(yaml.safe_dump(rl))
+        ok("a lead is refused until a reviewer has been named: the name a review comes under is fixed before the lead exists",
+           "no reviewer is named" in said(cmd_lead, r, A(file=str(rf))) and "before_a_lead" in stage_of(r))
+        ok("whoever did the exploring cannot name the reviewer, and cannot be named",
+           "did part of this exploration" in said(cmd_reviewer, r, A(by="agent:tester-analysis", reviewer="agent:review-b"))
+           and "did part of this exploration" in said(cmd_reviewer, r, A(by="agent:tester-coordinating", reviewer="agent:TESTER-analysis"))
+           and "is not the reviewer" in said(cmd_reviewer, r, A(by="agent:review-b", reviewer="agent:review-b")))
+        quiet(cmd_reviewer, r, A(by="agent:tester-coordinating", reviewer="agent:tester-review"))
+        quiet(cmd_lead, r, A(file=str(rf)))
+        ok("a review under a fresh name, never named as a reviewer, is refused",
+           "was not named as a reviewer" in said(cmd_review, r, A(by="agent:review-b", verdict="no-holes-found", file=str(vf))))
+        quiet(cmd_reviewer, r, A(by="agent:tester-coordinating", reviewer="agent:review-late"))
+        ok("a reviewer named after the lead was recorded cannot review that lead",
+           "was not named as a reviewer of this exploration before lead version 1" in said(cmd_review, r, A(by="agent:review-late", verdict="no-holes-found", file=str(vf))))
+        ok("the reviewer named before the lead may review it, and status lists who is named",
+           said(cmd_review, r, A(by="agent:tester-review", verdict="no-holes-found", file=str(vf))) == ""
+           and stage_of(r)["reviewers_named"] == ["agent:review-late", "agent:tester-review"])
+        rs = fresh("E-12", subject="reach_id=R16,gauge=G16", reviewer=None)
+        quiet(cmd_reviewer, rs, A(by="agent:sock-coordinating", reviewer="agent:sock-review"))
+        known(rs)
+        quiet(cmd_note, rs, A(by="agent:sock-coordinating", kind="dead-end", about="x", text="the namer now does part of the work", evidence=None))
+        quiet(cmd_end, rs, A(outcome="note", summary="ended as a note"))
+        ok("a reviewer named by a name that then did part of the work is not taken",
+           "who did part of this exploration" in said(cmd_review, rs, A(by="agent:sock-review", verdict="no-holes-found", file=str(vf))))
+
+        # S5: a correction made after the review undoes the review
+        ok("a correction made after the review is taken, and says the lead must be reviewed again",
+           said(cmd_correct, r, A(old="follows B closely", new="is beyond any doubt identical to B", why="wording")) == "")
+        ok("after it the lead is no longer reviewed: the exploration does not end as a lead, and status names the review assistant",
+           "corrected after it was reviewed" in said(cmd_end, r, A(outcome="lead", summary="x")) and stage_of(r)["stage"] == "review")
+        quiet(cmd_review, r, A(by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        quiet(cmd_end, r, A(outcome="lead", summary="A follows B; worth a test"))
+        quiet(cmd_hand_over, r, A(by="agent:tester-coordinating", study_id="STUDY-R"))
+        handed = (r.d / "hand-over/request.md").read_text()
+        ok("the hand-over then carries the verdict of the review that saw the corrected words, and says so",
+           "holes-found" in handed and "no-holes-found" not in handed and "corrected 1 time(s) before that review, and not since" in handed
+           and "named as a reviewer by agent:tester-coordinating" in handed and last(r.events(), "review.verdict")["data"]["corrections_seen"] == 1)
+        ok("a correction cannot change a number written another way: a decimal comma, a missing zero, an exponent, a share",
+           all("never numbers" in said(cmd_correct, w, A(old="a gain of 1.4826", new=new_, why="x"))
+               for new_ in ("a gain of 1,4826", "a gain of 1.4826e1", "a gain of 1.4826 percent", "a gain of 11.4826", "a gain of .4826")))
+
+        # M1: a number is a number however it is written, and a page the explorer wrote backs nothing
+        m1 = fresh("E-13", subject="reach_id=R17,gauge=G17")
+        known(m1)
+        look(m1, ["{python}", script(m1, "fit.py", "print('gain 1.4826 on 12 rows')\n")])
+        m1f = m1.d / "lead.yaml"
+
+        def m1_says(text: str) -> str:
+            m1f.write_text(yaml.safe_dump({**rl, "what_looks_true": f"A looks as if it follows B, {text}, over the whole year."}))
+            return said(cmd_lead, m1, A(file=str(m1f)))
+
+        forms = ("7.7777x", "3.3333m", ".8888", "8,8888", "8.888e0", "88888e-4", "8 .8888", "105 percent", "105%", "x7.7777", "1.4826e0", "1.48")
+        refused = {f_: "quotes numbers" in m1_says(f"with a gain of {f_}") for f_ in forms}
+        ok("a number no look printed is refused in every form it can be written: " + ", ".join(forms)
+           + (f" (let through: {[f_ for f_, hit in refused.items() if not hit]})" if not all(refused.values()) else ""), all(refused.values()))
+        own = m1.d / "looks" / "my-note.md"
+        own.write_text("# A note of my own\n\nThe gain is 6.6666.\n")
+        quiet(cmd_read, m1, A(concept=str(own), takes="my own note"))
+        stray = bundle.parent / "stray.md"
+        stray.write_text("# A page in no wiki\n\nThe gain is 5.5555.\n")
+        quiet(cmd_read, m1, A(concept=str(stray), takes="a page outside every listed wiki"))
+        ok("a page the explorer wrote and recorded as read backs no number, and neither does a page outside every listed wiki",
+           "6.6666" in m1_says("with a gain of 6.6666") and "5.5555" in m1_says("with a gain of 5.5555"))
+        ok("a number a cited look printed, and one from a page of a listed wiki that was read, are still taken",
+           m1_says("with a gain of 1.4826 at sites 0.44 km apart") == "")
+
+        # M5: a rewritten log shows against the commit, with no fingerprint given
+        if sf.git("--version") is not None:
+            repo = tmp / "repo"
+            gx = Exploration(repo / "explorations" / "E-G")
+            (repo / "explorations").mkdir(parents=True)
+            quiet(cmd_start, gx, A(request=str(req), id="E-G", subject="reach_id=R18,gauge=G18"))
+            quiet(cmd_known, gx, A(bundle=[str(bundle)], question=None))
+            quiet(cmd_note, gx, A(kind="missing", about="a", text="b", evidence=None))
+            sf.git("-C", str(repo), "init", "-q")
+            sf.git("-C", str(repo), "add", "-A")
+            sf.git("-C", str(repo), "-c", "user.name=selftest", "-c", "user.email=selftest@example.invalid", "commit", "-q", "-m", "an exploration")
+            ok("a committed exploration log checks out, and still does once more is added to it",
+               check_log(gx) == [] and said(cmd_note, gx, A(kind="missing", about="c", text="d", evidence=None)) == "" and check_log(gx) == [])
+            ev_ = gx.events()[:2]  # cut short, and chained again from the first line: every hash is right
+            ev_[1]["data"]["question"] = "another question?"
+            prev = ev_[0]["hash"]
+            body = {k_: ev_[1][k_] for k_ in ("seq", "at", "actor", "kind", "data")}
+            ev_[1] = {**body, "prev": prev, "hash": gx._digest(prev, body)}
+            gx.log.write_text("".join(json.dumps(e_, sort_keys=True) + "\n" for e_ in ev_))
+            (gx.d / "notes").rename(gx.d / "notes-gone")
+            ok("a log rewritten with every hash right, or cut short, passes its own chain and is caught against the commit",
+               gx._chain(gx.events()) == [] and any("last committed" in q for q in check_log(gx)))
+        else:
+            ok("a log rewritten with every hash right is caught against the commit (not run: no git here)", True)
+
+        # S1: no option is taken by its first letters
+        def parses(words: list) -> bool:
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    build_parser().parse_args(words)
+            except SystemExit:
+                return False
+            return True
+
+        ok("an option is taken only when it is spelled out: `--b` is not `--by`",
+           parses(["note", "--exploration", "x", "--by", "agent:a", "--kind", "missing", "--about", "a", "--text", "b"])
+           and not parses(["note", "--exploration", "x", "--b", "agent:review-9", "--kind", "missing", "--about", "a", "--text", "b"])
+           and not parses(["note", "--exploration", "x", "--b=human:someone", "--kind", "missing", "--about", "a", "--text", "b"])
+           and not parses(["status", "--explor", "x"]))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
@@ -2037,11 +2825,11 @@ def selftest() -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def add(name, fn, *args):
-        p = sub.add_parser(name)
+        p = sub.add_parser(name, allow_abbrev=False)  # no option is taken by its first letters: `--b` is not `--by`
         p.add_argument("--exploration", required=True, help="the exploration directory")
         for names, kw in args:
             p.add_argument(*names, **kw)
@@ -2075,7 +2863,11 @@ def build_parser() -> argparse.ArgumentParser:
     add("read", cmd_read, by, (["--concept"], {"required": True, "help": "the page: the path `known` printed for it, its path below the wiki, or the file"}),
         (["--takes"], {"required": True, "help": "what this concept rules in, rules out or warns about, for this question"}),
         (["--depth"], {"default": "whole", "help": "whole (the default) or skimmed: a page that came in on a stray word may be skimmed, and the lead says so"}))
-    look = add("look", cmd_look, by, (["--why"], {"required": True, "help": "what this look is trying to find out"}))
+    look = add("look", cmd_look, by, (["--why"], {"required": True, "help": "what this look is trying to find out"}),
+               (["--also-reads"], {"action": "append", "default": None, "dest": "also_reads",
+                                   "help": "a file the script reads without the command naming it (a helper it imports, a "
+                                           "settings file); repeatable. It is read by the fence, put in the look's scratch "
+                                           "folder and pinned by checksum like a named file"}))
     look.add_argument("argv", nargs=argparse.REMAINDER, help="-- LAUNCHER SCRIPT [arguments]")
     add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}))
     add("choice", cmd_choice, by, (["--choice"], {"required": True}), (["--alternative"], {"action": "append", "default": None}),
@@ -2086,6 +2878,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("correct", cmd_correct, by, (["--old"], {"required": True, "help": "the words as they stand in the lead, exactly once"}),
         (["--new"], {"required": True, "help": "the words to put in their place; the numbers in them are the same"}),
         (["--why"], {"required": True, "help": "why the old words were wrong"}))
+    add("reviewer", cmd_reviewer, by, (["--reviewer"], {"required": True, "help": "the name the review will come under, such as agent:review-01"}))
     add("review", cmd_review, by, (["--verdict"], {"required": True, "help": " or ".join(VERDICTS)}), (["--file"], {"required": True}))
     add("end", cmd_end, by, (["--outcome"], {"required": True, "help": ", ".join(OUTCOMES)}), (["--summary"], {"required": True}),
         (["--file"], {"default": None}))
@@ -2098,7 +2891,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("status", cmd_status)
     add("check-log", cmd_check_log, (["--anchor"], {"action": "append", "default": None, "help": "SEQ:HASH posted outside the workspace; repeatable"}))
     add("fingerprint", cmd_fingerprint)
-    sub.add_parser("selftest")
+    sub.add_parser("selftest", allow_abbrev=False)
     return ap
 
 
@@ -2106,6 +2899,7 @@ def main() -> int:
     a = build_parser().parse_args()
     try:
         sf.refuse_dirty_environment()
+        sf.refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
         a.fn(Exploration(a.exploration), a)

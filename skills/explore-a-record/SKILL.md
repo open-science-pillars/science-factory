@@ -34,7 +34,7 @@ uv run tools/explore.py start --exploration <x> --id <ID> --by <you> \
 - If the knowledge gives no boundary, set aside the widest honest window and say so in `--why`. A set-aside is never narrowed afterwards.
 - When the working window stops before the set-aside begins, the tool names the stretch that is in neither. Nothing protects it. Leave it alone unless the request needs it, and say in the lead what you did.
 
-From here on you do not fetch, read, plot or ask about what was set aside, by any route. The tool refuses a look that names it: a path, a release, a date inside the window, a site in any of the ways people write one (with its agency in front, or the bare number). So keep dates inside the set-aside window out of your scripts and your lead altogether, and name a boundary by the page that gives it. The tool cannot see a script that reads set-aside data from somewhere the command does not name; that is on you.
+From here on you do not fetch, read, plot or ask about what was set aside, by any route. The tool refuses a look that names it: a path, a release, a date inside the window, a site in any of the ways people write one (with its agency in front, or the bare number). So keep dates inside the set-aside window out of your scripts and your lead altogether, and name a boundary by the page that gives it. The tool also refuses a look that names a folder, a pattern, a tilde path or a variable, because each reaches files it never read. On Linux the kernel keeps a look's script from opening anything but its own scratch folder and the system's folders, and the look's last line says whether that held. The tool cannot stop a script fetching the data over the network, and where there is no kernel fence it cannot stop a script opening a path it builds itself; that is on you.
 
 ## 3. Record what was read
 
@@ -55,7 +55,12 @@ uv run tools/explore.py look --exploration <x> --by <you> --why "<what this look
   -- uv run looks/<script>.py <arguments>
 ```
 
-- Write each script in `<x>/looks/`. The command runs in the exploration directory, so a path in it is read from there: give the data file and a skill's script by their full paths.
+- Write each script in `<x>/looks/`. A path in the command is read from the exploration directory: give the data file and a skill's script by their full paths.
+- The script runs in a scratch folder of its own, which holds the script and the files the command names and nothing else. A file from outside the exploration is handed to it under `outside/`, and the word that named it is rewritten to say so. Name every file the script reads, as a word of its own or after an `=`. A helper the script imports, or a settings file it opens by itself, is declared with `--also-reads <file>` before the `--`. A folder, a pattern (`*`, `?`, brackets, braces), a tilde path, a variable and several paths joined into one word are refused.
+- What the script writes in its folder comes back into the exploration, except into the places the tool or a reviewer keeps (`receipts/`, `verdicts/`, `review/`, `notes/`, `leads/`, `hand-over/`, the log, the lead). A link it leaves is not followed.
+- Print nothing that carries a date inside the set-aside window, a set-aside site or a set-aside release, a retrieval stamp included. What a look prints is read by the fence like a file: output that crosses it spoils the exploration and is withheld.
+- A look calls no tool of this package and leaves no process running: `explore.py`, `sf.py` and `knowledge.py` refuse a command started from inside a look, and whatever a look leaves running is ended with it.
+- Under the Claude Code runner a command is one plain line with every option spelled out. Write `--why` and every other value in plain words: no brackets, braces, semicolons, `#`, `$`, `!`, `&`, `|`, `<`, `>`, backslashes or backticks, even inside quotes.
 - Every look goes through the tool. A quick print of a file in a shell is a look nobody counted.
 - Start with the shape of the record before any statistic: `uv run <repository>/skills/explore-a-record/scripts/describe_record.py <data file>` prints keys, counts, ranges and time span.
 - **Draw it.** `uv run <repository>/skills/explore-a-record/scripts/plot_xy.py <data file> --rows <key> --x <key> --y <key> [--color <key>] [--residual] --out figures/<name>.svg` draws one quantity against another, coloured by a third, or the residual from a straight line. A file a look writes into `figures/` (.svg, .png, .pdf, .jpg) is a figure of that look: the receipt lists it by checksum and the lead can show it. Plot the residual against each thing the record carries before you fit anything to it: a slope, a flag, a time. A picture finds in a minute what a table of fits does not.
@@ -92,7 +97,9 @@ Check first whether the knowledge already says it; a pitfall the knowledge names
 
 ## 7. End
 
-**When to end.** After `explore.py lead`, do not call `end`: status names the review assistant, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again. Call `end --outcome lead` only when the latest lead has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
+**When to end.** After `explore.py lead`, do not call `end`: status names the review assistant, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
+
+A lead needs a reviewer named first. `explore.py lead` is refused until the coordinating assistant has named the reviewer of this exploration (`explore.py reviewer`); `status` shows `before_a_lead` until then. If you reach the lead before that, write `lead.yaml`, stop and hand back. A person exploring by hand asks a colleague who did none of the exploring to name the reviewer.
 
 An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run tools/explore.py status --exploration <x>` says where it stands and who is next.
 
@@ -100,6 +107,7 @@ An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a metho
 
 - Reading data, or an earlier answer to the same question, before data is set aside.
 - Looking at what was set aside, or looking outside the tool.
+- Calling a tool of this package from inside a look, or naming your own reviewer.
 - A number in a write-up that is not in a look's output as it was printed.
 - A choice made after looking and left unrecorded, the form of the model included.
 - Calling what was found a finding, a result or a validation. It is a lead.
