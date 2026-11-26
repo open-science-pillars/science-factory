@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
+  <title id="title">Measure and improve, with the firewall</title>
+  <desc id="desc">Two boxes at the top hold the two kinds of material a scorer may say it reads. On the left, in blue, what is written before any opening of held-out data: the request, the plan as locked, the tests on known answers, the log up to the lock, an exploration's log and lead, and a review recorded before any opening. On the right, in red, what is written from the first opening on: what an opening of real held-out data showed, the finding and the review of it, and the log from the opening on. Below the left box, judge scorers (a rubric, a model, one label) read only the left box. Below the right box, deterministic scorers (a named check the study tool works out) read both boxes. A vertical bar between the two columns is the firewall: two dashed lines from the right column end at it, with the words no judge reads past this line, the validator refuses it. On the left, below the judges, a proposal to change the definition is fed only by scorers marked selfImprovement true; the loop that would make one is not built. On the right, what the deterministic scorers find is counted and shown to people, with selfImprovement false, and what an opening showed also feeds the knowledge loop as notes and drafted pages that a person signs. At the bottom, a proposal is tested on benchmarks: blind cases with a planted, sealed truth, never real held-out data, in a design set kept as files and an acceptance set generated from a seed kept outside, under two versions of the definition. From there, in amber, a person adopts a change, with its prediction in the change log.</desc>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="8.5" refY="4" orient="auto">
+      <path d="M 0 0 L 9 4 L 0 8 Z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="720" fill="#FFFFFF"/>
+  <rect x="30" y="24" width="410" height="150" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="235.0" y="59.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Written before any opening of held-out data</text>
+  <text x="235.0" y="79.0" text-anchor="middle" dy="0.35em" font-size="14">the request; the plan as locked</text>
+  <text x="235.0" y="99.0" text-anchor="middle" dy="0.35em" font-size="14">the tests on known answers; the log up to the lock</text>
+  <text x="235.0" y="119.0" text-anchor="middle" dy="0.35em" font-size="14">an exploration's log and its lead</text>
+  <text x="235.0" y="139.0" text-anchor="middle" dy="0.35em" font-size="14">a review recorded before any opening</text>
+  <rect x="540" y="24" width="390" height="150" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="735.0" y="69.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Written from the first opening on</text>
+  <text x="735.0" y="89.0" text-anchor="middle" dy="0.35em" font-size="14">what an opening of real held-out data showed</text>
+  <text x="735.0" y="109.0" text-anchor="middle" dy="0.35em" font-size="14">the finding; the review of it</text>
+  <text x="735.0" y="129.0" text-anchor="middle" dy="0.35em" font-size="14">the log from the opening on</text>
+  <rect x="30" y="236" width="200" height="70" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="130.0" y="261.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Judge scorers</text>
+  <text x="130.0" y="281.0" text-anchor="middle" dy="0.35em" font-size="14">a rubric, a model, one label</text>
+  <rect x="540" y="236" width="390" height="70" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="735.0" y="261.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Deterministic scorers</text>
+  <text x="735.0" y="281.0" text-anchor="middle" dy="0.35em" font-size="14">a named check the study tool works out</text>
+  <path d="M 130 174 L 130 236" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 400 174 L 400 204 L 640 204 L 640 236" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 830 174 L 830 236" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="484" y="222" width="8" height="250" fill="#374151"/>
+  <text x="488" y="490" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">the firewall</text>
+  <path d="M 540 252 L 496 252" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <path d="M 540 290 L 496 290" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <text x="360" y="252" text-anchor="middle" dy="0.35em" font-size="14">no judge reads past this line</text>
+  <text x="360" y="290" text-anchor="middle" dy="0.35em" font-size="14">the validator refuses it</text>
+  <rect x="30" y="372" width="410" height="72" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="235.0" y="388.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">A proposal to change the definition</text>
+  <text x="235.0" y="408.0" text-anchor="middle" dy="0.35em" font-size="14">fed only by scorers marked selfImprovement: true</text>
+  <text x="235.0" y="428.0" text-anchor="middle" dy="0.35em" font-size="14">(the loop that would make one is not built)</text>
+  <path d="M 130 306 L 130 372" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="540" y="372" width="390" height="72" rx="6" fill="#FFFFFF" stroke="#374151" stroke-width="1.25"/>
+  <text x="735.0" y="398.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Counted, and shown to people</text>
+  <text x="735.0" y="418.0" text-anchor="middle" dy="0.35em" font-size="14">the scorecard of each study; selfImprovement: false</text>
+  <path d="M 735 306 L 735 372" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="540" y="480" width="390" height="72" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="735.0" y="506.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">The knowledge loop</text>
+  <text x="735.0" y="526.0" text-anchor="middle" dy="0.35em" font-size="14">notes and drafted pages; a person signs</text>
+  <path d="M 930 100 L 946 100 L 946 516 L 930 516" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="30" y="592" width="520" height="96" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="290.0" y="620.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">Benchmarks: blind cases with a planted, sealed truth</text>
+  <text x="290.0" y="640.0" text-anchor="middle" dy="0.35em" font-size="14">never real held-out data; two versions of the definition compared</text>
+  <text x="290.0" y="660.0" text-anchor="middle" dy="0.35em" font-size="14">a design set (files) and an acceptance set (from a seed kept outside)</text>
+  <path d="M 235 444 L 235 592" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="249" y="520" text-anchor="start" dy="0.35em" font-size="14">tested on</text>
+  <rect x="630" y="604" width="300" height="72" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="780.0" y="630.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">A person adopts a change</text>
+  <text x="780.0" y="650.0" text-anchor="middle" dy="0.35em" font-size="14">with its prediction in the change log</text>
+  <path d="M 550 640 L 630 640" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+</svg>

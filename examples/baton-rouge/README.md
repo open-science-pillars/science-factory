@@ -38,13 +38,13 @@ uv run tools/knowledge.py selftest \
 
 They end with `plan check: the analysis plan is complete`; `"wrong_verdicts": 0` and `"every_run_ready_for_signature": true`; `selftest: PASS (6 of 6)` (on ten test cases this repository's pairing step and the hydrology script give the same pairs and scores); and `selftest: PASS (64 of 64)`.
 
-**The part with assistants.** Each role is a separate assistant started from its role file in `assistants/`, with a task and no memory of the others. The work goes into folders at the top of this repository that git ignores (`explorations/`, `studies/`, `knowledge-queue/`, `record/`), so nothing you make is committed here. The commands below start each role through the Claude Code runner, which keeps the task and the answer in the role's own place. That runner has not been run against Claude Code; the November run started each role another way, described under "Who ran what". Any platform that starts an assistant from a role file and a task will do.
+**The part with assistants.** Each role is a separate assistant started from its role file (`factory/agents/<name>/agent.md`), with a task and no memory of the others. The work goes into folders at the top of this repository that git ignores (`explorations/`, `studies/`, `knowledge-queue/`, `record/`), so nothing you make is committed here. The commands below start each role through the Claude Code harness, which keeps the task and the answer in the role's own place. That harness has not been run against Claude Code; the November run started each role another way, described under "Who ran what". Any platform that starts an assistant from a role file and a task will do.
 
 Write each task as a short file first. The first one, `record/tasks/01.md`, says: take the request in `examples/baton-rouge/request-1.md`; explore as `agent:analysis-0101` in `explorations/EXPLORATION-0101`; the knowledge is the wiki `../hydrology/knowledge`; the working data is `../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json`; open nothing else in `examples/baton-rouge`; stop and hand back when `status` says a reviewer must be named.
 
 ```
 X=explorations/EXPLORATION-0101
-RUN="uv run runners/claude-code/run_role.py"
+RUN="uv run factory/harnesses/claude-code/run_role.py"
 
 # 1. the analysis assistant: reads the knowledge, sets data
 #    aside, looks, records choices and notes
@@ -53,7 +53,8 @@ $RUN --role analysis --task-file record/tasks/01.md \
 
 # 2. the coordinating step: name the reviewer, before any lead
 uv run tools/explore.py reviewer --exploration $X \
-  --by agent:coordinating-0101 --reviewer agent:review-0101
+  --by agent:coordinating-0101 --model claude-sonnet-5-5 \
+  --reviewer agent:review-0101
 
 # 3. the analysis assistant, started again: writes the lead
 $RUN --role analysis --task-file record/tasks/03.md \
@@ -68,7 +69,7 @@ uv run tools/explore.py status --exploration $X
 uv run tools/explore.py check-log --exploration $X
 ```
 
-The coordinating step is the one command typed by whoever coordinates, a person or a coordinating assistant started from `assistants/coordinating.md`. The tool refuses a lead until it has been made, takes a review only from the name it names, and refuses that name to anyone who explored. A review task names the exploration and nothing the analysis assistant said about it; the launcher refuses a task that points at `record/analysis/`. When the review finds holes, start the analysis assistant again on them, name a fresh reviewer (`agent:review-0102`) and repeat steps 3 to 5. When the lead has been reviewed and the exploration has ended, the curating assistant drafts pages into `knowledge-queue/`:
+The coordinating step is the one command typed by whoever coordinates, a person or a coordinating assistant started from `factory/agents/coordinating/agent.md`. The tool refuses a lead until it has been made, takes a review only from the name it names, and refuses that name to anyone who explored. A review task names the exploration and nothing the analysis assistant said about it; the launcher refuses a task that points at `record/analysis/`. When the review finds holes, start the analysis assistant again on them, name a fresh reviewer (`agent:review-0102`) and repeat steps 3 to 5. When the lead has been reviewed and the exploration has ended, the curating assistant drafts pages into `knowledge-queue/`:
 
 ```
 $RUN --role curating --task-file record/tasks/06.md \
@@ -96,6 +97,6 @@ Four pages were drafted for the hydrology knowledge from the notes; none was sig
 
 ## Who ran what, and what was instruction
 
-Each role was a separate subagent of one model, started by a coordinating session that gave it the path of its role file and a task: an analysis assistant, a review assistant that returned six holes, the analysis assistant started again with no memory of its first session, a second review by a fresh assistant, a curating assistant, and a second analysis assistant on the second request. The coordinating role was played by a person's session; no assistant was started from `assistants/coordinating.md`.
+Each role was a separate subagent of one model, started by a coordinating session that gave it the path of its role file and a task: an analysis assistant, a review assistant that returned six holes, the analysis assistant started again with no memory of its first session, a second review by a fresh assistant, a curating assistant, and a second analysis assistant on the second request. The coordinating role was played by a person's session; no assistant was started from `factory/agents/coordinating/agent.md`.
 
-What was enforced by a tool: every look, choice, note, lead and review went through `tools/explore.py`, which held the fence around the set-aside data and kept the log. What was instruction and not enforcement: which commands each role might call, where it wrote, and what it might read. The Claude Code runner was not used, so nothing outside a role stopped a call its role file does not allow, and the answers record small departures an enforcing runner would have stopped. One reviewer saw the author's account by accident and stopped itself, as its role file requires; a fresh one was started. The curating assistant ran before the second review, which the tool now refuses. The first analysis assistant had read an earlier version of this page, so it was not blind to the earlier run. There was no hand-over to a study in that run.
+What was enforced by a tool: every look, choice, note, lead and review went through `tools/explore.py`, which held the fence around the set-aside data and kept the log. What was instruction and not enforcement: which commands each role might call, where it wrote, and what it might read. The Claude Code harness was not used, so nothing outside a role stopped a call its role file does not allow, and the answers record small departures an enforcing harness would have stopped. One reviewer saw the author's account by accident and stopped itself, as its role file requires; a fresh one was started. The curating assistant ran before the second review, which the tool now refuses. The first analysis assistant had read an earlier version of this page, so it was not blind to the earlier run. There was no hand-over to a study in that run.

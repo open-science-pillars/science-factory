@@ -1,0 +1,34 @@
+# A runner: where a job computes, and how it keeps the one contract in
+# compute/adapter.py (a job spec, four verbs, markers and a run log). The name
+# of this runner is the name of this file. `status: built` means
+# `compute/adapter.py conformance` passes against it; `specified` means the
+# table is what an adapter is meant to do, written down before anyone wrote
+# one, and it stays a claim until conformance passes. Nothing in the study tool
+# sends a job to any runner yet, so `for` says what a runner is meant for, not
+# what runs there today. The twelve keys of `contract` are the ones
+# factory.yaml lists under runner_contract.keys.
+description: 'This machine: one supervisor process for each job. The only runner that is built.'
+platform:
+  os: the machine the tool is called on
+  arch: the same
+status: built
+basis: Built in adapter.py (LocalRunner). `adapter.py conformance` passes 34 of 34 and `adapter.py conformance --self-check` passes.
+for:
+- known-answer tests on cheap cases
+- working data
+- rehearsals
+- the system trial's tests (its opening runs by hand in the workspace)
+contract:
+  submit: One supervisor process for each job, started by submit inside the job's environment; the job is its child, in a working directory of its own. The runner's records are kept outside that directory.
+  idempotency: 'The job id is derived from the key. One record for each id under the runner''s root, made under a file lock: the same spec again is the same job and starts nothing; a different spec under the same key is refused. A submit that died before the job was released leaves no job and can be made again. Two roots are two runners and know nothing of each other.'
+  status: 'The supervisor''s records, and a file lock the supervisor holds while it lives: a job whose supervisor is gone without a final record is failed, with the reason.'
+  exit: The exit code the supervisor got from the job's first process. A signal, a time limit or a command that cannot be run is failed, never done.
+  markers: '`fetch.started` is written by the supervisor after the manifest matched and just before the argv starts. Nothing is held back from a local job before that moment except its start, so here the marker means the argv started. The job''s own `marker.<name>` files come back as job_markers.'
+  collect: Outputs are hashed and copied, without following symlinks, into the runner's own keep when the job ends; collect checks each hash again and copies them out under their relative paths, with run-log.json. Refused until the job is done, failed or cancelled.
+  cancel: 'A request the supervisor reads: SIGTERM to the job''s session, 2 seconds, SIGKILL, then every process still in that session or carrying the job''s tag. Cancelled is reported once they are gone.'
+  argv: 'A token at the start of an argument is expanded at submit: {python} (the interpreter the runner runs under), {work}, and any given with --token. The argv reaches the supervisor through a pipe from submit and is never read back from disk; both forms are in the run log.'
+  manifest: The supervisor hashes each named file inside the job's environment, before `fetch.started`. When one differs the argv never starts and the job is failed.
+  resources: walltime_seconds is honoured, counted from the start of the argv. Any other resource is refused at submit.
+  clean_interpreter: No. It is the interpreter and the libraries on the method builder's machine. The job's environment is built from a short list and bytecode caches are not read, which closes the injected-path and planted-bytecode doors and no others.
+  blinds_the_method_builder: 'No. The job runs as the same user on the same machine as whoever built the method: the barrier is procedure and evidence.'
+open_questions: []

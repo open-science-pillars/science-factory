@@ -3,7 +3,6 @@ name: checks
 on:
   pull_request:
   push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -18,6 +17,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      # The definition first: if the tree under factory/ is not valid, nothing below means what it says. The
+      # validator has three results, and `not validated` (exit 2) fails this step like `invalid` does.
+      - name: The factory's definition is valid
+        run: uv run tools/check_factory.py
+      - name: The validator tests itself, each rule with a definition that breaks it
+        run: uv run tools/check_factory.py --selftest
+      - name: What this change does to the definition, in plain words
+        # Against the commit before this one. A first commit, or an earlier commit with no definition tree, is said
+        # in words by the tool and is no failure.
+        run: |
+          if git rev-parse --verify --quiet HEAD^ >/dev/null; then
+            uv run tools/check_factory.py --summary git:HEAD^:factory factory | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no earlier commit in this checkout to compare with"
+          fi
+      # The judges: everything up to the point where a model is asked, and back from it. The self-test builds a
+      # study that has been opened and checks that a judging packet holds nothing written after the opening.
+      - name: The scorers tool tests itself, the outcome firewall included
+        run: uv run tools/scorers.py selftest
       - name: The study tool tests itself
         run: uv run tools/sf.py selftest
       - name: The pairing step of this repository's own tests itself
@@ -26,9 +44,17 @@ jobs:
         run: uv run tools/sf.py check-plan --study examples/stand-alone/system-trial
       - name: A short blind test of the system, on the built-in pairing step
         run: uv run methods/gain/system_trial.py blind-test --template examples/stand-alone/system-trial --n 20
-      - name: The local place passes the compute contract
+      # The blind test as a benchmark: the shipped design suite, six sealed cases twice each under two configurations
+      # of the definition (the current one, and the current one again), compared by the rule the suite states. The
+      # expected answer is `no difference beyond noise`; `not comparable` (exit 2) fails the step. The acceptance
+      # suite is not run here: its cases come from a seed that is not in the repository.
+      - name: The benchmark tool tests itself (the arithmetic, the acceptance cases, the refusals)
+        run: uv run tools/benchmark.py selftest
+      - name: The small benchmark suite, the definition against itself
+        run: uv run tools/benchmark.py run --suite factory/benchmarks/built-in-gain
+      - name: The local runner passes the compute contract
         run: uv run compute/adapter.py conformance
-      - name: The conformance test fails every deliberately wrong place
+      - name: The conformance test fails every deliberately wrong runner
         run: uv run compute/adapter.py conformance --self-check
       # The self-tests below include every attack an independent reviewer made on these tools (the review register,
       # docs/reviews/ASSISTANTS-AND-EXPLORING.md, section 4). The exploring tool's tests of the kernel fence run with
@@ -42,13 +68,13 @@ jobs:
           uv run tools/wiki_server.py --selftest
           uv run tools/check_roles.py
           uv run tools/check_roles.py --selftest
-          uv run runners/claude-code/render.py --check
-          uv run runners/claude-code/render.py --selftest
-          uv run runners/claude-code/allow.py --selftest
-          uv run runners/claude-code/run_role.py --selftest
-          uv run runners/by-hand/as_role.py --selftest
-          uv run skills/explore-a-record/scripts/describe_record.py --selftest
-          uv run skills/explore-a-record/scripts/plot_xy.py --selftest
+          uv run factory/harnesses/claude-code/render.py --check
+          uv run factory/harnesses/claude-code/render.py --selftest
+          uv run factory/harnesses/claude-code/allow.py --selftest
+          uv run factory/harnesses/claude-code/run_role.py --selftest
+          uv run factory/harnesses/by-hand/as_role.py --selftest
+          uv run factory/agents/analysis/skills/explore-a-record/scripts/describe_record.py --selftest
+          uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
       - name: The stand-alone example, end to end (both loops, then a study taken to the lock), in a scratch folder
         run: uv run examples/stand-alone/run.py
       - name: The example left nothing in the repository

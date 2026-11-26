@@ -38,6 +38,7 @@ import yaml
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 GAIN_PUT_IN, CLOSE_ENOUGH = 1.03, 0.02   # the answer the record was made with (make_record.py), and how near counts
+MODEL = "stand-alone-run/no-model"       # what this script's events carry where a model's name would stand: no model runs in it
 
 
 def main() -> int:
@@ -57,8 +58,14 @@ def main() -> int:
             raise AssertionError(f"`{' '.join(str(x) for x in command[:6])} ...` ended {done.returncode}, expected {expect}:\n{(done.stdout + done.stderr)[-800:]}")
         return done.stdout if answer else done.stdout + done.stderr
 
-    def tool(name: str, *args, expect: int = 0, answer: bool = False) -> str:
-        return ran(["uv", "run", str(ROOT / "tools" / name), *[str(x) for x in args]], expect, answer)
+    def tool(name: str, *args, expect: int = 0, answer: bool = False, model: str | None = MODEL) -> str:
+        """One command of a tool. Every event an agent writes names the model that wrote it, so a command that acts
+        as an agent is given `--model`; here it says that no model ran."""
+        args = [str(x) for x in args]
+        if model and "--by" in args and args[args.index("--by") + 1].startswith("agent:"):
+            at = args.index("--by") + 2  # beside --by, and so before any `--` that begins a look's own command
+            args[at:at] = ["--model", model]
+        return ran(["uv", "run", str(ROOT / "tools" / name), *args], expect, answer)
 
     def step(name: str, cond) -> None:
         steps.append((name, bool(cond)))
@@ -79,6 +86,11 @@ def main() -> int:
         step("a warning on standard error beside a tool's answer does not break reading the answer",
              json.loads(ran([sys.executable, "-c", "import sys; print('{\"stage\": \"set-aside\"}'); print('warning: a launcher grumbles', file=sys.stderr)"],
                             answer=True))["stage"] == "set-aside")
+
+        # the factory itself: its definition is a tree of files, and a tool says whether the tree is valid
+        said = tool("check_factory.py")
+        step("the factory's definition (factory/) is valid, and the validator says what it cannot check",
+             "check-factory: VALID" in said and "what this tool cannot check" in said)
 
         # before work: what is known, from the wiki in openwiki/, and only that
         out = tool("knowledge.py", "about", "--question", "How closely does the second sensor follow the reference?", "--wiki", wiki)
@@ -110,6 +122,9 @@ def main() -> int:
         tool("explore.py", "read", *E, "--by", me, "--concept", wiki / "flagged-readings.md",
              "--takes", "warns that a degraded reading can steer the gain; leave them out and give it both ways")
 
+        step("an agent that does not say which model it is cannot write to the log",
+             "names the model that wrote it" in tool("explore.py", "note", *E, "--by", me, "--kind", "missing", "--about", "x", "--text", "y", expect=2, model=None))
+
         # looks, the fence, choices, a note
         out_all = tool("explore.py", *look, "the gain with every reading", "--", "uv", "run", gain_script, data)
         out_screened = tool("explore.py", *look, "the gain with degraded readings left out", "--", "uv", "run", gain_script, data, "--exclude-flag-at-or-above", "2")
@@ -128,7 +143,7 @@ def main() -> int:
              and "holds a pattern" in tool("explore.py", *look, "peek through a pattern", "--", "uv", "run", gain_script, later.parent / "record-*.json", expect=2)
              and "set aside" in tool("explore.py", *look, "peek after an equals sign", "--", "uv", "run", gain_script, f"--data={later}", expect=2))
         shutil.rmtree(later.parent)
-        plot = str(ROOT / "skills" / "explore-a-record" / "scripts" / "plot_xy.py")
+        plot = str(ROOT / "factory" / "agents" / "analysis" / "skills" / "explore-a-record" / "scripts" / "plot_xy.py")
         tool("explore.py", *look, "a picture: what is left of the second sensor after its straight line on the reference, coloured by flag",
              "--", "uv", "run", plot, data, "--x", "reference", "--y", "sensor", "--color", "flag", "--label", "time", "--residual", "--out", "figures/residual.svg")
         receipt = json.loads((x / "receipts" / "LOOK-003.json").read_text())
@@ -246,6 +261,19 @@ def main() -> int:
              json.loads(tool("sf.py", "status", "--study", study, answer=True))["stage"] in ("plan", "test")
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "signature.recorded") for ln in (study / "study-log.jsonl").read_text().splitlines()))
 
+        # measuring the work: a judge reads a packet of exactly what its scorer declares, and no model is asked here
+        packet = work / "judging" / "review-finds-holes"
+        said = tool("scorers.py", "packet", "--scorer", "review-finds-holes", "--exploration", x, "--out", packet)
+        listed = json.loads((packet / "packet.json").read_text())
+        step("a judging packet for the review of the lead holds the exploration's log up to the hand-over, the lead and the review, and says what it left out",
+             {m["kind"] for m in listed["material"]} == {"exploration-log", "lead", "review-before-opening"} and (packet / "JUDGE.md").is_file()
+             and any("after the hand-over" in q["why"] for q in listed["left_out"]) and "note.resolved" not in (packet / "material" / "exploration-log" / "exploration-log.jsonl").read_text())
+        verdict = work / "judging" / "verdict.yaml"
+        verdict.write_text("label: checked\nreasoning: Written by the example's script to show the refusal; no judge read the packet.\n")
+        step("a verdict under a model the scorer does not declare is refused, so nothing is recorded: no judge has judged this run",
+             "is not this scorer's" in tool("scorers.py", "record", "--packet", packet, "--verdict", verdict, "--by", "agent:judge-a", expect=2)
+             and not (x / "judgements.jsonl").exists())
+
         # the confirming loop, as far as a tool can take it: a study through its tests, stopping before the lock
         trial = studies / "STUDY-B"
         trial.mkdir()
@@ -265,6 +293,19 @@ def main() -> int:
         tool("sf.py", "test", "working-data", *S, "--by", me)
         tool("sf.py", "rehearse", *S, "--id", "opening-path", "--by", me)
         trial_status = json.loads(tool("sf.py", "status", *S, answer=True))
+        step("status says which factory this is (the definition's checksum and version) and shows the models: declared by the definition, and recorded in the log",
+             len(trial_status["definition"]["sha256"]) == 64 and trial_status["definition"]["this_factorys_own"]
+             and set(trial_status["models"]["declared_by_the_definition"]) == {"analysis", "coordinating", "curating", "review"}
+             and trial_status["models"]["recorded_in_the_log"] == {coordinator: [MODEL], me: [MODEL]}
+             and len(trial_status["models"]["remarks"]) == 2)
+        plan_packet = work / "judging" / "plan-is-clear"
+        tool("scorers.py", "packet", "--scorer", "plan-is-clear", "--study", trial, "--out", plan_packet)
+        step("a judging packet for the plan holds the plan and the receipts of its tests, and nothing was opened to make it",
+             {m["kind"] for m in json.loads((plan_packet / "packet.json").read_text())["material"]} == {"plan", "known-answer-tests"}
+             and not json.loads((plan_packet / "packet.json").read_text())["run"]["held_out_data_opened"])
+        step("the design set of blind cases can be listed, and the acceptance set gives nothing without its keeper's seed",
+             "the idea is false" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "built-in-gain")
+             and "never invents one" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "acceptance", expect=2))
         step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no assistant takes it further",
              trial_status["stage"] == "lock" and "PASS" not in tool("sf.py", "lock", *S, "--by", me, "--evidence", "https://example.invalid/not-a-person", expect=2)
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "held-out.opened", "signature.recorded") for ln in (trial / "study-log.jsonl").read_text().splitlines()))
@@ -286,6 +327,8 @@ def main() -> int:
                                 known-answer tests, the working data, the rehearsal), standing at the lock
   studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
   knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
+  judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given
+                                to judge the review of the lead and the clarity of the plan; no model was asked
   data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0

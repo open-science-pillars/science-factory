@@ -9,7 +9,7 @@ A review is by someone who did none of the work and starts from the files. Its j
 
 If you did any part of this work, or were given the reasoning of the assistant that did, stop and say so.
 
-**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating assistant goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis assistant's own account is: the runner refuses it, and if you see it by accident you say so and stop, so that a fresh review assistant can be started.
+**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating assistant goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis assistant's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review assistant can be started.
 
 ## 1. The record
 

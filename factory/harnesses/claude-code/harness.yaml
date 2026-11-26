@@ -1,0 +1,15 @@
+# A harness: what starts an agent. The name of this harness is the name of this folder.
+description: "Starts an agent as a Claude Code subagent, with the tools its file allows and a check on every tool call."
+starts: "claude -p --agent <name>, by run_role.py, in a fresh context; the rendered files in .claude/ are what Claude Code reads"
+# The models an agent's file may declare under this harness. An agent's `model` must be one of these: a concrete
+# name, so that a lock can bind it. The rendered agent file carries it, and Claude Code is asked for it; which
+# model really answered is reported by the platform (run_role.py keeps that beside the answer) and proven by nothing.
+models: [claude-sonnet-5-5, claude-opus-5-5, claude-haiku-5-5]
+status: "built, not exercised"      # each script tests itself; none has been run against Claude Code and a model
+holds:
+  - "what an agent may call, write and read, on every tool call, when the platform calls the hook (allow.py)"
+  - "a fresh context for each agent, and each agent's account in its own place (run_role.py)"
+  - "that the rendered files are what the definition renders to (render.py --check)"
+by_instruction_only:
+  - "which model answers: the definition declares it and the platform reports it"
+  - "anything an agent does outside a tool call the hook sees"

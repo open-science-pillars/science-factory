@@ -1,0 +1,45 @@
+# A runner: where a job computes, and how it keeps the one contract in
+# compute/adapter.py (a job spec, four verbs, markers and a run log). The name
+# of this runner is the name of this file. `status: built` means
+# `compute/adapter.py conformance` passes against it; `specified` means the
+# table is what an adapter is meant to do, written down before anyone wrote
+# one, and it stays a claim until conformance passes. Nothing in the study tool
+# sends a job to any runner yet, so `for` says what a runner is meant for, not
+# what runs there today. The twelve keys of `contract` are the ones
+# factory.yaml lists under runner_contract.keys.
+description: NASA's Multi-Mission Algorithm and Analysis Platform, beside the mission data. Written down, not built.
+status: specified
+basis: 'As read in the platform''s documentation (docs.maap-project.org, read 2026-11-25) and not exercised: no algorithm was registered and no job was submitted. The pages read were running algorithms at scale, job management with maap-py, and the application-package function guide. A cell that starts with ''As read'' is that reading and nothing more; everything else about this platform is an open question.'
+for:
+- methods that should run beside the mission data
+- sweeps across many sites
+contract:
+  submit: 'As read: a method is registered once as a platform algorithm from a repository, with its run command, container, queue and inputs; a job is then submitted with an algorithm id, a version, a queue and inputs, and the platform answers with a job id of its own. The contract''s job id would travel as the submission''s identifier.'
+  idempotency: open question
+  status: 'As read: the platform reports a job''s status, asked by the platform''s job id.'
+  exit: open question
+  markers: open question
+  collect: 'As read: a job''s products appear in the submitter''s workspace; collect would copy the declared outputs from there.'
+  cancel: open question
+  argv: open question
+  manifest: open question
+  resources: 'As read: a queue is named at submit.'
+  clean_interpreter: open question
+  blinds_the_method_builder: open question
+open_questions:
+- 'idempotency: whether the platform refuses a second submission with the same identifier or runs it as a second job, and where the contract''s job id and the spec''s sha256 would be recorded'
+- 'status: how the platform''s states map onto queued, running, done, failed and cancelled, and what it reports for a job whose worker died'
+- 'exit: whether the job''s own exit code can be read back'
+- 'markers: whether the runner can write `fetch.started` before the job reaches data, and whether a failed job publishes anything at all, since a failed job is exactly when the marker matters'
+- 'collect: whether everything a job writes to its output directory is published to the workspace (a runner that collects everything fails conformance), and whether a held result can stay private there for the third-party window'
+- 'cancel: whether a submitted job can be stopped, and how the runner would know it is gone'
+- 'argv: the run command is fixed when an algorithm is registered, so a spec''s argv is not what runs; whether one entry point of the runner''s own can be registered to take the spec as its input and run the argv, or each locked method must be its own algorithm with its argv fixed at registration'
+- 'argv: whether an algorithm version can be an exact locked commit, or only a branch or tag name that is built into an image when registered'
+- 'argv: whether an algorithm can be registered from a private repository, which the third-party window needs'
+- 'manifest: whether anything can hash the method''s files inside the job before it starts'
+- 'resources: whether a job can be given a time limit, and what the platform does at the limit'
+- 'clean_interpreter: whether the job''s metadata names the container image by digest, or only by name and location'
+- 'blinds_the_method_builder: whether a job can read a secret that its submitter''s workspace cannot; for data that every platform user can read from a workspace the answer is no, and that is most of what the platform is for'
+- 'one opening: an algorithm that anyone with access can run again on the held-out window is a second opening outside every study log; the record of what has been opened does not span the platform'
+- how the fetch of observation metadata alone is expressed as a platform algorithm
+- 'which registration path to use: the configuration file or the newer application package, if the second has replaced the first by then'

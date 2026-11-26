@@ -1,0 +1,35 @@
+# A runner: where a job computes, and how it keeps the one contract in
+# compute/adapter.py (a job spec, four verbs, markers and a run log). The name
+# of this runner is the name of this file. `status: built` means
+# `compute/adapter.py conformance` passes against it; `specified` means the
+# table is what an adapter is meant to do, written down before anyone wrote
+# one, and it stays a claim until conformance passes. Nothing in the study tool
+# sends a job to any runner yet, so `for` says what a runner is meant for, not
+# what runs there today. The twelve keys of `contract` are the ones
+# factory.yaml lists under runner_contract.keys.
+description: A cluster with a batch scheduler, with Slurm and PBS as the models. Written down, not built.
+status: specified
+basis: 'Written from how such schedulers are generally used, with Slurm and PBS as the models. Not read against any one site''s documentation and not exercised: no adapter exists.'
+for:
+- known-answer tests when a case costs a model run
+- working data that is large
+- openings on data that lives on the cluster
+contract:
+  submit: 'The adapter makes the job''s record in a directory of the runner''s own on the shared file system, then hands the scheduler a job script of the runner''s own (not the method''s) that does on the node what the supervisor does locally: checks the manifest, writes `fetch.started`, runs the argv, hashes the outputs.'
+  idempotency: 'The contract''s job id is the scheduler''s job name, and the record is made under a lock before the scheduler is called, so a second submit finds the record: the same spec is the same job, a different spec is refused. When the scheduler was called and its answer was lost, the adapter asks the scheduler for a job of that name before it calls again.'
+  status: 'The job script''s own records first, the scheduler''s accounting second: pending is queued, and a job the scheduler shows as ended without a final record from the script (time limit, out of memory, node failure, preempted) is failed, with the scheduler''s word as the reason.'
+  exit: The exit code the job script recorded for the argv. A kill by a signal or by the scheduler is failed, never done; the scheduler's accounting is the cross-check.
+  markers: '`fetch.started` is written by the job script into the runner''s record directory before it starts the argv. The job''s own `marker.<name>` files are read from its scratch directory when it ends.'
+  collect: The job script hashes the declared outputs when the argv ends and copies them, without following symlinks, into the runner's record directory; collect reads only from there. The run log adds node, partition and the scheduler's own job id.
+  cancel: The scheduler's cancel, by the scheduler's own job id (its SIGTERM, wait, SIGKILL). Cancelled is reported once the accounting shows the job ended.
+  argv: 'Tokens are expanded by the job script on the node: {python} is an interpreter the runner names (a module, an environment or a container), {work} the job''s scratch directory. The expanded argv goes in the run log.'
+  manifest: The job script hashes the named files on the node, before `fetch.started`, and does not start the argv when one differs.
+  resources: walltime_seconds, cpus, memory_mb and a partition map to the scheduler's own limits. A resource with no such limit is refused at submit.
+  clean_interpreter: Only when the job runs from a fresh `git clone` of the locked commit, with its environment fixed by a lockfile or a container digest that the run log records, under an account the method builder does not use. Otherwise no.
+  blinds_the_method_builder: 'Only for data the job''s account can read and the method builder''s account cannot. For public data, no: running here changes which interpreter runs the locked code, not what the method builder can fetch.'
+open_questions:
+- whether asking the scheduler for a job by name can miss one it has accepted and not yet listed, so that a retry submits it twice
+- how long the scheduler's accounting remembers a finished job, and what status says after that if the job script left no final record
+- how `fetch.started` can come before the data where the job's account can already read the held-out files on the cluster's file system; there the marker means only that the argv started
+- where the runner's record directory lives so that the job can write to it during the run and the method builder cannot at any time
+- which sites let a job run under an account the method builder does not use

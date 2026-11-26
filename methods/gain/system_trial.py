@@ -106,6 +106,7 @@ ENTROPY = "operating-system entropy at the opening"
 HARNESS = "the blind test harness"
 REHEARSAL = "a rehearsal case with a published seed; never the sealed one"
 DIFFERENCE = 0.05  # the difference that matters
+NO_MODEL = "no-model/blind-test-harness"  # what the harness's own events carry where a model's name would stand: no model runs in it
 HOOK = "BLIND_TEST_SEAL"  # read only when the fetch line carries --harness: "seed:gain", so a blind test is reproducible
 
 
@@ -192,6 +193,7 @@ def cmd_verdict(a) -> int:
     try:
         sf.refuse_dirty_environment()
         study = sf.Study(a.study)
+        study.model = a.model  # an agent that reveals the answer names its model, like every agent event
         study.check_actor(a.by)
         rep = sf.check_log(study, a.anchor)
         if rep["status"] == sf.INVALID:
@@ -222,40 +224,36 @@ def cmd_working_data(a) -> int:
                            "--screen-reach-q", "2", "--out", str(a.out)]).returncode
 
 
-def cmd_blind_test(a) -> int:
+URL = "https://example.invalid/blind-test-harness-not-a-person"
+
+
+def prepare(sf, template: Path, known_answer_cases: int | None, tmp: Path) -> Path:
+    """The part every blind case shares: a study started from the plan in `template`, with its known-answer tests,
+    its working data and its rehearsals run once. Returns the study's folder, under `tmp`; each case is run on a
+    copy of it. Raises sf.Refused when the study tool refuses a step."""
     import yaml
-    sf = neighbour("sf")
-    try:
-        sf.refuse_dirty_environment()
-    except sf.Refused as r:
-        print(f"REFUSED: {r}", file=sys.stderr)
-        return 2
     ns = argparse.Namespace
-    quiet = open(os.devnull, "w")
-    url = "https://example.invalid/blind-test-harness-not-a-person"
-    template = a.template.resolve()
+    template = Path(template).resolve()
     plan = sf.load_plan_text((template / "analysis-plan.yaml").read_text())
     plan["roots"] = {k: str((template / v).resolve()) for k, v in plan["roots"].items()}  # absolute: the copies move
     for name, folder in plan["roots"].items():  # say in words which checkout is missing, before anything is run
         if not Path(folder).is_dir():
-            print(f"REFUSED: the blind test runs the plan in {template}, and that plan's root `{name}` points at {folder}, "
-                  f"which is not there. Check out {Path(folder).name} at that place (beside this repository) and run again. "
-                  "Nothing was run", file=sys.stderr)
-            return 2
+            raise sf.Refused(f"the blind test runs the plan in {template}, and that plan's root `{name}` points at {folder}, "
+                             f"which is not there. Check out {Path(folder).name} at that place (beside this repository) and run again. "
+                             "Nothing was run")
     fetch = plan["tests"]["held-out"]["fetch"]
     if "--harness" not in fetch:  # the harness chooses each case, and says so where the plan is read
         fetch.insert(fetch.index("seal") + 1, "--harness")
     passes = plan["tests"]["held-out"].setdefault("passes_environment", [])
     if HOOK not in passes:  # and the study tool gives the seal no variable the plan does not name
         passes.append(HOOK)
-    if a.cases:
+    if known_answer_cases:
         cmd = plan["tests"]["known-answers"]["command"]
-        cmd[cmd.index("--cases") + 1] = str(a.cases)
-    tally = {}
-    stdout = sys.stdout
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp).resolve()
-        base = tmp / "base" / "STUDY-BLIND-TEST"
+        cmd[cmd.index("--cases") + 1] = str(known_answer_cases)
+    base = Path(tmp) / "STUDY-BLIND-TEST"
+    stdout, model = sys.stdout, sf.Study.default_model
+    sf.Study.default_model = NO_MODEL  # the harness's events say that no model wrote them
+    with open(os.devnull, "w") as quiet:
         sys.stdout = quiet
         try:
             sf.cmd_start(sf.Study(base), ns(id="STUDY-BLIND-TEST", question=plan["question"], by="agent:blind-test-harness"))
@@ -265,15 +263,36 @@ def cmd_blind_test(a) -> int:
             sf.cmd_test(study, ns(what="working-data", by="agent:blind-test-harness"))
             for reh in plan.get("rehearsals") or []:
                 sf.cmd_rehearse(study, ns(id=reh["id"], by="agent:blind-test-harness"))
-            (tmp / "verdict.md").write_text("blind test harness: approve, automatically; not a review")
-            (tmp / "finding.md").write_text("blind test harness: no finding is written; this file stands where one would be attached")
-            for i in range(a.n):
-                gain = GAINS[i % len(GAINS)]
+        finally:
+            sys.stdout = stdout
+            sf.Study.default_model = model
+    return base
+
+
+def run_prepared(sf, base: Path, cases: list, tmp: Path, factory: Path | None = None) -> list:
+    """Each case on a copy of a prepared study: the lock (recorded by the harness and labelled as such), the
+    opening on a case sealed with the given seed and gain, a finding, a review, the log check, and the seal
+    opened. `cases` is a list of (seed, gain put in). `factory` is the definition the runs are made under: the
+    lock records its checksum and its deterministic scorers are evaluated on each run; None is the study tool's
+    own. Returns one record for each case, in order."""
+    ns = argparse.Namespace
+    tmp = Path(tmp)
+    definition = str(Path(factory).resolve()) if factory else None
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "verdict.md").write_text("blind test harness: approve, automatically; not a review")
+    (tmp / "finding.md").write_text("blind test harness: no finding is written; this file stands where one would be attached")
+    out = []
+    stdout, model = sys.stdout, sf.Study.default_model
+    sf.Study.default_model = NO_MODEL
+    with open(os.devnull, "w") as quiet:
+        sys.stdout = quiet
+        try:
+            for i, (seed, gain) in enumerate(cases):
                 one = tmp / f"run-{i:04d}" / "STUDY-BLIND-TEST"
                 shutil.copytree(base, one)
                 study = sf.Study(one)
-                sf.cmd_lock(study, ns(by=sf.HARNESS_PERSON, evidence=url))
-                os.environ[HOOK] = f"{a.seed * 100003 + i}:{gain}"
+                sf.cmd_lock(study, ns(by=sf.HARNESS_PERSON, evidence=URL, factory=definition))
+                os.environ[HOOK] = f"{seed}:{gain}"
                 try:
                     sf.cmd_open_held_out(study, ns(test="held-out", by="agent:blind-test-access-gate"))
                 finally:
@@ -283,18 +302,44 @@ def cmd_blind_test(a) -> int:
                 posted = [f"{e['seq']}:{e['hash']}" for e in study.events() if e["kind"] in ("lock.recorded", "opening.finished")]
                 status = sf.check_log(study, posted)["status"]
                 v = read_verdict(sf, study)
-                t = tally.setdefault(str(gain), {"cases": 0, "supported": 0, "refuted": 0, "inconclusive": 0,
-                                                 "ready_for_signature": 0, "wrong": 0})
-                t["cases"] += 1
-                t[v["the_factory_said"]] += 1
-                t["ready_for_signature"] += status == sf.READY
-                t["wrong"] += v["verdict"] == "WRONG"
-        except sf.Refused as r:  # a refusal by the study tool ends the blind test in its words, never in a traceback
-            print(f"REFUSED: the blind test stopped because the study tool refused a step: {r}", file=sys.stderr)
-            return 2
+                lock = study.last("lock.recorded")["data"]
+                out.append({"seed": seed, "gain_put_in": gain, "the_idea_was_true": v["the_idea_was_true"], "the_factory_said": v["the_factory_said"],
+                            "verdict": v["verdict"], "ready_for_signature": status == sf.READY,
+                            "definition_sha256": lock["definition"]["sha256"],
+                            "process_checks": sf.run_checks(study, Path(definition) if definition else sf.FACTORY, posted)})
+                shutil.rmtree(one.parent, ignore_errors=True)  # a run is read and then gone: nothing of it is kept
         finally:
             sys.stdout = stdout
-            quiet.close()
+            sf.Study.default_model = model
+    return out
+
+
+def run_cases(sf, template: Path, cases: list, known_answer_cases: int | None = None, factory: Path | None = None) -> list:
+    """Blind cases through the whole confirming procedure, unattended, in throwaway folders. This is what
+    `blind-test` runs; `tools/benchmark.py` calls the two halves itself, so that configurations which share a plan
+    and its code share one run of the known-answer tests."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp).resolve()
+        base = prepare(sf, template, known_answer_cases, tmp / "base")
+        return run_prepared(sf, base, cases, tmp, factory)
+
+
+def cmd_blind_test(a) -> int:
+    sf = neighbour("sf")
+    try:
+        sf.refuse_dirty_environment()
+        runs = run_cases(sf, a.template, [(a.seed * 100003 + i, GAINS[i % len(GAINS)]) for i in range(a.n)], a.cases)
+    except sf.Refused as r:  # a refusal by the study tool ends the blind test in its words, never in a traceback
+        print(f"REFUSED: the blind test stopped because the study tool refused a step: {r}", file=sys.stderr)
+        return 2
+    tally = {}
+    for r in runs:
+        t = tally.setdefault(str(r["gain_put_in"]), {"cases": 0, "supported": 0, "refuted": 0, "inconclusive": 0,
+                                                    "ready_for_signature": 0, "wrong": 0})
+        t["cases"] += 1
+        t[r["the_factory_said"]] += 1
+        t["ready_for_signature"] += r["ready_for_signature"]
+        t["wrong"] += r["verdict"] == "WRONG"
     true = tally.get("1.0", {"cases": 0, "supported": 0})
     false = [t for g, t in tally.items() if g != "1.0"]
     n_false = sum(t["cases"] for t in false)
@@ -325,6 +370,7 @@ def main() -> int:
     v = sub.add_parser("verdict", allow_abbrev=False)
     v.add_argument("--study", type=Path, required=True)
     v.add_argument("--by", required=True, help="who reveals the answer: human:<id> or agent:<id>")
+    v.add_argument("--model", default=None, help="the model that acts, when an agent does; declared by the caller and recorded in the event")
     v.add_argument("--anchor", action="append", default=None, help="SEQ:HASH, a log fingerprint posted outside the workspace; repeatable")
     d = sub.add_parser("working-data", allow_abbrev=False)
     d.add_argument("--executor", type=Path, required=True)

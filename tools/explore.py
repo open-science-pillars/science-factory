@@ -1754,7 +1754,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
         + yaml.safe_dump(plan_stub, sort_keys=False, allow_unicode=True, width=110))
     study_dir = os.path.relpath(x.record().parent / a.study_id, x.d)
     command = ["uv", "run", "tools/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
-               "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating assistant>"]
+               "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating assistant>", "--model", "<the model it runs as>"]
     sha = write_json(out / "hand-over.json", {
         "kind": "hand-over", "from": start["data"]["id"], "for": "sf.py start", "study_id": a.study_id,
         "study_directory_from_exploration": study_dir, "question": stub["question"],
@@ -1767,7 +1767,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
                                 "request_sha": sf.sha_file(out / "request.md"), "study_directory_from_exploration": study_dir})
     print(f"handed over ({WAY}): hand-over/request.md, hand-over/analysis-plan.stub.yaml, hand-over/hand-over.json.\n"
           f"Start the study with:\n  uv run tools/sf.py start --study {study_dir} --id {a.study_id} --question \"{stub['question']}\" "
-          "--request hand-over/request.md --by agent:<the coordinating assistant>\n(paths from the exploration directory)")
+          "--request hand-over/request.md --by agent:<the coordinating assistant> --model <the model it runs as>\n(paths from the exploration directory)")
 
 
 def study_problems(x: Exploration, study_dir: Path) -> list:
@@ -1925,6 +1925,7 @@ def stage_of(x: Exploration) -> dict:
                         "that was reviewed (explore.py end)",
                 "not_yet": "the curating assistant waits for the end"}
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
+            "models_recorded": {"by_actor": sf.models_recorded(ev), "note": "declared by whoever called the tool; nothing proves which model answered"},
             "set_aside": {k: start["set_aside"][k] for k in ("how", "window", "sites", "releases")},
             "says": "nothing here is a finding; an exploration ends in a lead, a note, a method or a stop"}
 
@@ -1946,6 +1947,8 @@ def check_log(x: Exploration, posted: list | None = None) -> list:
     start = ev[0]
     sa = start["data"]["set_aside"]
     p += [f"event {e['seq']} ({e['kind']}) does not say it is exploring" for e in ev if e["data"].get("way") != WAY]
+    p += [f"event {e['seq']} ({e['kind']}) was written by an agent and names no model: every event an agent writes records the model that wrote it"
+          for e in ev if str(e["actor"]).startswith("agent:") and not e.get("model")]
     try:
         on_file = json.loads(x.set_aside_path.read_text()).get("set_aside")
     except (OSError, ValueError):
@@ -2066,6 +2069,7 @@ def _refusal(fn, *args) -> str:
 def selftest() -> int:
     import io
     results = []
+    sf.Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
 
     def ok(name: str, cond) -> None:
         results.append((name, bool(cond)))
@@ -2119,6 +2123,38 @@ def selftest() -> int:
 
         def look(x: Exploration, words: list, why: str = "to see how A follows B", by: str = "agent:tester-analysis"):
             return said(cmd_look, x, A(argv=["--", *words], why=why, by=by))
+
+        # ---- the model that wrote each event ----------------------------------------------------------
+        sf.Study.default_model = None
+        (tmp / "work-models" / "explorations").mkdir(parents=True)
+        try:
+            xm = Exploration(tmp / "work-models" / "explorations" / "E-MODEL")
+            ok("an agent that names no model cannot start an exploration: no event is written (the command line refuses before anything is)",
+               "names the model that wrote it" in said(cmd_start, xm, A(request=str(req), id="E-MODEL")) and xm.events() == [])
+            shutil.rmtree(xm.d, ignore_errors=True)
+            shutil.rmtree(tmp / "work-models" / "studies", ignore_errors=True)
+            xm.model = "claude-sonnet-5-5"
+            quiet(cmd_start, xm, A(request=str(req), id="E-MODEL"))
+            ok("an agent's event in the exploration log records the model its caller declared, and status shows it",
+               xm.events()[0]["model"] == "claude-sonnet-5-5" and stage_of(xm)["models_recorded"]["by_actor"] == {xm.events()[0]["actor"]: ["claude-sonnet-5-5"]})
+            xm.model = None
+            ok("a later event by an agent with no model is refused", "names the model that wrote it" in said(
+                cmd_note, xm, A(by="agent:tester-analysis", kind="missing", about="a", text="b", evidence=None)))
+            for left in (xm.d / "notes").glob("NOTE-*"):  # the command line refuses before a note file is written; called directly, the file is left
+                left.unlink()
+            quiet(cmd_note, xm, A(by="human:tester", kind="missing", about="a", text="a person's note", evidence=None))
+            ok("a person exploring needs no model, and the event carries none", "model" not in xm.events()[-1] and check_log(xm) == [])
+            ev_ = xm.events()
+            body_ = {"seq": len(ev_), "at": sf.now(), "actor": "agent:quiet", "kind": "remark.added", "data": {"way": WAY, "text": "by hand"}}
+            with xm.log.open("a") as f_:
+                f_.write(json.dumps({**body_, "prev": ev_[-1]["hash"], "hash": sf.Study._digest(ev_[-1]["hash"], body_)}, sort_keys=True) + "\n")
+            ok("an agent event with no model, added by hand with the right hash, fails the log check", any("names no model" in q for q in check_log(xm)))
+        finally:
+            sf.Study.default_model = "selftest-model"
+        cli = subprocess.run([sys.executable, str(HERE / "explore.py"), "note", "--exploration", str(work / "explorations" / "E-CLI"), "--by", "agent:x",
+                              "--kind", "missing", "--about", "a", "--text", "b"], capture_output=True, text=True)
+        ok("on the command line an agent with no --model is refused before anything is written",
+           cli.returncode == 2 and "names the model that wrote it" in cli.stderr and not (work / "explorations" / "E-CLI").exists())
 
         # ---- the start: data is set aside first -------------------------------------------------------
         x0 = Exploration(work / "explorations" / "E-NONE")
@@ -2695,13 +2731,13 @@ def selftest() -> int:
                             "              ['note', '--exploration', x, '--by', 'agent:review-b', '--kind', 'missing', '--about', 'a', '--text', 'b']):\n"
                             "    r = subprocess.run([sys.executable, tool, *words], env=env, capture_output=True, text=True)\n"
                             "    print('nested exit', r.returncode)\nprint('rows 12')\n")
-        real = subprocess.run([sys.executable, str(HERE / "explore.py"), "look", "--exploration", str(r.d), "--by", "agent:tester-analysis", "--why",
+        real = subprocess.run([sys.executable, str(HERE / "explore.py"), "look", "--exploration", str(r.d), "--by", "agent:tester-analysis", "--model", "selftest-model", "--why",
                                "a look that tries to call the tool", "--", "{python}", selfreview], capture_output=True, text=True)
         ok("a look whose script shells out to this tool gets nowhere: both calls fail, and nothing but the look is added to the log",
            real.returncode == 0 and real.stdout.count("nested exit") == 2 and "nested exit 0" not in real.stdout
            and [e_["kind"] for e_ in r.events()][-1] == "look.run" and not count(r.events(), "reviewer.named") and not count(r.events(), "note.raised"))
         with r.held():
-            waiting = subprocess.run([sys.executable, str(HERE / "explore.py"), "note", "--exploration", str(r.d), "--by", "agent:tester-analysis",
+            waiting = subprocess.run([sys.executable, str(HERE / "explore.py"), "note", "--exploration", str(r.d), "--by", "agent:tester-analysis", "--model", "selftest-model",
                                       "--kind", "missing", "--about", "a", "--text", "b"], capture_output=True, text=True)
         ok("while a look holds the exploration log, a command that would write to it is refused and does not wait",
            waiting.returncode == 2 and "log is held" in waiting.stderr and not count(r.events(), "note.raised"))
@@ -2817,6 +2853,7 @@ def selftest() -> int:
            and not parses(["status", "--explor", "x"]))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    sf.Study.default_model = None
     failed = [n for n, good in results if not good]
     for n in failed:
         print("FAIL:", n)
@@ -2831,12 +2868,16 @@ def build_parser() -> argparse.ArgumentParser:
     def add(name, fn, *args):
         p = sub.add_parser(name, allow_abbrev=False)  # no option is taken by its first letters: `--b` is not `--by`
         p.add_argument("--exploration", required=True, help="the exploration directory")
+        if by in args:
+            args = (*args, model)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
         return p
 
     by = (["--by"], {"required": True, "help": "who acts: agent:<id> (or human:<id> for a person exploring)"})
+    model = (["--model"], {"default": None, "help": "the model that acts, when an agent does: required with --by agent:<id>, declared by "
+                                                    "the caller and recorded in the event; a person's event needs none"})
     add("start", cmd_start, by, (["--id"], {"required": True}), (["--question"], {"required": True}),
         (["--request"], {"required": True, "help": "the request, in the scientist's own words; bound by checksum"}),
         (["--subject"], {"required": True, "help": "key=value,key=value: what the data is about. The keys are yours to choose "
@@ -2902,7 +2943,11 @@ def main() -> int:
         sf.refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
-        a.fn(Exploration(a.exploration), a)
+        x = Exploration(a.exploration)
+        x.model = getattr(a, "model", None)
+        if str(getattr(a, "by", "")).startswith("agent:") and not x.model:
+            raise Refused(sf.NO_MODEL)  # said before anything is run or written
+        a.fn(x, a)
     except Refused as r:
         print(f"REFUSED: {r}", file=sys.stderr)
         return 2

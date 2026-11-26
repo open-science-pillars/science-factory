@@ -258,9 +258,9 @@ Added on 2026-11-26, with no earlier form. One line each.
 | **spoiled** | said of an exploration that set-aside data reached; it can end only as a stop |
 | **hand-over** | what an exploration writes so that the study tool can start a confirming study from its lead |
 | **recheck** | running a logged look again, in a copy, to see that it gives the same output |
-| **role** | one assistant's job as a file in `assistants/`: what it may call, must never see, reads, writes and hands on |
+| **role** | one assistant's job as a file, `factory/agents/<name>/agent.md` (in `assistants/` until the definition became a tree): what it may call, must never see, reads, writes and hands on. The folder and the file say **agent**, as Warp Factories' layout does; in prose an agent is still called an assistant |
 | **skill** | a written procedure a role follows, with any script beside it; it carries no facts about a dataset |
-| **runner** | what starts a role with its tools on some platform; the role does not depend on it |
+| **harness** | what starts a role with its tools on some platform; the role does not depend on it. Called a runner until the definition became a tree; see the next section, because **runner** now means something else |
 | **rendered** | written out from the role and skill files into the files a platform reads; never edited by hand |
 | **wiki** | a knowledge base as a directory of Markdown pages in the Open Knowledge Format (`openwiki/` in a repository), read as files or through the two read-only tools `openwiki_search` and `openwiki_read` |
 | **working memory** | what a wiki page is until a person signs it |
@@ -330,3 +330,42 @@ The file names in the tables above are the names; the folders changed once more.
 ## Where the runs are, since the repository became the factory only
 
 Later in November 2026 every run was taken out of this repository: `studies/` (the two draft studies and the practice runs), and the explorations, drafted pages and records of the demo under `examples/baton-rouge/`. With them went the table of moved files and the tool that replayed old records, which existed only to keep those records checkable. The last commit that holds them is kept as the branch `records-2026-11`. A new term follows from it. A number in these documents is *historical* when it came from one of those records and no command here makes it again; it then carries a pointer to that branch. Every other number is given with the command that reproduces it today from this repository alone.
+
+## Words added, and words that changed, when the factory became a definition tree
+
+On 2026-11-26 the factory's definition became a tree of files, `factory/`, rooted at `factory.yaml`, laid out the way Warp Factories lays out a software factory wherever the meaning is the same. Where this project's word clashed with that layout's word, the layout's word was taken. **Two words changed meaning, and one of them is "runner".** The tables above this section are history and keep the names of their day.
+
+| Word | What it means here |
+|---|---|
+| **definition** | the factory as code: the folder `factory/`, rooted at `factory.yaml`, that says which agents exist, the stages, what starts an agent, where a job computes and how the factory is measured |
+| **agent** | the name the tree gives a role's folder and file (`agents/<name>/agent.md`); in prose it is still an assistant, and always an AI agent |
+| **harness** | what starts an agent with its tools: Claude Code, or by hand. A folder in `factory/harnesses/`. It was called a runner |
+| **runner** | where a job computes: this machine, a cluster, a cloud job. A file in `factory/runners/`. **It changed meaning:** until this date a runner was what started a role (now a harness), and where a job computes was called a place |
+| **scorer** | one check on a study or an exploration, a file in `factory/scorers/`; deterministic (a named check the study tool works out from the log) or a judge |
+| **judge** | a scorer that is a rubric for a language model: it reads a packet of declared material and returns one label from a list, each label with a score |
+| **packet** | the folder a judge is given: exactly the kinds of material its scorer declares, each file by a checksum the log recorded before any opening, and a list of what was left out |
+| **benchmark** | the blind test of the system given a form: sealed cases run through the whole procedure under two versions of the definition and compared |
+| **suite** | one benchmark as files: its cases, its configurations, its repetitions and the comparison it states in advance |
+| **configuration** | one version of the definition a suite runs under: a path, or a git ref |
+| **design set** | the blind cases anyone may read, and against which a change to the factory may be shaped |
+| **acceptance set** | the blind cases a change must pass before a person adopts it; generated from a seed kept outside the repository, and never read by an agent that proposes changes |
+| **firewall** | the rule that what an opening of real held-out data showed never reaches a judge or a proposal to change the factory: every scorer declares what it reads, and the validator refuses the rest |
+| **automation** | a declaration of what would start work without a person; none is wired |
+| **valid, invalid, not validated** | the three results of the validator; not validated means the tool could not tell, and is never a pass |
+| **declared** (of a model) | named by the definition and by whoever calls a tool, recorded, and proven by nothing |
+
+| Before | Now |
+|---|---|
+| `factory/procedure.yaml` | `factory/factory.yaml` (`stages` is `procedure.stages`; `assistants` is `procedure.agents`; `measure.checks` is the files in `factory/scorers/`) |
+| `assistants/<role>.md`, with `name` and `purpose` | `factory/agents/<role>/agent.md`, with `description`; the name is the folder |
+| `skills/<name>/` | `factory/skills/<name>/` when two agents or more use it, `factory/agents/<role>/skills/<name>/` when one does |
+| `runners/claude-code/`, `runners/by-hand/` | `factory/harnesses/claude-code/`, `factory/harnesses/by-hand/` |
+| `compute/places.yaml`, one table of places | `factory/runners/<name>.yaml`, one file for each runner; the keys of the table are `runner_contract.keys` in `factory.yaml` |
+| `adapter.py conformance --place REF`, `LocalPlace` | `adapter.py conformance --runner REF`, `LocalRunner` |
+| `--procedure FILE` | `--factory DIR` |
+| `done_by: analysis assistant, then review assistant` | `done_by: [analysis, review]` |
+| in a study's status and scorecard: `procedure` | `definition`, and beside it `models` |
+| in the lock event: `procedure` | `definition` (the tree's checksum, the version, the declared models, the skills), and `models_recorded` |
+| in a change record: `procedure_sha` | `definition_sha`, `definition_version` |
+
+New, with no earlier name: the option `--model` on every command that takes `--by`; the key `model` in an event an agent writes; the tools `check_factory.py`, `scorers.py` and `benchmark.py`; the files `harness.yaml`, `scorer.md`, `suite.yaml`, `automation.md`; `judgements.jsonl` beside a run a judge scored; the folder `acceptance-cases`.

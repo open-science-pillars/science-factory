@@ -1,0 +1,29 @@
+# A blind test suite: sealed cases through the whole confirming procedure, under each configuration, compared
+# by a rule stated here before any run. `uv run tools/benchmark.py run --suite factory/benchmarks/built-in-gain`
+# runs it in scratch folders and keeps nothing in the repository.
+#
+# This is the design set: its cases are files, anyone may read them, and a change to the factory may be shaped
+# against them. A change is accepted on the other set (benchmarks/acceptance), which no agent may read.
+name: "The built-in method, design set"
+description: "Six sealed cases of the gain of one synthetic record against another, each run twice, under two configurations of the definition."
+set: design
+target:
+  procedure: confirming
+  method: built-in-gain                   # the method in methods/gain, paired by methods/built-in-pairing
+  plan: examples/stand-alone/system-trial # the plan each case is run under, read from the repository that holds each configuration
+configurations:                           # two versions of the definition; a path is read from this definition's own folder
+  - name: current
+    definition: {path: "."}
+  - name: same-again                      # the worked example compares the definition with itself: expect no difference
+    definition: {path: "."}
+repetitions: 2                            # each case, twice, on two different draws of its noise
+cases: [no-gain, no-gain-again, just-inside, just-outside, gain-low, gain-high]
+comparison:
+  stated: "before any run, in this file; a change to this block after a run is a new comparison and the old result does not count for it"
+  baseline: current
+  candidate: same-again
+  primary: wrong_verdicts                 # a supported idea that was false, or a refuted idea that was true
+  margin: 1                               # the candidate is better only if it has at least this many fewer, summed over the paired runs
+  alpha: 0.05                             # and only if the paired runs where the two disagree are too one-sided to be chance at this level
+  must_not_be_worse: [false_support_rate] # whatever the primary says, a candidate that supports more false ideas is worse
+  noise: "Both configurations run the same cases on the same draws, so a run where they give the same verdict says nothing about which is better. Only the discordant runs count: with d of them, of which the candidate was right in k, an exact two-sided sign test gives the chance of a split at least that one-sided. Fewer than six discordant runs can never reach 0.05, so on a suite this small the answer is almost always `no difference beyond noise`; each rate is printed with a 95 percent Wilson interval so that the width of that noise is in view."

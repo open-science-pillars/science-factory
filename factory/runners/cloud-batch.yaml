@@ -1,0 +1,35 @@
+# A runner: where a job computes, and how it keeps the one contract in
+# compute/adapter.py (a job spec, four verbs, markers and a run log). The name
+# of this runner is the name of this file. `status: built` means
+# `compute/adapter.py conformance` passes against it; `specified` means the
+# table is what an adapter is meant to do, written down before anyone wrote
+# one, and it stays a claim until conformance passes. Nothing in the study tool
+# sends a job to any runner yet, so `for` says what a runner is meant for, not
+# what runs there today. The twelve keys of `contract` are the ones
+# factory.yaml lists under runner_contract.keys.
+description: A managed batch service or a CI job with a container pinned by digest. Written down, not built.
+status: specified
+basis: 'Written from how managed batch services and CI jobs are generally used. Not read against any one service''s documentation and not exercised: no adapter exists.'
+for:
+- openings
+- repeats at independent sites
+- scheduled re-tests
+contract:
+  submit: A job from a container image pinned by digest. The spec travels as the job's only input, and an entry point of the runner's own in the image does what the supervisor does locally.
+  idempotency: A record named by the contract's job id is written to the runner's own store with a write that fails if the record exists, before the service is called; the job is labelled with the id, and after a lost answer the adapter lists jobs by that label before it calls again.
+  status: 'The entry point''s own records in the runner''s store first, the service''s job state second: a job the service shows as ended without a final record from the entry point is failed, with the service''s reason.'
+  exit: The exit code the entry point recorded for the argv; the service's container exit code is the cross-check.
+  markers: '`fetch.started` is written by the entry point to the runner''s store before it asks for the role or secret that can read the held-out data. This is the kind of runner where the marker can mean what its name says.'
+  collect: The entry point uploads the declared outputs and nothing else, hashed, to the job's prefix in the runner's store; collect reads only that prefix. The run log adds image digest, region and the service's own job id.
+  cancel: The service's own cancel or terminate call. Cancelled is reported once the service shows the job stopped.
+  argv: 'Tokens are expanded by the entry point in the container: {python} is the image''s interpreter, {work} the container''s working directory. The code is a fresh `git clone` made by the entry point, and the manifest is what ties it to the lock.'
+  manifest: The entry point hashes the named files in the container, before `fetch.started`, and does not start the argv when one differs.
+  resources: walltime_seconds, cpus and memory_mb map to the service's job limits. A resource with no such limit is refused at submit.
+  clean_interpreter: Yes when the image is pinned by digest and built from a lockfile, and the digest is in the run log. Not otherwise.
+  blinds_the_method_builder: 'Only where the held-out data sits behind a role that the opening''s job alone is given. For public data, no: what keeps public data from the method builder is where the analysis assistant runs, which this file does not cover.'
+open_questions:
+- which services can refuse a second job with the same label by themselves, and whether listing by label can be trusted after a lost answer
+- 'for a CI job: whether a run can be found again by a label the adapter chose, and what makes a second run of the same key impossible and not merely unlikely'
+- 'how the role that reads the held-out data is given to the opening''s job and to no test job: by the key, by a protected environment, or by a person''s approval'
+- whether the code is baked into the image or cloned by the entry point; the argv cell assumes a clone, and which commit to clone is not in the job spec today
+- how long the runner's store keeps a job's prefix, given that the contract has no verb to delete one

@@ -1,0 +1,44 @@
+# The acceptance set: the blind cases a change to the factory has to pass before a person adopts it. It is kept
+# back from whoever proposes the change, the way held-out data is kept back from whoever builds a method.
+#
+# No case is in this file or beside it. The cases are generated when the suite is run, from a seed that lives
+# outside the definition: whoever keeps the acceptance set (a steward) holds it, and gives it to the run in the
+# environment variable named below (in CI, a secret that only a protected job is given). Without the seed the
+# tool refuses to run this suite and says so; it never falls back to a seed of its own.
+#
+# What keeps an agent out, plainly. Every agent's file lists the three entries under `must_never_see` below, the
+# validator fails when one does not, and the Claude Code harness's per-call check refuses a read of those paths
+# when a platform calls it. That check sees tool calls and nothing else. An agent that can run arbitrary code,
+# or a person, can read a file wherever it is: for them this is instruction. The seed is the part that is not
+# instruction: it is not in the repository, so reading the repository does not give the cases.
+name: "The built-in method, acceptance set"
+description: "Twelve sealed cases generated from a seed kept outside the definition, each run once, to accept or refuse a change."
+set: acceptance
+target:
+  procedure: confirming
+  method: built-in-gain
+  plan: examples/stand-alone/system-trial
+configurations:
+  - name: current
+    definition: {path: "."}
+  - name: candidate                       # for a real change: {ref: <the branch that proposes it>}, or the path of its definition
+    definition: {path: "."}
+repetitions: 1
+generated:
+  count: 12
+  truths: [1.00, 1.00, 1.03, 1.08, 0.90, 1.10]   # each case's planted gain is drawn from these by the seed
+  seed: {env: SF_ACCEPTANCE_SEED}                # read from the environment of the run; never written anywhere by the tool
+  kept: "by the steward of this factory, outside the repository; in CI, as a secret given only to the job that accepts a change"
+must_never_see:                           # every agent lists these, with no exception; the validator checks it
+  - "the acceptance set of blind cases, its seed, and anything a run of it wrote"
+  - "path:acceptance-cases/*"             # the scratch folder a run of this suite writes its cases and its result into
+  - "path:*acceptance-seed*"              # wherever the keeper keeps the seed as a file
+comparison:
+  stated: "before any run, in this file"
+  baseline: current
+  candidate: candidate
+  primary: wrong_verdicts
+  margin: 1
+  alpha: 0.05
+  must_not_be_worse: [false_support_rate, missed_true_rate]
+  noise: "As in the design set: only the paired runs where the two configurations disagree count, by an exact two-sided sign test, and each rate is printed with a 95 percent Wilson interval. A change is accepted when the candidate is not worse on any rate named above; it need not be better."
