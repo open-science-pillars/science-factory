@@ -1,0 +1,8 @@
+[
+  [
+    {"id": 301, "user": {"login": "octo-steward", "type": "User"}, "state": "APPROVED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T11:00:00Z"}
+  ],
+  [
+    {"id": 302, "user": {"login": "octo-steward", "type": "User"}, "state": "CHANGES_REQUESTED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T12:00:00Z"}
+  ]
+]

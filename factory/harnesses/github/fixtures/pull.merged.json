@@ -1,0 +1,12 @@
+{
+  "number": 7,
+  "html_url": "https://github.example/octo-org/octo-study/pull/7",
+  "state": "closed",
+  "user": {"login": "octo-author", "type": "User"},
+  "head": {"ref": "HEAD_REF", "sha": "HEAD_SHA"},
+  "base": {"ref": "BASE_REF", "sha": "BASE_SHA"},
+  "merged": true,
+  "merged_at": "2026-01-02T13:00:00Z",
+  "merged_by": {"login": "octo-steward", "type": "User"},
+  "merge_commit_sha": "MERGE_SHA"
+}

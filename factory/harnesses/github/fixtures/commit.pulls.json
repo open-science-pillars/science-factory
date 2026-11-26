@@ -1,0 +1,4 @@
+[
+  {"number": 6, "merged_at": null, "merge_commit_sha": "OTHER_SHA", "base": {"ref": "main"}},
+  {"number": 7, "merged_at": "2026-01-02T13:00:00Z", "merge_commit_sha": "MERGE_SHA", "base": {"ref": "main"}}
+]

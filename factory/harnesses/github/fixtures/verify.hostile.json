@@ -1,0 +1,365 @@
+{
+ "about": "Hostile and broken answers, each as changes laid over verify.answers.json. Written by hand; never returned by GitHub. Each case names the result the verification must give and words its reason must hold.",
+ "cases": [
+  {
+   "name": "the only approval is the author's own",
+   "expect": "refuted",
+   "says": "an author's own approval does not count",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-author",
+        "type": "User"
+       },
+       "state": "APPROVED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:00:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the approval was given on an older commit, whose request was another",
+   "expect": "refuted",
+   "says": "is not the request that was merged",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "APPROVED",
+       "commit_id": "OLDER_SHA",
+       "submitted_at": "2026-01-02T10:00:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the approval was dismissed afterwards",
+   "expect": "refuted",
+   "says": "its approval was dismissed",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "APPROVED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:00:00Z",
+       "author_association": "MEMBER"
+      },
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "DISMISSED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:02:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the approver asked for changes afterwards",
+   "expect": "refuted",
+   "says": "it asked for changes",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "APPROVED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:00:00Z",
+       "author_association": "MEMBER"
+      },
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "CHANGES_REQUESTED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:02:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the approver is a bot",
+   "expect": "refuted",
+   "says": "is not a person's",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-app[bot]",
+        "type": "Bot"
+       },
+       "state": "APPROVED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T10:00:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the approval came after the merge",
+   "expect": "refuted",
+   "says": "given after the merge",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": [
+      {
+       "id": 1,
+       "user": {
+        "login": "example-scientist",
+        "type": "User"
+       },
+       "state": "APPROVED",
+       "commit_id": "HEAD_SHA",
+       "submitted_at": "2026-01-02T11:00:00Z",
+       "author_association": "MEMBER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the branch is not protected",
+   "expect": "refuted",
+   "says": "is not protected",
+   "change": {
+    "/repos/REPOSITORY/branches/BRANCH": {
+     "body": {
+      "protected": false,
+      "protection": {
+       "enabled": false
+      }
+     }
+    },
+    "/repos/REPOSITORY/branches/BRANCH/protection": {
+     "status": 404,
+     "body": {
+      "message": "Branch not protected"
+     }
+    }
+   }
+  },
+  {
+   "name": "the pull request is one of another repository",
+   "expect": "refuted",
+   "says": "a pull request of another repository",
+   "change": {
+    "/repos/REPOSITORY/pulls/7": {
+     "body": {
+      "base": {
+       "repo": {
+        "full_name": "example-elsewhere/example-studies"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "the commit belongs to the pull request and is not its merge",
+   "expect": "refuted",
+   "says": "is not the merge of pull request 7",
+   "change": {
+    "/repos/REPOSITORY/pulls/7": {
+     "body": {
+      "merge_commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    },
+    "/repos/REPOSITORY/commits/MERGE_SHA/pulls": {
+     "body": [
+      {
+       "number": 7,
+       "state": "closed",
+       "merged_at": "2026-01-02T10:05:00Z",
+       "merge_commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "no pull request brought the commit in",
+   "expect": "refuted",
+   "says": "knows no pull request",
+   "change": {
+    "/repos/REPOSITORY/commits/MERGE_SHA/pulls": {
+     "body": []
+    }
+   }
+  },
+  {
+   "name": "the pull request was closed and never merged",
+   "expect": "refuted",
+   "says": "was not merged",
+   "change": {
+    "/repos/REPOSITORY/pulls/7": {
+     "body": {
+      "merged": false,
+      "merged_at": null
+     }
+    }
+   }
+  },
+  {
+   "name": "the pull request was merged into another branch",
+   "expect": "refuted",
+   "says": "was merged into `develop`",
+   "change": {
+    "/repos/REPOSITORY/pulls/7": {
+     "body": {
+      "base": {
+       "ref": "develop"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "the branch was moved away from the commit",
+   "expect": "refuted",
+   "says": "is not on the branch",
+   "change": {
+    "/repos/REPOSITORY/compare/MERGE_SHA...BRANCH": {
+     "body": {
+      "status": "diverged",
+      "ahead_by": 3,
+      "behind_by": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "the branch's rules ask for no approval",
+   "expect": "refuted",
+   "says": "ask for 0 approval(s)",
+   "change": {
+    "/repos/REPOSITORY/branches/BRANCH/protection": {
+     "body": {
+      "required_pull_request_reviews": {
+       "required_approving_review_count": 0
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "the branch's rules require no pull request",
+   "expect": "refuted",
+   "says": "do not require a pull request",
+   "change": {
+    "/repos/REPOSITORY/branches/BRANCH/protection": {
+     "body": {
+      "required_pull_request_reviews": null
+     }
+    }
+   }
+  },
+  {
+   "name": "the request check is not a required check",
+   "expect": "refuted",
+   "says": "a required check",
+   "change": {
+    "/repos/REPOSITORY/branches/BRANCH/protection": {
+     "body": {
+      "required_status_checks": {
+       "strict": true,
+       "contexts": [
+        "build"
+       ],
+       "checks": [
+        {
+         "context": "build"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "the reviews come back as something that is not a list",
+   "expect": "refuted",
+   "says": "nobody approved",
+   "change": {
+    "/repos/REPOSITORY/pulls/7/reviews?per_page=100&page=1": {
+     "body": {
+      "message": "not what was asked for"
+     }
+    }
+   }
+  },
+  {
+   "name": "the repository answers under another name",
+   "expect": "refuted",
+   "says": "the platform answered for the repository",
+   "change": {
+    "/repos/REPOSITORY": {
+     "body": {
+      "full_name": "example-org/renamed-studies"
+     }
+    }
+   }
+  },
+  {
+   "name": "the platform does not hold the commit",
+   "expect": "refuted",
+   "says": "does not hold the commit",
+   "change": {
+    "/repos/REPOSITORY/commits/MERGE_SHA": {
+     "status": 404,
+     "body": {
+      "message": "Not Found"
+     }
+    }
+   }
+  },
+  {
+   "name": "the platform's servers fail on one question",
+   "expect": "not checked",
+   "says": "did not answer every question",
+   "change": {
+    "/repos/REPOSITORY/pulls/7": {
+     "status": 502,
+     "body": null
+    }
+   }
+  }
+ ]
+}

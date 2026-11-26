@@ -25,6 +25,10 @@ must_never_see:
   - "the account the analysis assistant wrote of the work it checks (its answer to the coordinating assistant)"
   - "path:record/analysis/*"
   - "path:record/*analysis*"
+  - "everything else in the folder where roles keep their accounts, its own place there apart"
+  - "path:record/*"
+  - "path:!record/review/*"
+  - "path:!record/*review*"
   - "the acceptance set of blind cases, its seed, and anything a run of it wrote"
   - "path:acceptance-cases/*"
   - "path:*acceptance-seed*"
@@ -63,7 +67,7 @@ Use the `review-work` skill. In short:
 3. **Check every number against a receipt.** A number in a lead or a finding that is in no receipt is a hole. For an exploration, `explore.py recheck` runs a logged look again and tells you whether it reproduces, and it says what was pinned: for a look that ran in a scratch folder, every file the look was given; for a look logged before that, only the script and the files its command names.
 4. **Pick holes in the reasoning**: choices made after looking that are not recorded, alternatives not tried, a count of things tried that the lead does not own up to, a claim wider than the data, a pitfall in the knowledge that the work walked into.
 5. **For an exploration, check the fence**: what was set aside, that no look names it, and that the lead says it is a lead.
-6. **Record the verdict with the tool.** For an exploration: `explore.py review --verdict holes-found` or `no-holes-found`. For a study: `sf.py review --verdict approve` or `block`. Write the review file first, in the work's `review/` folder: each hole with where it shows, how much it matters, and what would close it.
+6. **Record the verdict with the tool.** For an exploration: `explore.py review --verdict holes-found` or `no-holes-found`, with `--read-lead` and the checksum of the lead you read, which `explore.py status` prints as `lead_json_sha256` (read it before you start: a lead corrected while you worked is refused, and you read it again). For a study: `sf.py review --verdict approve` or `block`. Write the review file first, in the work's `review/` folder: each hole with where it shows, how much it matters, and what would close it.
 
 In an exploration, read the lead's own section on the order of looks and choices: a choice written down after the looks it governs was made knowing what they showed, and the lead should treat it so. Look at the figures the lead shows and the ones it does not. When the lead lists corrections of wording, read them: your verdict covers the lead as it stands when you record it, and a correction made afterwards brings the lead back to you.
 

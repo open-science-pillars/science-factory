@@ -22,9 +22,9 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | Analysis plan | `analysis-plan.yaml`; `templates/analysis-plan.yaml`; `sf.py check-plan` (the plan check) | the system trial's plan passes the plan check, and so does the template as written (the study tool's self-test checks both) |
 | The method | `methods/gain/` (`gain.py`, `confront.py`) with `methods/built-in-pairing/`, the built-in method, as prototypes; a real study's method is landed as an attested computation in its own repository (Part B) | prototype |
 | Tests and the opening | `test_cases.py`, `known_answer_tests.py` (known-answer tests); working data; `sf.py rehearse`; `sf.py open-held-out`; the record of what has been opened | built; the system trial's known-answer tests, working data and rehearsal run on every run of the stand-alone example |
-| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 189 of 189 self-tests (`uv run tools/sf.py selftest`) |
+| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 231 of 231 self-tests (`uv run tools/sf.py selftest`) |
 | Review | `sf.py attach`, `review`; the findings checker (Part B) | built; wiring the checker is Part B |
-| Acts by people | `sf.py lock`, `void-unread`, `signature` | built; never yet used by a person. That a person made them is held by a protected branch, outside the tool |
+| Acts by people | `sf.py request-lock`, `request-signature` (the requests an assistant writes), the merged pull request (the act), `lock --record-merge` and `signature --record-merge` (the job after the merge), `verify-acts` (asks the platform who approved), `factory/harnesses/github/`; `--local-practice` for a typed act; `void-unread` | built and tested in a throwaway repository on payloads and answers in the platform's shapes; never yet used by a person, the workflow has never run on GitHub, and the verification has never asked it anything |
 | Notes into shared knowledge | `sf.py note`, `curation-list`, `resolve`; the curating assistant | the three commands are built; the curating assistant is a role file, and nothing schedules it |
 | Process scorecard | the deterministic scorers in `factory/scorers/`, `sf.py scorecard` | built; eight checks |
 | Judge scorers, and the outcome firewall | three judges in `factory/scorers/`; `tools/scorers.py` (which runs are sampled, the judging packet, a verdict read back); the validator's refusals | built up to the model call: 36 self-tests, among them that a packet made from an opened study holds nothing written after the opening. No judge has been run by a real model |
@@ -42,7 +42,7 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 
 Every number in this section but those of its last paragraph is made by a command that runs today from a bare clone of this repository, with nothing beside it; README.md, under "Try it", has the commands in one place. No held-out data of any real record has been read, and neither the lock nor the steward's signature has been recorded by a person.
 
-**The study tool.** `uv run tools/sf.py selftest` passes 189 of 189. The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
+**The study tool.** `uv run tools/sf.py selftest` passes 231 of 231. The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
 
 **The blind test of the system.** Two hundred blind test cases go through the whole study tool, unattended:
 
@@ -89,12 +89,12 @@ This is deliverable `science-factory-system-trial`. It needs this repository and
 ### What you need
 
 - **The layout.** One folder, `<root>`, holding two repositories side by side: `science-factory` (a clone of this repository, at a commit you write down) and `my-science` (your own repository, the one where the science lives; any name will do). The study is made in `my-science/studies/STUDY-0000`, and its plan finds the method by the `roots:` lines `../../../science-factory/methods/gain` and `../../../science-factory/methods/built-in-pairing`, which is that layout. No study is ever made inside `science-factory`.
-- **The repository.** `my-science` has to be on a host where `main` is protected: a pull request and an approving review before any merge, and approvals dismissed when new commits are pushed. Every command below is typed in `<root>`; git is always `git -C my-science`, so nothing is ever staged in the factory's clone. The lock records the commit of the `science-factory` clone and whether its work tree was clean, so leave that clone alone for the length of the trial.
+- **The repository.** `my-science` has to be on a host where `main` is protected, with the workflow that carries the two acts installed: `science-factory/factory/harnesses/github/README.md` is the checklist (a pull request and approvals before any merge, approvals dismissed when new commits are pushed, code owners, the required check `request-check`). In this two-repository layout the workflow needs one more checkout, of `science-factory` at the commit you wrote down, beside the study's repository, with `--tools` and `--factory` pointed at it, so that the plan's roots resolve in the job as they do on your machine. The workflow has never run on GitHub; if you do not install it, block 2 below says how to make the same record by hand from the platform's own answer. Every command below is typed in `<root>`; git is always `git -C my-science`, so nothing is ever staged in the factory's clone. The lock binds the study tool and the definition by checksum, so leave the `science-factory` clone at that commit, untouched, for the whole study.
 - **A tracking issue**, opened first, in that same repository. The two log fingerprints are posted there as comments, and so is the steward's decision.
 - **A folder for drafts** outside the repository, `/tmp/STUDY-0000` below, for the write-up and the review assistant's verdict. The tool copies each into the study (`finding/`, `verdicts/`), and the copy is what it binds by checksum.
 - **Tools.** `git` 2.28 or later, `uv`, bash or zsh.
 
-**What the tool checks here, and what it cannot.** In a git work tree the opening is refused until the lock is in a commit, and the study is not ready for the steward until both posted fingerprints are passed back with `--anchor`. The tool accepts any local commit, on any branch, as the lock being committed: it cannot tell a merged commit from one that was never pushed. That the lock's commit was reviewed and merged before the opening is held by the host's branch protection and by the steward following the steps below.
+**What the tool checks here, and what it cannot.** The lock and the signature are pull requests. The opening is refused unless git finds the lock's merge (the commit exists, is one of `main`'s own commits, is reachable from what is checked out, has two parents and brought the lock request in from the second, and its manifest matches the files) and unless the host, asked at the opening, confirms that the merge is an approved pull request; and the study is not ready for the steward until both posted fingerprints are passed back with `--anchor`. git cannot show who approved, or that `main` is protected, and a local branch called `main` would look the same from a clone: so what git finds is the standing `merge found, people not verified`, and `verified` is the host's own answer to `sf.py verify-acts`. The opening needs a network and a token that may read the repository. A lock typed at a command line is refused unless it says `--local-practice`, and a study locked that way never closes as a signed finding.
 
 ### The run, as three prompts and two acts
 
@@ -119,18 +119,21 @@ step and do what it says is still needed.
 4. Raise one note on purpose with sf.py note, and
    one more for anything odd. Run sf.py
    curation-list.
-5. Commit, push, open a pull request into main.
-Stop there and show me status, the summary of the
-known-answer tests and the pull request. Do not
-lock: the lock is mine.
+5. Write the lock request with sf.py request-lock.
+6. Commit, push, open a pull request into main.
+Stop there and show me status, the lock request's
+evidence summary and the pull request. Do not
+lock: the lock is my approval and merge of that
+pull request.
 ```
 
-Then the steward reads the evidence, approves the pull request with an approving review, locks, posts the log fingerprint the lock prints on the tracking issue, and commits and pushes the lock as a commit of its own. That commit needs its own approving review before the pull request is merged: the approval the lock cites was given before the lock existed and cannot cover it. The second prompt, once the merge is done:
+Then the steward reads the evidence summary, which the required check puts on the pull request, and approves and merges it. The merge is the lock. The job that follows the merge writes it into the study log on `main`, with the merge commit, the pull request and the people the host recorded, and prints a log fingerprint, which the steward posts on the tracking issue. The second prompt, once that is done:
 
 ```
-The lock is recorded and its commit is merged into
-main. On a new branch system-trial-result from the
-merged main, as the coordinating assistant: sf.py
+The lock request is merged into main and the lock
+is recorded in the study log there. On a new branch
+system-trial-result from a fresh pull of main, as
+the coordinating assistant: sf.py
 open-held-out --study
 my-science/studies/STUDY-0000, once.
 Report the outcome exactly; change nothing. Post
@@ -148,13 +151,17 @@ and record it with sf.py review --verdict approve
 (or block).
 Then run sf.py check-log with both posted
 fingerprints as --anchor and the change log as
---change-log; commit, again without sealed/; push;
-open a second pull request. Stop for my decision.
+--change-log, and write the signature request with
+sf.py request-signature --decision signed and the
+same two --anchor; commit, again without sealed/;
+push; open a second pull request. Stop for my
+decision: it is my approval and merge of that
+pull request, or my refusal of it.
 Never read anything under sealed/, and do not run
 system_trial.py verdict: both wait for my decision.
 ```
 
-The steward writes the decision as a comment on the tracking issue and records it (`sf.py signature --decision signed` or `declined`, with the two fingerprints; for this study signed means "I accept this trial if the sealed answer shows the factory was right"). Only then does the steward reveal the sealed answer with `system_trial.py verdict`, which writes the verdict into the study log. The third prompt:
+The steward decides by approving and merging the second pull request, which carries the signature request (for this study signed means "I accept this trial if the sealed answer shows the factory was right"); to decline, the steward closes it and asks for a request that says `declined`, and merges that. The job after the merge records the signature in the study log. Only then does the steward reveal the sealed answer with `system_trial.py verdict`, which writes the verdict into the study log. The third prompt:
 
 ```
 I have decided and the verdict is in the study log.
@@ -163,14 +170,15 @@ sf.py resolve. As the coordinating assistant: run
 sf.py scorecard; record what was observed with
 sf.py log-change --observed; close the study with
 the outcome the verdict allows; commit everything,
-sealed/ included; push.
+sealed/ included, on a new branch; push; open a
+third pull request.
 ```
 
-Done when `sf.py status` reports the stage as `closed` with all nine steps done, the verdict in the study log is `right`, the outcome is `system-trial-accepted`, and the second pull request is merged.
+Done when `sf.py status` reports the stage as `closed` with all nine steps done, the verdict in the study log is `right`, the outcome is `system-trial-accepted`, and the third pull request is merged.
 
 ### The same run, command by command
 
-Lines under "YOU" are the steward's; everything else is an assistant's. Three things have to be replaced: `human:YOU` (your own id, such as `human:jdoe`), every address that starts `https://...` (the real one), and the two fingerprints `LOCKSEQ:HASH` and `OPENSEQ:HASH` (copied from the tracking issue, where they were posted). Left as written, the tool refuses `human:YOU` and any `https://...` address given as evidence, and the log check reports that the study log does not contain such a fingerprint.
+Lines under "YOU" are the steward's; everything else is an assistant's. The steward types a name in one place only, the reveal of the sealed answer, where `human:YOU` has to be replaced by your own id (such as `human:jdoe`); the lock and the signature are not typed at all. Also to be replaced: `OWNER/REPO`, and the two fingerprints `LOCKSEQ:HASH` and `OPENSEQ:HASH` (copied from the tracking issue, where they were posted). Left as written, the tool refuses `human:YOU`, and the log check reports that the study log does not contain such a fingerprint.
 
 Once, to get the factory and to make the repository the study will live in (skip the `init` and `commit` lines if `my-science` is already a repository):
 
@@ -238,36 +246,42 @@ sf note --study $W --by agent:analysis --model $M \
 takes one note from raising to resolution." \
   --evidence $W/receipts/known-answers.json
 sf curation-list --study $W
+sf request-lock --study $W --by agent:coordinating --model $M
 sf status --study $W
 g add -A
-g commit -m "STUDY-0000: tests and rehearsal passed"
+g commit -m "STUDY-0000: tests passed, lock requested"
 g push -u origin system-trial
 #   on the host: open pull request 1, into main
 ```
 
 The `sed` line copies the system trial's plan, gives it this study's id, and points its two roots at the factory's clone beside your repository. What to expect: `started STUDY-0000`; `change recorded under ...`; `plan check: the analysis plan is complete`; `known-answer tests: pass (exit 0)` after about a minute and a half; `working data: pass (exit 0)`; `rehearsal opening-path: pass (exit 0)`; `note NOTE-001 recorded`; `curation list: 1 open note(s) across 1 subject(s)`; and `status` prints `"stage": "lock"` with `NOTE-001` under `open_notes`.
 
-**2. YOU: read, approve, lock.** Read pull request 1, the summary the known-answer tests printed, and the status. Approve the pull request with an approving review and copy that review's address. Then, on the same branch in the same clone:
+**2. YOU: read, approve, merge. That is the lock.** Read pull request 1: the evidence summary the check posted (it is also `$W/lock-request/EVIDENCE.md`), and the result of `request-check`. The summary shows the question, the rule with each criterion and the rate measured beside it, what is held out and every change to it, the receipts, the study tool and the six method files by checksum, the definition by checksum with the models its agents declare, open notes, and the openings already on record. Approve and merge on the host. Nothing is typed.
+
+With the workflow installed, its `record` job now writes the lock into the study log on `main` and prints a line that ends in a log fingerprint of the form `SEQ:HASH`: post that fingerprint as a comment on the tracking issue. Without the workflow, the same record is made by hand at the start of block 3, from the host's own answer:
 
 ```
-sf lock --study $W --by $ME \
-  --evidence https://.../pull/1#pullrequestreview-N
-g add -A
-g commit -m "STUDY-0000: the lock"
-g push
-#   on the host: an approving review of this
-#   commit, then merge pull request 1
+gh api repos/OWNER/REPO/pulls/1 > $D/pull.json
+gh api --paginate --slurp \
+  repos/OWNER/REPO/pulls/1/reviews > $D/reviews.json
+uv run science-factory/factory/harnesses/github/record_act.py \
+  --repo my-science --tools science-factory/tools \
+  --pull $D/pull.json --reviews $D/reviews.json \
+  --commit $(git -C my-science rev-parse origin/main)
 ```
 
-The lock prints what it binds (the plan, the study tool and the six method files by checksum, the rule with each criterion and the rate measured beside it, one opening allowed), then `The lock: plan and code locked`, then how many openings are already on record, then a line that ends in a log fingerprint of the form `SEQ:HASH`. Post that fingerprint as a comment on the tracking issue. The commit holds one changed file, the study log: the lock event and nothing else.
+It prints `The lock: recorded from the merge ... approved by ...` with the logins the host recorded, and the fingerprint to post. The tool refuses when the pull request is not merged into `main`, when nobody but its author approved it, when an approval was given before the request last changed, or when the files are not the ones the merged request binds.
 
 **3. An assistant: the opening, the write-up, the review.** After the merge:
 
 ```
-LOCK=LOCKSEQ:HASH
 g switch main
 g pull
 g switch -c system-trial-result
+#   without the workflow: the record_act.py lines of
+#   block 2, here, then
+#   g add -A; g commit -m "STUDY-0000: the lock, recorded"
+LOCK=LOCKSEQ:HASH
 sf open-held-out --study $W --by agent:coordinating --model $M
 #   post the fingerprint it prints on the tracking
 #   issue, then:
@@ -283,27 +297,30 @@ sf review --study $W --by agent:review --model $M \
   --verdict approve --file $D/verdict.md
 sf check-log --study $W \
   --anchor $LOCK --anchor $OPEN --change-log $C
+sf request-signature --study $W \
+  --by agent:coordinating --model $M --decision signed \
+  --anchor $LOCK --anchor $OPEN
 g add -A -- . ':(exclude)studies/*/sealed/*'
-g commit -m "STUDY-0000: the write-up and the review"
+g commit -m "STUDY-0000: the write-up, the review, signature requested"
 g push -u origin system-trial-result
 #   on the host: open pull request 2, into main
 ```
 
 What to expect: the opening prints `held-out data opened (held-out, opening 1); outcomes {'gain-equivalence': ...}` with `supported`, `refuted` or `inconclusive`, and its fingerprint; `finding attached: finding/...-writeup.md`; `review: approve`; and the log check prints `"status": "confirmatory study, ready for the steward's signature"` with empty `problems` and `remarks`. The sealed answer is in `sealed/blind_test_answer.json`, inside the study, and both commits leave that folder out: the pull request the steward reads does not hold it. Nothing but the instruction stops anyone in the workspace opening that file; see the limits under stage 4 in DESIGN.md.
 
-**4. YOU: decide, then reveal the answer.** Read pull request 2. Write your decision as a comment on the tracking issue and copy the comment's address.
+**4. YOU: decide, then reveal the answer.** Read pull request 2: the signature request's summary shows the outcome under the locked rules, the write-up that would be signed, and the review's verdict with its file. Approving and merging it is the signature; the `record` job, or the `record_act.py` lines of block 2 with `pulls/2`, writes it into the study log. Then, on a new branch from a fresh pull of `main`:
 
 ```
 LOCK=LOCKSEQ:HASH
 OPEN=OPENSEQ:HASH
-sf signature --study $W --by $ME --decision signed \
-  --evidence https://.../issues/N#issuecomment-N \
-  --anchor $LOCK --anchor $OPEN
+g switch main
+g pull
+g switch -c system-trial-close
 st verdict --study $W --by $ME \
   --anchor $LOCK --anchor $OPEN
 ```
 
-The signature prints `the steward's signature: signed` with the finding it names by path and checksum. The verdict prints the gain that was put in, what the factory said, and `"verdict"`: `right`, `not wrong (inconclusive)` or `WRONG`; it writes that into the study log.
+The record of the signature prints `the steward's signature: signed, recorded from the merge ...` with the finding it names by path and checksum. The verdict prints the gain that was put in, what the factory said, and `"verdict"`: `right`, `not wrong (inconclusive)` or `WRONG`; it writes that into the study log.
 
 **5. Assistants: learn and close.** When the verdict is `right`:
 
@@ -331,22 +348,21 @@ sf close --study $W --by agent:coordinating --model $M \
   --anchor $LOCK --anchor $OPEN
 sf status --study $W
 g add -A
-g commit -m "STUDY-0000: the decision and the close"
-g push
-#   on the host: approve and merge pull request 2
+g commit -m "STUDY-0000: the verdict and the close"
+g push -u origin system-trial-close
+#   on the host: open, approve and merge pull request 3
 ```
 
 What to expect: `NOTE-001: declined` (a note raised for something real is resolved with `--disposition accepted` or `linked` and `--ref`, once per note); the scorecard prints eight checks, each `"pass"`; `change recorded under ...`; `closed: system-trial-accepted`; `status` prints `"stage": "closed"`. Write `--observed` in your own words if something else happened. This last commit takes `sealed/` in.
 
-**When the verdict is not `right`.** An inconclusive outcome at the opening already tells you the verdict cannot be `right`. The tool then refuses `system-trial-accepted`. The steward records the decision as declined (again, if step 4 recorded it as signed):
+**When the verdict is not `right`.** An inconclusive outcome at the opening already tells you the verdict cannot be `right`. The tool then refuses `system-trial-accepted`. The steward's decision is then declined: close pull request 2 without merging it, have the assistant write the request again with the other decision, and merge that one.
 
 ```
 LOCK=LOCKSEQ:HASH
 OPEN=OPENSEQ:HASH
-sf signature --study $W --by $ME --decision declined \
-  --evidence https://.../issues/N#issuecomment-N \
-  --anchor $LOCK --anchor $OPEN \
-  --comment "the verdict was not right"
+sf request-signature --study $W \
+  --by agent:coordinating --model $M --decision declined \
+  --anchor $LOCK --anchor $OPEN
 ```
 
 Then block 5 runs as written, with two changes: `--observed` says what happened, and the `close` line reads
@@ -385,7 +401,7 @@ Five deliverables, in the order their dependencies allow (a sixth, `science-fact
 
 The last one follows the procedure as Part A did, with five differences that matter.
 
-1. It starts from a request (`examples/baton-rouge/request-1.md` shows the form), bound with `sf.py start --request`. The design has the scientist who asked approve the plan at the lock with the steward; the tool records one person's name at the lock, so until `science-factory-scientist-intake` lands, the scientist's approval is an approving review on the lock's pull request.
+1. It starts from a request (`examples/baton-rouge/request-1.md` shows the form), bound with `sf.py start --request`. The design has the scientist who asked approve the plan at the lock with the steward. The lock is a pull request, so the scientist's approval is an approval of that pull request, and the repository's code owners say that both are needed; the definition counts approvals and does not yet tell the two roles apart.
 2. The plan stage fetches observation metadata for the plan's window alone and re-runs the known-answer tests on them.
 3. Both rehearsals the plan requires must pass before the lock: the opening path (the fetch, the identifier, the receipt) and the finding's form (a rehearsal finding drafted from the 2024 receipt passes the checker). The tool refuses the lock until they have.
 4. The opening and everything after it run from a fresh `git clone` of the merged lock, in a private repository, in a fresh container: never from a copy of the workspace where the method was built. It is run there by hand with `sf.py open-held-out`; nothing sends it through the job contract. The tool records, in the opening's event, the host, the user, and the commit of every repository the plan names and whether its work tree was clean. It does not record a container or lockfile digest; that is written into the pull request by hand. The known-answer tests and both rehearsals are run in that same container image before the lock, because a fresh container resolves the fetch's libraries anew.
@@ -415,7 +431,7 @@ Two things about that prompt. It gives the analysis assistant the network and a 
 
 ## Decisions that are the steward's
 
-**Who approves what, and under which account.** Part A needs two approving reviews on the first pull request (one on the evidence, one on the lock's commit) and one on the second. GitHub does not let the account that opened a pull request approve it. If the assistant's session pushes under the steward's own account, someone else has to give those reviews, or the assistant needs an account of its own. Decide before Part A, and write the answer on the tracking issue.
+**Who approves what, and under which account.** Part A needs an approval by somebody other than its author on each of the two pull requests that carry a request, and whatever the branch protection asks on the third. GitHub does not let the account that opened a pull request approve it, and the required check does not count an author's approval either. If the assistant's session pushes under the steward's own account, someone else has to give those approvals, or the assistant needs an account of its own. Decide before Part A, and write the answer on the tracking issue.
 
 **The difference that matters.** Five percent in the draft (a statistician would call it the equivalence margin). It is what one year at this reach resolves, not a requirement anyone has stated: at five percent a true gain of one is supported 95 percent of the time in the kind case and 49 percent of the time in the worst hard case that must pass. A tighter one tied to a stated requirement would make the opening mostly inconclusive.
 

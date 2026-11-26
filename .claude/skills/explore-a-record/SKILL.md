@@ -27,7 +27,8 @@ uv run tools/explore.py start --exploration <x> --id <ID> --by <you> \
   --subject <key=value,key=value: the thing the data is about> \
   --how "a later period" --set-aside-window <START:END, or START: to keep it open> \
   --why "<why this is the data to set aside>" --boundary-from <the page the boundary came from> \
-  --working "<what will be explored, in words>" --working-window <START:END>
+  --working "<what will be explored, in words>" --working-window <START:END> \
+  --working-data <the file or folder that holds the data to explore>
 ```
 
 - `--subject`: the keys are yours (for example `site=...,sensor=...`). A later plan's `pair` must carry the same keys and values; they are matched through case and spacing and through nothing else, so write them the way the plan will.

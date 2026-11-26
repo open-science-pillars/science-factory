@@ -47,7 +47,7 @@ Ask of an exploration's lead:
 - **Words.** Does it call observations "unflagged" when their flag has a value, or an interval anything but a confidence interval with its model named? Would a scientist in the field misread a word?
 - **Does it call itself a lead** throughout?
 
-Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives.
+Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives; and when `sf.py status` gives the lock a standing other than `verified`, the finding's first line says so.
 
 Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --wiki <w>` passes; each statement is in its source; one case's numbers are not stated as general; nothing reads as signed; a disagreement with a signed page is declared as `contradicts`.
 
@@ -56,7 +56,8 @@ Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --
 Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Put gaps in the knowledge itself, as against holes in the work, under a heading "For the steward". Then record the verdict with the tool:
 
 ```
-uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md
+uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md \
+  --read-lead <lead_json_sha256, as `explore.py status` printed it when you began>
 uv run tools/sf.py review --study <s> --by <you> --verdict block --file <s>/review/<name>.md
 ```
 

@@ -80,7 +80,27 @@ Usage:
 """
 import sys
 
-sys.dont_write_bytecode = True  # the tool loads check_roles.py from beside it and leaves no bytecode folder
+sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
 if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     _own = __file__.replace("\\", "/").rpartition("/")[0]
     del sys.path[0]
@@ -91,8 +111,10 @@ import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import io  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
+import stat  # noqa: E402
 import subprocess  # noqa: E402
 import tarfile  # noqa: E402
 import tempfile  # noqa: E402
@@ -136,11 +158,12 @@ POST_OPENING = {
     "transcript-after-opening": "what an agent was asked and answered after an opening",
 }
 CANNOT_CHECK = (
-    "who really merged a lock or signed: names are typed, and the repository's own rules say who merged",
+    "who really merged a lock or signed: a clone cannot show it, so an act is `verified` only on the platform's answer to `sf.py verify-acts`",
     "which model really answered: a model is declared by the definition and by whoever calls the tools, never proven",
     "whether a person or an agent read a finding and then changed a prompt by hand: the firewall covers scorers, judges and what feeds a proposal",
     "whether an agent can reach the acceptance set by another road: `must_never_see` is instruction, and a harness's per-call check when a platform calls it",
     "whether the files a harness rendered are up to date: run that harness's own check (factory/harnesses/claude-code/render.py --check)",
+    "whether the protected branch an act names is protected, who may approve there, and whether the workflow that records a merge is installed: the repository's settings on the platform say that (factory/harnesses/github/README.md is the checklist), and `sf.py verify-acts` asks the platform about one act at a time",
 )
 
 
@@ -191,12 +214,30 @@ def files_of(root: Path) -> list:
                   if (p.is_file() or p.is_symlink()) and "__pycache__" not in p.parts and p.suffix != ".pyc")
 
 
+def entry_of(base: Path, rel: str) -> tuple:
+    """One file of a tree as the checksum binds it: its path, the sha256 of its bytes, and its mode as git carries
+    a mode (`100755` when its owner may execute it, `100644` when not). A symlink is bound as a link, by the text of
+    its target, and is never followed: the same bytes reached through a link are not the same entry. Only the
+    executable bit is bound, because the other permission bits depend on the machine that made the clone and a
+    checksum has to come out the same on every clone; a file made writable by everybody is therefore not seen here."""
+    p = base / rel
+    if p.is_symlink():
+        return (rel, "link:" + os.readlink(p), "120000")
+    return (rel, sha_bytes(p.read_bytes()), "100755" if p.stat().st_mode & stat.S_IXUSR else "100644")
+
+
 def tree_checksum(root: Path) -> dict:
-    """The checksum of a definition tree: every file by path and sha256, except the change log, which is a record
-    about the definition and grows after each change is tried."""
+    """The checksum of a definition tree: every file by path, sha256 and mode (a link by its target), except the
+    change log, which is a record about the definition and grows after each change is tried."""
     root = Path(root).resolve()
-    listed = [(rel, sha_bytes((root / rel).read_bytes())) for rel in files_of(root) if rel != "change-log.jsonl"]
+    listed = [entry_of(root, rel) for rel in files_of(root) if rel != "change-log.jsonl"]
     return {"sha256": sha_bytes(json.dumps(listed, separators=(",", ":")).encode()), "files": len(listed)}
+
+
+def links_in(root: Path) -> list:
+    """Every symlink in a definition tree, as paths from the root. A definition holds none: the tools refuse one."""
+    root = Path(root).resolve()
+    return [rel for rel in files_of(root) if (root / rel).is_symlink()]
 
 
 def skill_dirs(root: Path) -> dict:
@@ -215,7 +256,7 @@ def skill_checksums(root: Path) -> dict:
     root = Path(root).resolve()
     out = {}
     for name, (scope, d) in skill_dirs(root).items():
-        listed = [(rel, sha_bytes((d / rel).read_bytes())) for rel in files_of(d)]
+        listed = [entry_of(d, rel) for rel in files_of(d)]
         out[name] = {"scope": scope, "sha256": sha_bytes(json.dumps(listed, separators=(",", ":")).encode())}
     return out
 
@@ -270,6 +311,22 @@ def stamp(root: Path) -> dict:
 # A spec is a type, a list of one spec, ("one", values), ("map", spec) for a mapping with free keys, or a mapping
 # of keys to specs, where a key ending in `!` is required. Unknown keys are refused.
 TEXT, NUMBER, WHOLE, FLAG, ANY = "text", "number", "whole number", "true or false", "anything"
+# How an act by people is made. `pull-request`: a person approves and merges a pull request on a protected branch,
+# so who acted is the platform's record. `practice`: typed at a command line, for trying the tools out; a study
+# whose acts were made that way never closes as a signed finding.
+ACT_ROUTES = ("pull-request", "practice")
+# How the platform may bring an approved pull request onto the protected branch, and what the study tool accepts.
+# `merge`: a merge commit with two parents, the request reachable from the second parent only; git shows that shape.
+# `squash`: one new commit with one parent, which git alone cannot tell from an ordinary commit, so it stands as
+# `merge found, people not verified` until the platform says it is the pull request's merge. A rebase merge is not
+# accepted: it rewrites the approved commits, and nothing in the history says where the pull request began.
+MERGE_METHODS = ("merge", "squash")
+# What the opening of held-out data needs of the lock's standing: `verified` (the default: the platform is asked at
+# the opening), and nothing weaker can be declared. A place with no network says so at the opening, by an option
+# that is logged; it is not a setting of the definition.
+OPENING_NEEDS = ("verified",)
+REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$")  # owner/name on the platform
+ACT_REQUESTS = {"lock": "tools/sf.py request-lock", "signature": "tools/sf.py request-signature"}  # what an agent may call instead
 STRINGS = [TEXT]
 FACTORY = {
     "schemaVersion!": TEXT, "name!": TEXT, "version!": TEXT, "description!": TEXT, "alias": TEXT, "product": TEXT, "by_products": STRINGS,
@@ -283,7 +340,10 @@ FACTORY = {
         "agents!": ("map", {"does!": TEXT, "may_not": TEXT, "must": TEXT, "never_sees": STRINGS, "runs": TEXT}),
         "separations": ("map", {"rule!": TEXT, "held_by!": TEXT, "not_held_by_the_tool": TEXT}),
         "stages!": [{"id!": TEXT, "done_by!": ANY, "done_when!": STRINGS, "does!": TEXT, "ends_early_when": STRINGS}],
-        "acts_by_people!": ("map", {"who!": STRINGS, "command!": TEXT, "evidence!": TEXT, "not_held_by_the_tool": TEXT}),
+        "acts_by_people!": ("map", {"who!": STRINGS, "command!": TEXT, "route!": ("one", ACT_ROUTES), "harness": TEXT,
+                                    "protected_branch": TEXT, "repository": TEXT, "merge_methods": [("one", MERGE_METHODS)],
+                                    "approvals": WHOLE, "opening_needs": ("one", OPENING_NEEDS), "shows": STRINGS, "evidence!": TEXT,
+                                    "not_held_by_the_tool": TEXT}),
         "rules_for_people": STRINGS},
     "where_it_runs": {"default!": TEXT, "tests": TEXT, "opening_held_out_data": TEXT},
     "runner_contract!": {"keys!": ("map", TEXT), "rules_for_every_runner": STRINGS},
@@ -293,7 +353,10 @@ FACTORY = {
 AGENT = {"description!": TEXT, "harness": TEXT, "model": TEXT, "runner": TEXT, "may_call!": STRINGS, "must_never_see!": STRINGS,
          "reads!": STRINGS, "writes!": STRINGS, "hands_on!": [{"what!": TEXT, "to!": TEXT}]}
 HARNESS = {"description!": TEXT, "starts!": TEXT, "models!": ANY, "status!": ("one", ("built", "built, not exercised", "specified")),
-           "holds": STRINGS, "by_instruction_only": STRINGS}
+           "holds": STRINGS, "by_instruction_only": STRINGS,
+           # a harness that carries the acts by people says where its platform answers and what a verification asks it
+           "platform": {"name!": TEXT, "api!": TEXT, "token_from!": STRINGS, "token_needs!": STRINGS, "asks!": STRINGS, "proves!": STRINGS,
+                        "does_not_prove!": STRINGS}}
 RUNNER = {"description!": TEXT, "platform": {"os!": TEXT, "arch!": TEXT, "linux": {"dockerImage!": TEXT}},
           "status!": ("one", ("built", "specified")), "basis!": TEXT, "for!": STRINGS, "contract!": ("map", TEXT), "open_questions!": STRINGS}
 SCORER = {"description!": TEXT, "type!": ("one", ("deterministic", "judge")), "check": TEXT, "reads!": STRINGS, "selfImprovement!": FLAG,
@@ -621,6 +684,37 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         for name, fm in agents.items():
             if fm and cmd and cmd in [str(c) for c in fm.get("may_call") or []]:
                 bad("acts", f"agents/{name}/agent.md: may_call holds `{cmd}`, which is the {act}: an act of people, and no agent may call it")
+        if not isinstance(a, dict):
+            continue
+        if a.get("route") == "pull-request":
+            if a.get("harness") not in harnesses:
+                bad("acts", f"factory.yaml: the {act} is a pull request, and its `harness` ({a.get('harness')}) is not a folder in harnesses/: "
+                            "the harness is what carries the request and records the merge")
+            if not str(a.get("protected_branch") or "").strip():
+                bad("acts", f"factory.yaml: the {act} is a pull request and names no `protected_branch` for the merge to land on")
+            if not isinstance(a.get("approvals"), int) or isinstance(a.get("approvals"), bool) or a["approvals"] < 1:
+                bad("acts", f"factory.yaml: the {act} is a pull request and `approvals` is not a whole number of at least 1: an act by "
+                            "people needs somebody other than the pull request's author to approve it")
+            if not a.get("shows"):
+                bad("acts", f"factory.yaml: the {act} is a pull request and `shows` is empty: it lists the evidence a person is shown before approving")
+            if not REPOSITORY.fullmatch(str(a.get("repository") or "")):
+                bad("acts", f"factory.yaml: the {act} is a pull request and `repository` does not name the repository on the platform where "
+                            "the studies live, as owner/name: the verification asks the platform about that repository and no other, so "
+                            "it is declared here, under the checksum, and not read from a clone's own settings")
+            if not a.get("merge_methods"):
+                bad("acts", f"factory.yaml: the {act} is a pull request and `merge_methods` is empty: it lists how the platform may bring "
+                            "the approved request onto the protected branch (merge, squash); the study tool accepts no other shape of commit")
+            api = ((harnesses.get(a.get("harness")) or {}).get("platform") or {}).get("api") if isinstance(harnesses.get(a.get("harness")), dict) else None
+            if a.get("harness") in harnesses and not str(api or "").startswith("https://"):
+                bad("acts", f"factory.yaml: the {act} is a pull request, and its harness ({a.get('harness')}) names no `platform.api` that begins "
+                            "with https://: without it nothing can ask the platform who approved, and an act stays at `merge found, people not verified`")
+        elif a.get("route") == "practice":
+            if any(k in a for k in ("harness", "protected_branch", "approvals", "repository", "merge_methods", "opening_needs")):
+                bad("acts", f"factory.yaml: the {act} is declared as practice (typed at a command line) and still names a harness, a branch or "
+                            "approvals: say one or the other, so nobody reads a practice factory as one whose acts are pull requests")
+    if len({(a or {}).get("route") for a in acts.values() if isinstance(a, dict)}) > 1:
+        bad("acts", "factory.yaml: one act is a pull request and the other is practice: a study with a typed act never closes as a signed "
+                    "finding, so a factory declares both acts the same way")
 
     # ---- skills: one name, one scope, and the scope is true
     seen = {}
@@ -877,7 +971,7 @@ def describe(root: Path) -> dict:
                            **{k: [str(x) for x in fm.get(k) or []] for k in ("may_call", "must_never_see", "writes")}}
                        for a, fm in agents_of(root).items()},
             "scorers": scorers, "automations": automations, "suites": suites,
-            "files": {rel: sha_bytes((root / rel).read_bytes()) for rel in files_of(root) if not (root / rel).is_symlink()},
+            "files": {rel: "+".join(entry_of(root, rel)[1:]) for rel in files_of(root)},
             "checksum": tree_checksum(root)["sha256"]}
 
 
@@ -910,6 +1004,15 @@ def summary(old: Path | None, new: Path) -> list:
     if a["acts"] != b["acts"]:
         first.append(f"TAKE NOTE: the acts by people change: they were {sorted(a['acts'])} and are {sorted(b['acts'])}"
                      + ("" if set(a["acts"]) != set(b["acts"]) else " (the same acts, with who, the command or the evidence reworded)") + ".")
+        for act in sorted(set(a["acts"]) & set(b["acts"])):
+            was, is_ = (a["acts"][act] if isinstance(a["acts"][act], dict) else {}), (b["acts"][act] if isinstance(b["acts"][act], dict) else {})
+            for key in ("route", "approvals", "protected_branch", "repository", "merge_methods", "harness", "who", "shows"):
+                if was.get(key) != is_.get(key):
+                    first.append(f"TAKE NOTE: the {act}: `{key}` was {json.dumps(was.get(key))} and is {json.dumps(is_.get(key))}"
+                                 + (". A practice act is typed at a command line and proves nothing about who acted" if key == "route" and is_.get(key) == "practice" else "")
+                                 + (". The verification asks the platform about another repository from now on" if key == "repository" else "")
+                                 + (". A squash merge is one commit with one parent: git alone cannot tell it from an ordinary commit" if key == "merge_methods" and "squash" in (is_.get(key) or []) and "squash" not in (was.get(key) or []) else "")
+                                 + (". Fewer people now have to approve" if key == "approvals" and isinstance(was.get(key), int) and isinstance(is_.get(key), int) and is_.get(key) < was.get(key) else "") + ".")
     added_removed("The stage", a["stages"], b["stages"], first)
     if a["stage_order"] != b["stage_order"] and set(a["stage_order"]) == set(b["stage_order"]):
         first.append(f"TAKE NOTE: the stages are in another order: {', '.join(map(str, b['stage_order']))}.")
@@ -979,11 +1082,11 @@ def selftest() -> int:
                 shutil.copyfile(plan, d / plan.relative_to(REPO))
             return d / "factory"
 
-        def edit(d: Path, rel: str, old: str, new: str) -> None:
+        def edit(d: Path, rel: str, old: str, new: str, times: int = 1) -> None:
             f = d / rel
             text = f.read_text()
-            assert old in text, (rel, old)
-            f.write_text(text.replace(old, new, 1))
+            assert text.count(old) >= times, (rel, old)
+            f.write_text(text.replace(old, new, times))
 
         def write(d: Path, rel: str, text: str) -> None:
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -1083,6 +1186,78 @@ def selftest() -> int:
              "acts:")
         case("an agent may call the signature, named as an act", lambda d: edit(d, "agents/curating/agent.md", '  - "tools/sf.py resolve"', '  - "tools/sf.py resolve"\n  - "tools/sf.py signature"'),
              "acts: agents/curating/agent.md")
+        case("an act that is a pull request and names a harness that is not a folder",
+             lambda d: edit(d, "factory.yaml", "      harness: github                          # a folder", "      harness: gitlab                          # not a folder"),
+             "its `harness` (gitlab) is not a folder in harnesses/")
+        case("an act that is a pull request and asks for no approval by anybody",
+             lambda d: edit(d, "factory.yaml", "      approvals: 1                             # approving reviews by people other than the pull request's author", "      approvals: 0"),
+             "`approvals` is not a whole number of at least 1")
+        case("an act that is a pull request and names no protected branch",
+             lambda d: edit(d, "factory.yaml", "      protected_branch: main                   # the merge that is the act lands here", '      protected_branch: ""'),
+             "names no `protected_branch`")
+        case("an act with a route this tool does not know",
+             lambda d: edit(d, "factory.yaml", "      route: pull-request                      # how a real study makes this act", "      route: by-word-of-mouth      #"),
+             "route")
+        case("one act a pull request and the other practice",
+             lambda d: edit(d, "factory.yaml", "      route: pull-request\n      harness: github\n      protected_branch: main\n      approvals: 1\n"
+                            "      repository: example-org/example-studies\n      merge_methods: [merge]\n", "      route: practice\n"),
+             "one act is a pull request and the other is practice")
+        case("an act declared as practice that still names a branch and approvals",
+             lambda d: edit(d, "factory.yaml", "      route: pull-request\n      harness: github\n", "      route: practice\n      harness: github\n"),
+             "declared as practice")
+        clean = tmp / "clean" / "factory"
+        practice = copy("practice-factory")
+        edit(practice, "factory.yaml", "      route: pull-request                      # how a real study makes this act; `--local-practice` is the named exception\n"
+             "      harness: github                          # a folder in harnesses/: what carries the act and records it afterwards\n"
+             "      protected_branch: main                   # the merge that is the act lands here\n"
+             "      approvals: 1                             # approving reviews by people other than the pull request's author\n", "      route: practice\n")
+        text = (practice / "factory.yaml").read_text()
+        (practice / "factory.yaml").write_text("".join(ln for ln in text.splitlines(keepends=True)
+                                                       if not ln.startswith(("      repository: ", "      merge_methods: ", "      opening_needs: "))))
+        edit(practice, "factory.yaml", "      route: pull-request\n      harness: github\n      protected_branch: main\n      approvals: 1\n", "      route: practice\n")
+        results.append(("a factory whose two acts are both declared as practice is valid, and the summary of that change says what practice means",
+                        result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
+                        in "\n".join(summary(clean, practice))))
+        case("an act that is a pull request and names no repository on the platform",
+             lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
+             "`repository` does not name the repository on the platform")
+        case("an act whose merge methods include a rebase merge, which the study tool does not accept",
+             lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]", "      merge_methods: [merge, rebase]", 2), "merge_methods")
+        case("an act that is a pull request with no merge method at all",
+             lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]", "      merge_methods: []", 2), "`merge_methods` is empty")
+        case("an opening that is declared to need less than a verified lock",
+             lambda d: edit(d, "factory.yaml", "      opening_needs: verified", "      opening_needs: a merge found with git"), "opening_needs")
+        case("a harness that carries the acts and does not say where its platform answers",
+             lambda d: edit(d, "harnesses/github/harness.yaml", "  api: https://api.github.com", "  api: http://localhost:8080"),
+             "names no `platform.api` that begins with https://")
+        elsewhere = copy("another-repository")
+        edit(elsewhere, "factory.yaml", "      repository: example-org/example-studies", "      repository: example-org/another-place", 2)
+        results.append(("the summary of a change to the repository the verification asks about says so, for each act",
+                        "\n".join(summary(clean, elsewhere)).count("The verification asks the platform about another repository from now on") == 2))
+        # A3-3: what the checksum binds beside the bytes
+        was = tree_checksum(clean)["sha256"]
+        moded = copy("a-mode-changed")
+        target = moded / "scorers/chain-of-custody/scorer.md"
+        target.chmod(0o777)
+        results.append(("A3-3: a file of the definition made executable, its bytes unchanged, changes the tree's checksum, and the summary names the file",
+                        tree_checksum(moded)["sha256"] != was and tree_checksum(copy("a-plain-copy"))["sha256"] == was
+                        and "scorers/chain-of-custody/scorer.md" in "\n".join(summary(clean, moded))))
+        linked = copy("a-link-swapped-in")
+        same = linked / "runners/local.yaml"
+        kept = linked.parent / "the-same-bytes.yaml"
+        same.rename(kept)
+        same.symlink_to(kept)
+        results.append(("A3-3: a file swapped for a symlink to the same bytes changes the tree's checksum, is listed as a link, and the tree is invalid",
+                        same.read_bytes() == (clean / "runners/local.yaml").read_bytes() and tree_checksum(linked)["sha256"] != was
+                        and links_in(linked) == ["runners/local.yaml"] and result(linked)[0] == "invalid"))
+        fewer = copy("fewer-approvals")
+        edit(fewer, "factory.yaml", "      approvals: 1                             # approving reviews by people other than the pull request's author", "      approvals: 3")
+        results.append(("the summary of a change to how many people must approve names the act, the key and both values, and says when fewer are asked",
+                        "the lock: `approvals` was 1 and is 3" in "\n".join(summary(clean, fewer))
+                        and "the lock: `approvals` was 3 and is 1. Fewer people now have to approve" in "\n".join(summary(fewer, clean))))
+        results.append(("the harness that carries the acts is part of the definition: its workflow, its two scripts and its fixtures are under the checksum",
+                        all(any(rel == f"harnesses/github/{name}" for rel in files_of(clean)) for name in
+                            ("harness.yaml", "acts.workflow.yml", "verify_request.py", "record_act.py", "verify_acts.py", "README.md", "CODEOWNERS.template"))))
         # skills
         case("a skill defined twice", lambda d: shutil.copytree(d / "skills/read-what-is-known", d / "agents/review/skills/read-what-is-known"),
              "a skill's name is used once")

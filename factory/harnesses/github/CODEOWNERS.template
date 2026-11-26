@@ -1,0 +1,14 @@
+# Code owners for the two acts by people. A template: copy these lines into .github/CODEOWNERS of the repository
+# where the studies live, and put the platform logins or teams of the people who may make each act in place of
+# the names in capitals. With "Require review from Code Owners" switched on for the protected branch, a pull
+# request that touches one of these paths cannot be merged without an approval from one of the people named.
+#
+# A lock: the scientist who asked and the steward of the knowledge the study belongs to.
+studies/*/lock-request/          @THE-STEWARD @THE-SCIENTIST
+# A signature: the steward, and nobody else.
+studies/*/signature-request/     @THE-STEWARD
+# What the acts rest on. A change to any of these is reviewed by the same people, in a pull request of its own:
+# the required check refuses a pull request that carries a request and also changes one of them.
+/tools/                          @THE-STEWARD
+/factory/                        @THE-STEWARD
+/.github/                        @THE-STEWARD

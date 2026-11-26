@@ -41,7 +41,7 @@
         status: proposed
         priority: P1
         depends_on: [science-factory-study-tool]
-        gate: "The lock: the steward locks the analysis plan and the code together, citing an approving review, and the lock's own commit is merged on a protected branch, with an approval of its own, before the blind test case is sealed."
+        gate: "The lock: the steward locks the analysis plan and the code together by approving and merging the pull request that carries the lock request, on a protected branch, before the blind test case is sealed."
         acceptance:
           - "The system trial passes its plan check, known-answer tests, working data and rehearsal, is locked by the steward, and opens its held-out data exactly once. The opening runs in the workspace, so the trial accepts the procedure and not a clean runner for the opening."
           - "A write-up attached from run receipts, an independent review assistant's verdict recorded after it, and the steward's recorded decision naming that write-up by checksum are in the study log."

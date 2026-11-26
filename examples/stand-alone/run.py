@@ -25,6 +25,7 @@ same tools is the optional demo in examples/baton-rouge.
   uv run examples/stand-alone/run.py --remove   run, check, and remove the output
 """
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -104,7 +105,7 @@ def main() -> int:
         tool("explore.py", "start", *E, "--id", "EXPLORATION-A", "--by", me, "--question", "How closely does the second sensor follow the reference?",
              "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--set-aside-window", "2025-01-01:2025-12-31",
              "--why", "the following year: the request says only 2024 has been looked at", "--working", "the 2024 record", "--working-window", "2024-01-01:2024-12-31",
-             "--boundary-from", wiki / "the-two-sensor-record.md")
+             "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md")
         step("before data is set aside only knowledge was read, and the page the boundary came from is in the log by checksum",
              json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["boundary_read_from"][0]["path"].endswith("the-two-sensor-record.md"))
         record = [json.loads(ln) for ln in (studies / "openings.jsonl").read_text().splitlines()]
@@ -201,11 +202,14 @@ def main() -> int:
         step("a review under a name nobody named as a reviewer before the lead existed is refused",
              "was not named as a reviewer" in tool("explore.py", "review", *E, "--by", "agent:review-fresh", "--verdict", "no-holes-found", "--file", review, expect=2))
         step("a logged look reproduces", "identical" in tool("explore.py", "recheck", *E, "--look", "LOOK-002"))
-        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review)
+        lead_read = lambda: hashlib.sha256((x / "lead.json").read_bytes()).hexdigest()  # noqa: E731  (the lead the reviewer read)
+        step("a review that does not say which lead the reviewer read is refused",
+             "--read-lead" in tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, expect=2))
+        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
         tool("explore.py", "correct", *E, "--by", me, "--old", "over 2024", "--new", "over the whole of 2024", "--why", "to say the year was read whole")
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
-        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review)
+        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the assistant that explored cannot make the hand-over",
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
@@ -309,6 +313,36 @@ def main() -> int:
         step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no assistant takes it further",
              trial_status["stage"] == "lock" and "PASS" not in tool("sf.py", "lock", *S, "--by", me, "--evidence", "https://example.invalid/not-a-person", expect=2)
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "held-out.opened", "signature.recorded") for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+
+        # The lock itself. In a real study it is a pull request: an assistant writes the request, and people approve and
+        # merge it on the protected branch of the repository where the study lives (factory/harnesses/github). This
+        # example runs in a scratch folder that is no repository and has no branch to merge into, and this repository
+        # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
+        tool("sf.py", "request-lock", *S, "--by", coordinator)
+        asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
+        step("an assistant can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
+             "## The question" in asked and "## What is held out, and every change to it" in asked
+             and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
+             and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
+             and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+        person = "human:throwaway-placeholder"  # nobody: a name for a scratch folder, typed here and nowhere that is kept
+        step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
+             "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
+        tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
+        practice = json.loads(tool("sf.py", "status", *S, answer=True))
+        step("a practice lock says so in the study's status, and the held-out data is not opened unless the caller says practice too",
+             practice["acts"]["practice"] is True and "cannot close as a signed finding" in practice["acts"]["lock"]["note"]
+             and "practice lock" in tool("sf.py", "open-held-out", *S, "--by", coordinator, expect=2)
+             and not any(json.loads(ln)["kind"] == "opening.started" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+        # The three standings of an act. This example can show the first only: `merge found, people not verified` needs a
+        # merge in a repository, and `verified` needs the platform to be asked, and a scratch folder has neither.
+        checked = json.loads(tool("sf.py", "verify-acts", *S, "--by", coordinator, answer=True))
+        step("the status names the three standings an act can have and gives this lock the first, practice; asked to verify it, the tool "
+             "says a typed lock has nothing to verify and stays practice",
+             practice["acts"]["standings"] == "each act has one of three standings: practice; merge found, people not verified; verified"
+             and practice["acts"]["lock"]["standing"] == "practice" and checked["acts"]["lock"]["standing"] == "practice"
+             and "nothing to verify" in checked["acts"]["lock"]["said"] and checked["acts"]["signature"]["standing"] is None)
+        standings_shown = f"{practice['acts']['standings']}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
@@ -324,7 +358,12 @@ def main() -> int:
                                 verdicts/, hand-over/ (the request a study starts from)
   studies/STUDY-A/              a study started from that hand-over: study-log.jsonl and a plan, at the plan stage
   studies/STUDY-B/              a study taken through its tests: analysis-plan.yaml, study-log.jsonl, receipts/ (the
-                                known-answer tests, the working data, the rehearsal), standing at the lock
+                                known-answer tests, the working data, the rehearsal), lock-request/ (what a person
+                                would be asked to approve), and a practice lock, typed here because a scratch folder
+                                has no protected branch
+                                {standings_shown}
+                                The second standing is what git on a clone can show of a merged request; the third is
+                                what the platform answers when `sf.py verify-acts` asks it. Neither can be shown here.
   studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
   knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given

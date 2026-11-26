@@ -29,6 +29,30 @@ It also refuses a task that names a path the role file lists under
 points at `record/analysis/` hands the reviewer the author's account, and
 is not started.
 """
+import sys
+
+sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
+
 import argparse
 import datetime as dt
 import fnmatch
@@ -65,6 +89,15 @@ def names_place(posix: str, pat: str) -> bool:
     return False
 
 
+def never_sees(role: str, posix: str, root: Path) -> str | None:
+    """The pattern that says a role must never see a path, or None. An entry `path:!<pattern>` is the role's own
+    place inside a folder it otherwise never sees, and takes a path out again."""
+    pats = never_seen(role, root)
+    if any(names_place(posix, q[1:]) for q in pats if q.startswith("!")):
+        return None
+    return next((q for q in pats if not q.startswith("!") and names_place(posix, q)), None)
+
+
 def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> int:
     if not (root / ".claude" / "agents" / f"{role}.md").is_file():
         print(f"there is no rendered role .claude/agents/{role}.md; run factory/harnesses/claude-code/render.py", file=sys.stderr)
@@ -75,11 +108,12 @@ def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> i
               "another role writes", file=sys.stderr)
         return 2
     for word in re.findall(r"""[^\s'"`<>()\[\]{},;]+""", task.replace("\\", "/")):
-        for pat in never_seen(role, root):
-            if "/" in word and names_place(word.rstrip(".:"), pat):
-                print(f"the task names `{word}`, which the {role} role must never see (factory/agents/{role}/agent.md, must_never_see: {pat}). "
-                      "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
-                return 2
+        tidy = os.path.normpath(word.rstrip(".:")) if "/" in word else ""  # `a/./b` and `a/x/../b` are `a/b`
+        pat = never_sees(role, tidy, root) if tidy else None
+        if pat:
+            print(f"the task names `{word}`, which the {role} role must never see (factory/agents/{role}/agent.md, must_never_see: {pat}). "
+                  "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
+            return 2
     record.parent.mkdir(parents=True, exist_ok=True)
     Path(f"{record}.task.md").write_text(task)
     started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -144,6 +178,21 @@ def selftest() -> int:
         bad = tmp / "bad-claude"
         bad.write_text("#!/bin/sh\necho '{\"result\": \"Authentication error\", \"is_error\": true}'\n")
         bad.chmod(bad.stat().st_mode | stat.S_IXUSR)
+        # the second attack, N10: the place under other spellings. The review role's own file now keeps it out of all of
+        # record/ but its own folder there, and a task's words are tidied as paths before they are read
+        (tmp / "factory" / "agents" / "review" / "agent.md").write_text(
+            '---\ndescription: review\nmust_never_see:\n  - "held-out data"\n  - "path:record/*"\n  - "path:!record/review/*"\n---\n\nbody\n')
+        spellings = ("Check E1; see examples/b/record/./02-analysis.answer.md.", "Check E1; see examples/b/record/x/../analysis/01.answer.md.",
+                     "Check E1; see examples/b/record/02-anal*.md.", "In examples/b/record read the file 02-analysis.answer.md.",
+                     "Check E1; see examples/b/record/02-author.answer.md.", "Check E1; see examples/b/record/02-anaIysis.answer.md.",
+                     "Check E1; see examples/b/RECORD/analysis.")
+        (tmp / "seen-task.txt").unlink(missing_ok=True)
+        refused = [run("review", t_, tmp / "record" / "review" / "10", str(fake), tmp) == 2 for t_ in spellings]
+        results.append(("a task that names the folder where other roles keep their accounts is refused under every spelling tried: a dot "
+                        "in the path, a step up and down, a pattern, the folder and the file in separate words, another file name, a "
+                        "look-alike letter, capitals", all(refused) and not (tmp / "seen-task.txt").exists()))
+        results.append(("the review role's own place in that folder is still its to name",
+                        run("review", "Check E1 again; your earlier review is examples/w/record/review/02.answer.md.", tmp / "record" / "review" / "11", str(fake), tmp) == 0))
         results.append(("a run that fails is recorded as failed and returns an error",
                         run("review", "x", tmp / "record" / "review" / "05", str(bad), tmp) == 1 and json.loads((tmp / "record/review/05.run.json").read_text())["failed"]))
     finally:

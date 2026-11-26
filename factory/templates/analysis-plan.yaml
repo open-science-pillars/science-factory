@@ -29,11 +29,16 @@
 # shell, `env`, `make`, `{python} -c`, `uv run python`), because a script named inside another program's
 # text is one the lock would never see. A step that is not yet a script goes into one, and the plan names it.
 #
-# A command is given a short list of environment variables and nothing else: PATH, HOME, USER, LOGNAME,
-# TERM, the language, time zone and temporary-folder settings, the XDG base directories, the certificate
-# and proxy settings, and every UV_ variable (the names are at the top of sf.py). A token your fetch needs
-# is named under `passes_environment` on that test or rehearsal (the name, never the value); the lock
-# prints the names and each run records them.
+# A command runs the way a look does (tools/fence.py): in a scratch copy of this study that holds no study log,
+# under the kernel fence where the machine has one, and with nothing left running afterwards. It can read its
+# copy, the folders of the files the lock binds and the system's folders, and write its copy; what it wrote is
+# brought back into the study. It is given an environment the tool builds and nothing of yours: a PATH, a home
+# and a temporary folder inside its scratch folder, your language and time zone. No UV_ variable, certificate
+# setting or home folder of yours arrives. A token your fetch needs is named under `passes_environment` on that
+# test or rehearsal (the name, never the value); the lock prints the names and each run records them.
+#
+# `uv run SCRIPT` means the script's own inline dependencies (its `# /// script` block), installed from wheels
+# into a throwaway environment before the script starts; a project file above the study is not used.
 #
 # When a command runs through `uv run`, the settings uv reads from this study directory and the folders
 # above it (pyproject.toml, uv.toml, uv.lock, .python-version) are locked with the code, and a .venv

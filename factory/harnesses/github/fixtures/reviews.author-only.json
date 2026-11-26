@@ -1,0 +1,4 @@
+[
+  {"id": 101, "user": {"login": "octo-author", "type": "User"}, "state": "APPROVED", "commit_id": "HEAD_SHA", "submitted_at": "2026-01-02T10:00:00Z"},
+  {"id": 102, "user": {"login": "octo-bystander", "type": "User"}, "state": "COMMENTED", "commit_id": "HEAD_SHA", "submitted_at": "2026-01-02T10:05:00Z"}
+]
