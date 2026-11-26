@@ -102,10 +102,26 @@ def main() -> int:
         step("a start that sets nothing aside is refused",
              "REFUSED" in tool("explore.py", "start", *E, "--id", "EXPLORATION-A", "--by", me, "--question", "How closely does the second sensor follow the reference?",
                                "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--why", "x", expect=2))
+        # the fresh data is proposed by the analysis agent from metadata only, before the exploration starts
+        proposal = x / "fresh-data.yaml"
+        propose = ("fresh_data.py", "propose", "--kind", "later-period", "--from", "2025-01-01", "--until", "2025-12-31",
+                   "--what", "the whole of 2025, every pass of the second sensor and the reference",
+                   "--why", "the request says only 2024 has been looked at, and the same two sensors keep running in 2025",
+                   "--unfair", "a change of either sensor or of its processing at the turn of the year; the wiki page names none",
+                   "--by", me, "--studies", studies)
+        step("the fresh data is proposed from metadata only: the record's own data file, offered as metadata, is refused",
+             "this looks like data" in tool(*propose, "--metadata", data, "--out", work / "refused.yaml", expect=2))
+        said = tool(*propose, "--metadata", HERE / "metadata.yaml", "--out", proposal)
+        step("the proposal says in words which data, why, what would make it unfair and how large a test it allows, from the metadata",
+             all(w in said for w in ("A later period.", "**Why it suits the question.**", "**What would make it unfair.**",
+                                     "Fresh: 12 items, 52 observations", "Not computed here")))
         tool("explore.py", "start", *E, "--id", "EXPLORATION-A", "--by", me, "--question", "How closely does the second sensor follow the reference?",
              "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--set-aside-window", "2025-01-01:2025-12-31",
              "--why", "the following year: the request says only 2024 has been looked at", "--working", "the 2024 record", "--working-window", "2024-01-01:2024-12-31",
-             "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md")
+             "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md", "--fresh-data", proposal)
+        step("the exploration sets aside exactly what was proposed, and its log binds the proposal by checksum",
+             json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["fresh_data"]["sha256"]
+             == hashlib.sha256(proposal.read_bytes()).hexdigest())
         step("before data is set aside only knowledge was read, and the page the boundary came from is in the log by checksum",
              json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["boundary_read_from"][0]["path"].endswith("the-two-sensor-record.md"))
         record = [json.loads(ln) for ln in (studies / "openings.jsonl").read_text().splitlines()]
@@ -215,13 +231,18 @@ def main() -> int:
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
         tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A")
         hand = json.loads((x / "hand-over" / "hand-over.json").read_text())
+        stub = yaml.safe_load((x / "hand-over" / "analysis-plan.stub.yaml").read_text())
+        step("the hand-over carries the proposal of the fresh data byte for byte, and the plan stub names it",
+             (x / "hand-over" / "fresh-data.yaml").read_bytes() == proposal.read_bytes()
+             and stub["data"]["held_out"]["fresh_data"].endswith("hand-over/fresh-data.yaml"))
         study = studies / "STUDY-A"
         tool("sf.py", "start", "--study", study, "--id", "STUDY-A", "--question", hand["question"], "--request", x / "hand-over" / "request.md", "--by", coordinator)
 
         def plan(window: dict) -> None:
             (study / "analysis-plan.yaml").write_text(yaml.safe_dump({
                 "study": "STUDY-A", "question": hand["question"],
-                "data": {"working": "the 2024 record", "held_out": {"window": window, "pair": {"record": "two-sensor", "sensor": "second"}, "path": "data/record-2025.json"}},
+                "data": {"working": "the 2024 record", "held_out": {"window": window, "pair": {"record": "two-sensor", "sensor": "second"}, "path": "data/record-2025.json",
+                                                                 "fresh_data": stub["data"]["held_out"]["fresh_data"]}},
                 "tests": {"held-out": {"fetch": ["{python}", "fetch.py"], "command": ["{python}", "confront.py"], "receipt": "receipts/held-out.json"}}}))
 
         plan({"start": "2025-01-01", "end": "2025-12-31"})
@@ -321,7 +342,8 @@ def main() -> int:
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
         step("an assistant can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
-             "## The question" in asked and "## What is held out, and every change to it" in asked
+             "## The question" in asked and "## The fresh data that will check the idea, and why it was chosen" in asked
+             and "a blind test case that the tool makes and seals at the opening" in asked
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))

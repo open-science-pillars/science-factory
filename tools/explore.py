@@ -285,6 +285,7 @@ HOW = {  # the ways to hold data out that docs/TWO-WAYS-OF-WORKING.md lists, and
     "a new release": "releases",
     "a different instrument or record": "releases",
     "forecasts scored later": "window",
+    "a random set aside": "sites",   # drawn by tools/fresh_data.py, never chosen: `start` needs the proposal (`--fresh-data`)
 }
 OPEN_END = "9999-12-31"
 TOOLS = ("sf.py", "explore.py", "knowledge.py", "system_trial.py")  # a look does not run these
@@ -913,8 +914,23 @@ def cmd_start(x: Exploration, a) -> None:
                           ": nothing is looked at until what is set aside is written down")
         if not str(a.why or "").strip():
             raise Refused("`--why` says why this is the data to set aside; it goes into the later plan")
+        if how == "a random set aside" and not getattr(a, "fresh_data", None):
+            raise Refused("a random set aside is drawn by `tools/fresh_data.py propose --kind random`, never chosen by anybody: name its "
+                          "proposal with `--fresh-data`, and set aside exactly the members it drew")
     if window and working and sf.windows_overlap(core(working), core(window)):
         raise Refused("the working window and the set-aside window overlap: data that is explored cannot also be held out")
+    studies_here = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
+    fresh = None
+    if getattr(a, "fresh_data", None):
+        if a.nothing_set_aside:
+            raise Refused("`--fresh-data` names what is set aside, and `--nothing-set-aside` says nothing is; choose one")
+        fpath = Path(os.path.abspath(a.fresh_data))
+        prop, wrong = fresh_data_problems(fpath, studies_here, how, window, sites, releases)
+        if wrong:
+            raise Refused("the proposal of the fresh data does not match this start: " + "; ".join(wrong) + ". Nothing was started")
+        fresh = {"file": str(fpath), "sha256": sf.sha_file(fpath), "kind": prop["kind"], "kind_in_words": prop["kind_in_words"],
+                 "proposed_by": (prop.get("proposed") or {}).get("by"), "proposed_at": (prop.get("proposed") or {}).get("at"),
+                 "seed_sha256": (prop.get("draw") or {}).get("seed_sha256")}
     request = Path(a.request).resolve() if a.request else None
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
@@ -973,6 +989,8 @@ def cmd_start(x: Exploration, a) -> None:
           "working": {"description": a.working, "window": working, "places": places}}
     if gap:
         sa["in_neither"] = gap
+    if fresh:
+        sa["fresh_data"] = fresh
     if pages:
         sa["boundary_read_from"] = pages
     x.d.mkdir(parents=True, exist_ok=True)
@@ -1017,6 +1035,34 @@ def cmd_start(x: Exploration, a) -> None:
 
 def knowledge_tool():
     return _load("knowledge", HERE / "knowledge.py")
+
+
+def fresh_tool():
+    return sys.modules.get("fresh_data") or _load("fresh_data", HERE / "fresh_data.py")
+
+
+def fresh_data_problems(path: Path, studies: Path, how: str, window, sites: list, releases: list) -> tuple:
+    """(the proposal, what is wrong): the proposal of the fresh data that this start sets aside is on the record beside
+    the studies, checks out (a random draw comes from its seed), and is the same as what the start sets aside."""
+    tool = fresh_tool()
+    try:
+        prop = tool.load(path)
+        found = tool.problems(path, studies)
+    except tool.Refused as r:
+        return None, [str(r)]
+    rule, kind = prop.get("rule") or {}, prop["kind"]
+    want = {"later-period": "a later period", "another-site": "sites never opened", "next-release": "a new release", "random": "a random set aside"}[kind]
+    if how != want:
+        found.append(f"the proposal is {prop['kind_in_words']}, which is set aside as `--how \"{want}\"`, not `{how}`")
+    elif kind == "later-period" and (not window or window["start"] != rule.get("from")
+                                     or (rule.get("until") and window.get("end") != rule["until"]) or (not rule.get("until") and not window.get("open_ended"))):
+        found.append(f"the window set aside is not the later period the proposal names ({rule.get('from')} to {rule.get('until') or 'onward'})")
+    elif kind in ("another-site", "random") and sorted(sites) != sorted(prop["members"]):
+        found.append("the sites set aside are not the members the proposal names" + (": a random set aside is drawn by the tool, and "
+                     "nobody adds a site to it or takes one out" if kind == "random" else ""))
+    elif kind == "next-release" and rule.get("release") not in releases:
+        found.append(f"the release set aside is not the one the proposal names ({rule.get('release')})")
+    return prop, found
 
 
 def cmd_known(x: Exploration, a) -> None:
@@ -1811,6 +1857,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
         f"**The question proposed for the confirming study.** {stub['question']}", "",
         f"**The difference that matters, as proposed.** {stub['difference_that_matters']}", "",
         "**Already looked at (working data from now on).** " + str(sa["working"].get("description") or "see the exploration log") + "", "",
+        *([f"**The fresh data, as proposed.** {sa['fresh_data']['kind_in_words'].capitalize()}, proposed by {sa['fresh_data']['proposed_by']} "
+           f"at {sa['fresh_data']['proposed_at']} from metadata only; the proposal is `hand-over/fresh-data.yaml`, and the lock shows it in words.", ""]
+          if sa.get("fresh_data") else []),
         "**Held out.** Only what the exploration set aside: " + (f"{w['start']} to {'onward' if w.get('open_ended') else w['end']}" if w
                                                                else ", ".join(sa.get("sites") or sa.get("releases") or [])) + f". {sa.get('why')}", "",
         f"**The review of the lead.** {verdict['data']['verdict']} ({verdict['data']['file']} in the exploration), recorded "
@@ -1823,6 +1872,15 @@ def cmd_hand_over(x: Exploration, a) -> None:
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
     held = {"pair": sa["subject"], "why_this_window": sa.get("why")}
+    fd = sa.get("fresh_data")
+    if fd:  # the proposal and its seed travel with the hand-over, byte for byte, so the plan can name them and the lock show them
+        src = Path(fd["file"])
+        if sf.sha_file(src) != fd["sha256"]:
+            raise Refused(f"the proposal of the fresh data this exploration set aside ({src}) is missing or changed since the start")
+        shutil.copyfile(src, out / "fresh-data.yaml")
+        if fresh_tool().seed_path(src).is_file():
+            shutil.copyfile(fresh_tool().seed_path(src), out / "fresh-data.seed")
+        held["fresh_data"] = os.path.relpath(out / "fresh-data.yaml", x.record().parent / a.study_id)
     if w:
         held["window"] = {"start": w["start"], "end": "CHOOSE: a date inside the set-aside window" if w.get("open_ended") else w["end"]}
     plan_stub = {"study": a.study_id, "question": stub["question"], "quantity_estimated": stub["quantity_estimated"],
@@ -1892,6 +1950,11 @@ def study_problems(x: Exploration, study_dir: Path) -> list:
     if working and (window is None or sf.windows_overlap(window, core(working))):
         p.append("the plan's held-out window touches the window that was explored: data that was used to explore cannot "
                  "be used to confirm what the exploring found")
+    if sa.get("fresh_data"):
+        named = held.get("fresh_data")
+        if not named or sf.sha_file(study.d / str(named)) != sa["fresh_data"]["sha256"]:
+            p.append("the exploration set aside the fresh data a proposal named, and the plan's `data.held_out.fresh_data` does not name "
+                     "that proposal, byte for byte (hand-over/fresh-data.yaml)")
     names = json.dumps(pair or {}).casefold() + " " + str(held.get("path") or "").casefold()
     if sa.get("sites") and not any(names_token(names, str(s), sa) for s in sa["sites"]):
         p.append(f"the plan's held-out subject names none of the sites that were set aside ({', '.join(sa['sites'])})")
@@ -2143,7 +2206,7 @@ class A:
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
-                        also_reads=None, reviewer=None, working_data=None, read_lead=None)
+                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
 
@@ -2263,6 +2326,50 @@ def selftest() -> int:
         ok("start is refused without a reason for what is set aside", "why" in said(cmd_start, x0, A(request=str(req), why="")))
         ok("start is refused when the question is not a question", "not a question" in said(cmd_start, x0, A(request=str(req), question="Look at A")))
         ok("start is refused for a name that is not an actor", "actor" in said(cmd_start, x0, A(request=str(req), by="someone")))
+        # ---- the fresh data proposed from metadata (tools/fresh_data.py) and set aside at the start --------
+        fdt = fresh_tool()
+        fwork = tmp / "work-fresh"  # a record of its own, so these starts touch nothing the checks below read
+        (fwork / "explorations").mkdir(parents=True)
+        meta = tmp / "fd-metadata.json"
+        meta.write_text(json.dumps({"subject": {"reach_id": "R9", "gauge": "G9"}, "items": [
+            {"id": f"USGS-0{n}-{y}", "site": f"USGS-0{n}", "start": f"{y}-01-01", "end": f"{y}-12-31", "count": 10}
+            for n in range(1000001, 1000011) for y in (2025, 2026)]}))
+
+        def proposal(name: str, **k) -> Path:
+            out = tmp / "proposals" / f"{name}.yaml"
+            quiet(fdt.cmd_propose, fdt.A(metadata=str(meta), what="w", why="y", unfair="u", studies=str(fwork / "studies"), out=str(out), **k))
+            return out
+        xr = Exploration(fwork / "explorations" / "E-RANDOM")
+        ok("a random set aside cannot be typed: without the tool's proposal (`--fresh-data`) the start is refused",
+           "never chosen by anybody" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None,
+                                                              set_aside_sites="USGS-01000001", subject="reach_id=R9,gauge=G9"))
+           and not xr.log.exists())
+        rp = proposal("random", kind="random", fraction=0.3)
+        drawn = fdt.load(rp)["members"]
+        others = [m for m in fdt.load(rp)["draw"]["drawn_from"] if m not in drawn]
+        ok("a random set aside with one site swapped for a site of one's own choosing is refused: nobody adds a site or takes one out",
+           "nobody adds a site" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9",
+                                                          set_aside_sites=",".join(drawn[1:] + others[:1]), fresh_data=str(rp)))
+           and not xr.log.exists())
+        quiet(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9", working_window=None,
+                               set_aside_sites=",".join(drawn), fresh_data=str(rp), working_data=[str(data)]))
+        got_sa = xr.set_aside()
+        ok("with the proposal and exactly its members the random set aside starts, and the start records the proposal by checksum",
+           got_sa["how"] == "a random set aside" and sorted(got_sa["sites"]) == drawn and got_sa["fresh_data"]["sha256"] == sf.sha_file(rp)
+           and got_sa["fresh_data"]["seed_sha256"] == fdt.load(rp)["draw"]["seed_sha256"])
+        lp = proposal("later", kind="later-period", from_="2026-01-01")
+        xl = Exploration(fwork / "explorations" / "E-LATER")
+        ok("a proposal is set aside as it was proposed: a later period with another window than the proposal's is refused",
+           "not the later period the proposal names" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(lp),
+                                                                              set_aside_window="2025-06-01:", working_window=None)))
+        ok("and so is a proposal of another kind than the way the start holds data out",
+           "is set aside as" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(rp),
+                                                      set_aside_window="2026-01-01:", working_window=None)))
+        lp2 = tmp / "proposals" / "later-edited.yaml"
+        lp2.write_text(lp.read_text().replace("what: w", "what: a wider window, edited by hand"))
+        ok("a proposal edited after the tool wrote it is refused at the start: it is not on the record beside the studies",
+           "not on the record" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(lp2),
+                                                        set_aside_window="2026-01-01:", working_window=None)))
         early = tmp / "held" / "later.json"
         early.parent.mkdir()
         early.write_text("{}")
@@ -3188,6 +3295,8 @@ def build_parser() -> argparse.ArgumentParser:
         (["--set-aside-release"], {"action": "append", "default": None, "help": "a release, collection or record name; repeatable"}),
         (["--set-aside-path"], {"action": "append", "default": None, "help": "where the set-aside data would land if fetched; repeatable"}),
         (["--nothing-set-aside"], {"default": None, "help": "the reason nothing can be set aside; such an exploration hands nothing over"}),
+        (["--fresh-data"], {"default": None, "dest": "fresh_data",
+                            "help": "the proposal of the fresh data (tools/fresh_data.py propose) that this start sets aside; required for a random set aside"}),
         (["--why"], {"default": None, "help": "why this is the data to set aside"}),
         (["--working"], {"default": None, "help": "what will be explored, in words"}),
         (["--working-data"], {"action": "append", "default": None, "dest": "working_data",

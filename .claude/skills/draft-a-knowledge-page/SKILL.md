@@ -48,7 +48,7 @@ uv run tools/knowledge.py check-drafts --queue <queue> --wiki <wiki> [--checker 
 It applies the rules of the queue, runs the organization's own checker for its knowledge format when `--checker` names it, and writes the queue's index when everything passes. The checker is run only when the checksum of the file is pinned in `factory/checkers.yaml`; any other file is refused and not run. A source whose `resource` is a path must name a file that exists, read from the top of the repository, from the draft's own folder or from its place in the wiki; an address (`https:`, `doi:`) is not fetched. Fix what it refuses. Then record what became of each note:
 
 ```
-uv run tools/explore.py resolve --exploration <x> --by <you> --note NOTE-001 --disposition drafted --ref <queue path of the page>
+uv run tools/explore.py resolve --exploration <x> --by <you> --model <your model> --note NOTE-001 --disposition drafted --ref <queue path of the page>
 ```
 
 ## What this skill refuses

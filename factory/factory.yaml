@@ -28,7 +28,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: osp-science-factory
-version: 0.10.0                           # the content of this definition; every change to it is in the change log
+version: 0.11.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before held-out data is opened once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding (the specification's finding concept), or a recorded negative result
@@ -168,7 +168,8 @@ procedure:
       approvals: 1                             # approving reviews by people other than the pull request's author
       repository: example-org/example-studies  # a placeholder: owner/name of the repository on the platform where the studies live; the verification asks about it and no other
       merge_methods: [merge]                   # how the platform may bring the request onto the branch: merge (two parents, which git can show), squash (one parent: nothing until verified); never a rebase merge
-      opening_needs: verified                  # the held-out data is opened only on a lock the platform has confirmed; with no network, `open-held-out --people-not-verified REASON` is the logged exception
+      opening_needs: verified                  # the held-out data is opened only on a lock the platform has confirmed
+      opening_without_verification: refused    # or allowed-with-a-reason: then, with no network, a person may type `open-held-out --people-not-verified REASON`, which is logged
       shows: [the question, the plan's rules and each criterion with its measured rate, "the held-out block and every change to it",
               the known-answer tests and the receipts, the bound code by checksum, the definition by checksum and the models it declares,
               open notes, what the reviewer of the lead said, how many things were tried in the exploration that led here]

@@ -41,6 +41,14 @@ What it checks:
   reviewer    only the coordinating role names the reviewer of an
               exploration, and it may call nothing that is part of the
               exploring
+  commands    every command shown in a role file, a skill or AGENTS.md
+  shown       (`uv run tools/<tool>.py <command> ...`) parses under that
+              tool's own options as they are now, and one that acts with
+              `--by` for an agent also passes `--model`, which the tools
+              require; a command named without `uv run` names only options
+              its tool has. Placeholders in angle brackets stand for a
+              value, a part in square brackets is read as given, and `...`
+              is left out
   same words  where a role file and a skill both say in what order things
               are done (what is read before data is set aside, when an
               exploration is ended, where a review is written, when the
@@ -76,7 +84,11 @@ if __name__ == "__main__":
     sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
 
 import argparse
+import contextlib
+import importlib.util
+import io
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -157,6 +169,114 @@ def commands_of(tool: Path) -> set:
     """The commands a tool has, read from its source: every name it gives its argument parser."""
     text = tool.read_text(encoding="utf-8")
     return set(re.findall(r"""\badd\(\s*["']([a-z][a-z-]*)["']""", text)) | set(re.findall(r"""add_parser\(\s*["']([a-z][a-z-]*)["']""", text))
+
+
+_PARSERS = {}
+FULL = re.compile(r"uv run (?:--script )?tools/([a-z_]+)\.py\s+(.*)$")
+NAMED = re.compile(r"^(sf|explore|knowledge|fresh_data)\.py\s+([a-z][a-z-]*)\s+(.*--.*)$")
+
+
+def parser_of(tool: Path):
+    """The argument parser of one tool, from its own source (its `build_parser`), or None when it has none."""
+    key = str(tool.resolve())
+    if key not in _PARSERS:
+        try:
+            spec = importlib.util.spec_from_file_location("shown_" + tool.stem, tool)
+            mod = importlib.util.module_from_spec(spec)
+            with contextlib.redirect_stdout(io.StringIO()):
+                spec.loader.exec_module(mod)
+            _PARSERS[key] = mod.build_parser()
+        except Exception:  # a tool whose parser cannot be read is said to be so, below
+            _PARSERS[key] = None
+    return _PARSERS[key]
+
+
+def words_of(command: str) -> list | None:
+    """A command as the tool would get it: a placeholder in angle brackets is one value, square brackets are read
+    as given, and `...` is left out. None when its quotes do not close."""
+    text = re.sub(r"<[^<>]*>", "X", command).replace("[", " ").replace("]", " ")
+    try:
+        words = shlex.split(text)
+    except ValueError:
+        return None
+    out = []
+    for w in words:  # `...` after an option stands for its value; anywhere else it stands for more of the same, and is left out
+        if w in ("...", "\u2026"):
+            if out and out[-1].startswith("--"):
+                out.append("X")
+            continue
+        out.append(w)
+    return out
+
+
+def commands_shown(text: str) -> list:
+    """(line, full or named, the command) for every command a file shows: whole lines in code blocks and inline code,
+    with lines that end in a backslash joined to the next."""
+    out, lines, i = [], text.splitlines(), 0
+    while i < len(lines):
+        start, line = i + 1, lines[i]
+        while line.rstrip().endswith("\\") and i + 1 < len(lines):
+            i += 1
+            line = line.rstrip()[:-1] + " " + lines[i].lstrip().lstrip("#").lstrip()
+        i += 1
+        bare = line.strip().lstrip("#").strip()
+        pieces = re.findall(r"`([^`]+)`", line) if "`" in line and not bare.startswith("```") else []
+        if bare.startswith("uv run tools/"):
+            pieces.append(bare)
+        for piece in pieces:
+            m = FULL.search(piece)
+            if m:
+                out.append((start, "full", m.group(1), m.group(2)))
+            else:
+                m = NAMED.match(piece.strip())
+                if m:
+                    out.append((start, "named", m.group(1), m.group(2) + " " + m.group(3)))
+    return out
+
+
+def shown_problems(root: Path) -> list:
+    """Every command shown in a role file, a skill or AGENTS.md that the tool as it is now would not take."""
+    files = sorted(p for p in definition_of(root).glob("agents/**/*") if p.suffix in (".md", ".yaml") and p.is_file())
+    files += sorted(p for p in definition_of(root).glob("skills/**/*") if p.suffix in (".md", ".yaml") and p.is_file())
+    files += [p for p in (root / "AGENTS.md",) if p.is_file()]
+    out = []
+    for f in files:
+        where = f.relative_to(root).as_posix() if f.is_relative_to(root) else str(f)
+        for line, kind, tool, rest in commands_shown(f.read_text(encoding="utf-8")):
+            path = root / "tools" / f"{tool}.py"
+            parser = parser_of(path) if path.is_file() else None
+            if parser is None:
+                out.append(f"{where}, line {line}: it shows a command of tools/{tool}.py, whose options cannot be read (no such tool, or no build_parser)")
+                continue
+            words = words_of(rest)
+            if words is None:
+                out.append(f"{where}, line {line}: the quotes of `{tool}.py {rest[:60]}` do not close")
+                continue
+            if kind == "named":
+                sub = next((a.choices for a in parser._actions if isinstance(a, argparse._SubParsersAction)), {}).get(words[0])
+                if sub is None:
+                    out.append(f"{where}, line {line}: `{tool}.py {words[0]}` is not a command of tools/{tool}.py")
+                    continue
+                known = {o for a in sub._actions for o in a.option_strings}
+                for w in words[1:]:
+                    if w.startswith("--") and w.partition("=")[0] not in known:
+                        out.append(f"{where}, line {line}: `{w.partition('=')[0]}` is not an option of `{tool}.py {words[0]}`")
+                continue
+            err = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                    parser.parse_args(words)
+            except SystemExit:
+                said = err.getvalue().strip().splitlines()
+                out.append(f"{where}, line {line}: `uv run tools/{tool}.py {' '.join(words[:2])} ...` does not parse under the tool's options as they "
+                           f"are now ({said[-1] if said else 'refused'})")
+                continue
+            if "--by" in words:
+                by = words[words.index("--by") + 1] if words.index("--by") + 1 < len(words) else ""
+                if not by.startswith("human:") and "--model" not in words:
+                    out.append(f"{where}, line {line}: `uv run tools/{tool}.py {words[0]} ...` acts with `--by` and has no `--model`: the tool "
+                               "refuses an agent's event that does not name its model, so an agent that follows this line is refused")
+    return out
 
 
 def problems(root: Path, definition: Path | None = None) -> list:
@@ -282,6 +402,7 @@ def problems(root: Path, definition: Path | None = None) -> list:
                 for cmd in cmds:
                     if cmd not in calls:
                         p.append(f"the procedure gives the {stage} stage to the {role} assistant, and factory/agents/{role}/agent.md may not call `{cmd}`")
+    p += shown_problems(root)
     for st in stages if isinstance(stages, list) else []:
         for role in (st.get("done_by") if isinstance(st.get("done_by"), list) else []):
             if role not in roles:
@@ -379,6 +500,17 @@ def selftest(root: Path) -> int:
              "do not say the same thing under **When you start.**")
         case("the curating role may end an exploration", lambda d: edit(d, "factory/agents/curating/agent.md", '  - "tools/explore.py resolve"', '  - "tools/explore.py resolve"\n  - "tools/explore.py end"'),
              "only the analysis assistant may call")
+        case("a skill shows an agent's command without `--model`, which the tool would refuse",
+             lambda d: edit(d, "factory/agents/analysis/skills/explore-a-record/SKILL.md", "known --exploration <x> --by <you> --model <your model>",
+                            "known --exploration <x> --by <you>"), "has no `--model`")
+        case("a skill shows a command with an option the tool does not have",
+             lambda d: edit(d, "factory/agents/review/skills/review-work/SKILL.md", "--verdict block --file", "--verdict block --report"),
+             "does not parse under the tool's options")
+        case("a skill shows a command of a tool that does not have it",
+             lambda d: edit(d, "factory/agents/analysis/skills/write-up-a-lead/SKILL.md", "uv run tools/explore.py status --exploration",
+                            "uv run tools/explore.py where --exploration"), "does not parse under the tool's options")
+        case("a role file names a command, without `uv run`, with an option its tool does not have",
+             lambda d: edit(d, "factory/agents/coordinating/agent.md", "`sf.py status`", "`sf.py status --verbose`"), "is not an option of `sf.py status`")
         case("a description that is not one sentence", lambda d: edit(d, "factory/agents/review/agent.md", "records what it found.\"", "records what it found. It also fixes it.\""),
              "`description` is one sentence")
     finally:
@@ -402,9 +534,10 @@ def main() -> int:
     for q in found:
         print("check-roles:", q)
     if found:
-        print(f"check-roles: FAIL ({len(found)} disagreement(s) between factory/agents/ and factory/factory.yaml)")
+        print(f"check-roles: FAIL ({len(found)} problem(s): factory/agents/, factory/factory.yaml and the commands they show do not agree)")
         return 1
-    print(f"check-roles: PASS ({len(roles_in(root))} roles; factory/agents/ and the procedure's `agents` block say the same thing)")
+    print(f"check-roles: PASS ({len(roles_in(root))} roles; factory/agents/ and the `agents` block of factory.yaml say the same thing, and "
+          "every command the role files, the skills and AGENTS.md show parses under its tool's options)")
     return 0
 
 
