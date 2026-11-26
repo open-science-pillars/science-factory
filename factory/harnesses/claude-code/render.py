@@ -89,8 +89,8 @@ def bullets(items) -> str:
 def render_agent(name: str, fm: dict, body: str, default: dict | None = None) -> str:
     calls = [str(c) for c in fm.get("may_call") or []]
     skills = [c[6:] for c in calls if c.startswith("skill:")]
-    head = {"name": name, "description": str(fm["description"]), "tools": ", ".join(tools_for(fm))}
     model = fm.get("model") or (default or {}).get("model")
+    head = {"name": name, "description": str(fm["description"]), "tools": ", ".join(tools_for(fm))}
     if model:  # the model the agent's file declares; Claude Code is asked for it, and nothing here proves which model answered
         head["model"] = str(model)
     if skills:
@@ -102,7 +102,9 @@ def render_agent(name: str, fm: dict, body: str, default: dict | None = None) ->
         NOTICE.format(name=name), "",
         "## What the role file allows", "",
         f"You are the {name} assistant of a science factory. You act under the name `agent:{name}` (or `agent:{name}-<suffix>` "
-        "when the coordinating assistant gives you one) in every `--by`. Run every command from the repository root. "
+        "when the coordinating assistant gives you one) in every `--by`"
+        + (f", and you give `--model {model}` beside it: the model this file asks Claude Code to run you as, which the log records "
+           "and nothing checks, so say it truthfully and say so if you know you are another" if model else "") + ". Run every command from the repository root. "
         "Each tool call you make is checked against your role file before it runs, and what the file does not allow is blocked.", "",
         "**You may call:** " + (", ".join(commands) or "no commands") + ".", "",
         "**Skills:** " + (", ".join(f"`{s}`" for s in skills) or "none") + ".", "",

@@ -17,7 +17,6 @@ configurations:                           # two versions of the definition; a pa
   - name: same-again                      # the worked example compares the definition with itself: expect no difference
     definition: {path: "."}
 repetitions: 2                            # each case, twice, on two different draws of its noise
-known_answer_cases: 400                   # how many synthetic cases the known-answer tests of each configuration run (the plan says 2000; fewer is faster and noisier)
 cases: [no-gain, no-gain-again, just-inside, just-outside, gain-low, gain-high]
 comparison:
   stated: "before any run, in this file; a change to this block after a run is a new comparison and the old result does not count for it"

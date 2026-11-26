@@ -405,8 +405,39 @@ def load_plan_text(text: str) -> dict:
     return plan
 
 
+MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{1,99}$")
+NOT_A_MODEL = ("auto", "router", "inherit", "default", "none", "unknown", "model", "any")
+NO_MODEL = ("an event an agent writes names the model that wrote it: pass --model <the model's name>. The model is declared by "
+            "whoever calls the tool (a harness, or the agent itself) and nothing proves it; a person's event needs none")
+
+
+def model_problem(model) -> str | None:
+    """Why a value is not the name of a concrete model, or None."""
+    m = str(model or "")
+    if not MODEL.match(m):
+        return "it is not a model's name (letters, digits and . _ : @ / -, with no spaces)"
+    if m.casefold() in NOT_A_MODEL or m.casefold().startswith(("auto-", "auto:", "router:", "routers/")):
+        return "it is a router or a stand-in, not a concrete model"
+    return None
+
+
+def models_recorded(ev: list) -> dict:
+    """{actor: [models]} for every agent that wrote an event, in the order the models first appear. An event with
+    no model (possible only in a log written before models were recorded, or by hand) shows as `none recorded`."""
+    out = {}
+    for e in ev:
+        if str(e.get("actor", "")).startswith("agent:"):
+            m = e.get("model") or "none recorded"
+            if m not in out.setdefault(e["actor"], []):
+                out[e["actor"]].append(m)
+    return out
+
+
 class Study:
+    default_model = None  # a model for every agent event of this process; only the self-tests and the blind test harness set it
+
     def __init__(self, d):
+        self.model = None  # the model the caller declares for the events of this command (--model)
         given = Path(os.path.abspath(d))
         self.d = Path(d).resolve()
         if given.is_symlink() or given.parent.resolve() / given.name != self.d:
@@ -442,6 +473,8 @@ class Study:
         prev = "genesis"
         for i, e in enumerate(ev):
             body = {k: e[k] for k in ("seq", "at", "actor", "kind", "data")}
+            if "model" in e:  # the model that wrote an agent's event is part of what the hash covers
+                body["model"] = e["model"]
             if e["seq"] != i or e["prev"] != prev or e["hash"] != self._digest(prev, body):
                 return [f"study log broken at event {i} ({e.get('kind')})"]
             prev = e["hash"]
@@ -490,6 +523,14 @@ class Study:
             raise Refused("this study is closed; a new question is a new study that cites it")
         prev = ev[-1]["hash"] if ev else "genesis"
         body = {"seq": len(ev), "at": now(), "actor": actor, "kind": kind, "data": data}
+        if str(actor).startswith("agent:"):
+            model = self.model or Study.default_model
+            if not model:
+                raise Refused(NO_MODEL)
+            why = model_problem(model)
+            if why:
+                raise Refused(f"--model `{model}`: {why}")
+            body["model"] = str(model)
         e = {**body, "prev": prev, "hash": self._digest(prev, body)}
         f.write(json.dumps(e, sort_keys=True) + "\n")
         f.flush()
@@ -1544,8 +1585,10 @@ def definition_stamp(root: Path, lock: dict | None = None) -> dict:
     spec = definition_of(root)
     tree = definition_tool().tree_checksum(root)
     beside = root == FACTORY.resolve()
+    whole = definition_tool().stamp(root)
     out = {"path": "factory/ (this factory's own)" if beside else str(root), "sha256": tree["sha256"], "files": tree["files"],
-           "version": str(spec.get("version")), "this_factorys_own": beside, "remarks": []}
+           "version": str(spec.get("version")), "models": whole["models"], "skills": whole["skills"],
+           "this_factorys_own": beside, "remarks": []}
     if not beside:
         out["remarks"].append("this is not this factory's own definition (factory/): what it calls done is its own claim")
     locked = (lock or {}).get("data", {}).get("definition") if lock else None
@@ -1554,6 +1597,29 @@ def definition_stamp(root: Path, lock: dict | None = None) -> dict:
         if not out["same_as_locked"]:
             out["remarks"].append(f"this is not the definition the lock recorded (the lock recorded version {locked.get('version')}, "
                                   f"sha256 {locked.get('sha256')})")
+            for agent in sorted(set(locked.get("models") or {}) | set(out["models"])):
+                was, is_ = (locked.get("models") or {}).get(agent), out["models"].get(agent)
+                if was != is_:
+                    out["remarks"].append(f"the agent `{agent}` declared {was} at the lock and declares {is_} now")
+            for skill in sorted(set(locked.get("skills") or {}) | set(out["skills"])):
+                if (locked.get("skills") or {}).get(skill) != out["skills"].get(skill):
+                    out["remarks"].append(f"the skill `{skill}` is not the skill the lock recorded (its checksum differs, or it was added or removed)")
+    return out
+
+
+def models_report(ev: list, definition: dict) -> dict:
+    """The models, both ways: what the definition's agents declare, and what the log's agent events recorded.
+    Both are declarations. A recorded model that no agent of the definition declares is remarked on, because
+    it means the work was done by something the definition does not describe."""
+    declared = definition.get("models") or {}
+    recorded = models_recorded(ev)
+    known = {m.get("model") for m in declared.values()}
+    out = {"declared_by_the_definition": declared, "recorded_in_the_log": recorded,
+           "note": "a model is declared by the definition and by whoever calls the tool; nothing proves which model answered", "remarks": []}
+    for actor, models in recorded.items():
+        for m in models:
+            if m not in known:
+                out["remarks"].append(f"{actor} wrote under the model `{m}`, which no agent of this definition declares")
     return out
 
 
@@ -1636,6 +1702,14 @@ def cmd_lock(study: Study, a) -> None:
     else:
         print("the request: none was given when the study started, so none is bound")
     print(f"the factory's definition: {definition['path']}, version {definition['version']}, {definition['files']} files, sha256 {definition['sha256']}")
+    print("the models its agents declare (declared, not proven): "
+          + "; ".join(f"{a} {m['model']} under {m['harness']}" for a, m in sorted(definition["models"].items())))
+    print("the skills its agents use, each by sha256: " + "; ".join(f"{s} {h[:16]}" for s, h in sorted(definition["skills"].items())))
+    recorded = models_recorded(ev)
+    print("the models this study's log records so far: "
+          + ("; ".join(f"{a} {', '.join(m)}" for a, m in sorted(recorded.items())) or "no agent has written to it"))
+    for remark in models_report(ev, definition)["remarks"]:
+        print(f"  {remark}")
     for remark in definition["remarks"]:
         print(f"  {remark}")
     print(f"bound files ({len(code)}), each by sha256; a change to any of them, or anything new that Python could import "
@@ -1664,7 +1738,8 @@ def cmd_lock(study: Study, a) -> None:
     e = study.append(a.by, "lock.recorded", {"plan_sha": psha, "code": code, "receipts": bound, "evidence": a.evidence,
                                              "after_opening": after_opening, "request": request,
                                              "uv_environments": environments,
-                                             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version")}})
+                                             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
+                                             "models_recorded": recorded})
     print("The lock: plan and code locked" + (" (AFTER an opening: this study is now exploratory)" if after_opening else ""))
     on_record = record_lines(study)
     spec = plan["tests"]["held-out"]
@@ -2142,7 +2217,7 @@ def stage_of(study: Study, factory: Path) -> dict:
                 here["why"] = {n: why[n] for n in needs if n in why}
     if closed:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
-    return {"study": study.d.name, "definition": stamp, "done": done, **(here or {"stage": "complete"}),
+    return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "done": done, **(here or {"stage": "complete"}),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
@@ -2193,6 +2268,10 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     try:
         ev = study.events()
         problems += study._chain(ev)
+        unnamed = [e["seq"] for e in ev if str(e["actor"]).startswith("agent:") and not e.get("model")]
+        if unnamed:
+            problems.append(f"{len(unnamed)} event(s) written by an agent name no model (the first is event {unnamed[0]}): every "
+                            "event an agent writes records the model that wrote it")
     except Refused as r:
         ev, problems = [], [str(r)]
     locks = [e for e in ev if e["kind"] == "lock.recorded"]
@@ -2407,6 +2486,7 @@ def cmd_scorecard(study: Study, a) -> None:
     status = rep["status"]
     card = {"study": study.d.name, "status": status,
             "definition": definition_stamp(Path(a.factory), study.last("lock.recorded")),
+            "models": models_report(ev, definition_stamp(Path(a.factory), study.last("lock.recorded"))),
             "finished": status.startswith("confirmatory study") or status == EXPLORATORY,
             "closed": rep["closed"],
             "elapsed_seconds": int((t1 - t0).total_seconds()) if ev else 0,
@@ -2663,6 +2743,7 @@ def selftest() -> int:
     import struct
     import time
     results = []
+    Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
 
     def check(name: str, ok: bool) -> None:
         results.append((name, bool(ok)))
@@ -3009,13 +3090,13 @@ def selftest() -> int:
               and check_log(first, _posted(first))["status"] == READY)
 
         study = _fresh(tmp, "a24")
-        dirty = tool("test", "known-answers", "--study", str(study.d), "--by", "agent:b", env={"PYTHONPATH": str(tmp)})
+        dirty = tool("test", "known-answers", "--study", str(study.d), "--by", "agent:b", "--model", "selftest-model", env={"PYTHONPATH": str(tmp)})
         check("a test run with an injected Python path visible is refused (a hook that hides itself is a stated limit)",
               dirty.returncode == 2 and "PYTHONPATH" in dirty.stderr and not study.last("test.run"))
         others = [tool(c, "--study", str(study.d), env={"PYTHONPATH": str(tmp)}) for c in ("status", "scorecard", "check-plan", "fingerprint")]
         check("status, scorecard, check-plan and fingerprint are refused too while PYTHONPATH is set",
               all(r.returncode == 2 and "PYTHONPATH" in r.stderr for r in others) and not (study.d / "scorecard.json").exists())
-        prefix = tool("test", "known-answers", "--study", str(study.d), "--by", "agent:b", env={"PYTHONPYCACHEPREFIX": str(tmp / "planted")})
+        prefix = tool("test", "known-answers", "--study", str(study.d), "--by", "agent:b", "--model", "selftest-model", env={"PYTHONPYCACHEPREFIX": str(tmp / "planted")})
         check("an inherited PYTHONPYCACHEPREFIX is refused before anything runs",
               prefix.returncode == 2 and "PYTHONPYCACHEPREFIX" in prefix.stderr and not study.last("test.run"))
 
@@ -3574,6 +3655,78 @@ def selftest() -> int:
                                                 problem="p", change="c", rationale="r", predicted="p", observed=None, model=None))
               and len(study.events()) == before and not (tmp / "changes-2.jsonl").exists())
 
+        # the model that wrote each event, and which factory made the study
+        study = _fresh(tmp, "n-models")
+        Study.default_model = None
+        try:
+            check("an event an agent writes with no model named is refused, and nothing is written",
+                  "names the model that wrote it" in _refusal(cmd_test, study, A(what="known-answers", by="agent:analysis"))
+                  and [e["kind"] for e in study.events()] == ["study.started"])
+            study.model = "auto"
+            check("a router or a stand-in is not a model: `auto` is refused, and so is a name with a space in it",
+                  "not a concrete model" in _refusal(cmd_note, study, A(kind="method", about="a", text="b", evidence=None, by="agent:analysis"))
+                  and (setattr(study, "model", "some model") or "not a model's name" in _refusal(
+                      cmd_note, study, A(kind="method", about="a", text="b", evidence=None, by="agent:analysis"))))
+            study.model = None
+            cmd_note(study, A(kind="method", about="a", text="a person's note", evidence=None, by="human:tester"))
+            check("a person's event needs no model and carries none", "model" not in study.events()[-1])
+            study.model = "claude-sonnet-4-5"
+            cmd_test(study, A(what="known-answers", by="agent:analysis"))
+            cmd_test(study, A(what="working-data", by="agent:analysis"))
+            written = study.events()[-1]
+            check("an agent's event records the model its caller declared", written["model"] == "claude-sonnet-4-5" and written["actor"] == "agent:analysis")
+            forged = study.log.read_text().replace('"model": "claude-sonnet-4-5"', '"model": "claude-opus-4-1"', 1)
+            check("the model is under the log's hash: changing it in the file breaks the chain",
+                  forged != study.log.read_text() and Study._chain(study, Study._parse(forged)) != [] and study.chain_problems() == [])
+            study.model = "a-model-nobody-declared"
+            cmd_note(study, A(kind="method", about="b", text="from somewhere else", evidence=None, by="agent:visitor"))
+            study.model = None
+            cmd_lock(study, A(by="human:tester", evidence=URL))
+            bound = study.last("lock.recorded")["data"]
+            stamp = definition_tool().stamp(FACTORY)
+            check("the lock binds the checksum of the definition tree, the model each agent declares and each skill used by checksum",
+                  bound["definition"]["sha256"] == stamp["sha256"] and bound["definition"]["models"] == stamp["models"]
+                  and bound["definition"]["skills"] == stamp["skills"] and len(stamp["skills"]) >= 5 and len(stamp["models"]) == 4
+                  and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in stamp["skills"].values()))
+            check("the lock records which models the log's agent events were written under",
+                  bound["models_recorded"] == {"agent:analysis": ["claude-sonnet-4-5"], "agent:visitor": ["a-model-nobody-declared"]})
+            where = stage_of(study, FACTORY)
+            check("status shows the models the definition declares beside the ones the log recorded, and says they are declared, not proven",
+                  where["models"]["declared_by_the_definition"]["review"]["model"] == stamp["models"]["review"]["model"]
+                  and where["models"]["recorded_in_the_log"]["agent:analysis"] == ["claude-sonnet-4-5"] and "nothing proves" in where["models"]["note"])
+            check("status remarks on an agent that wrote under a model no agent of the definition declares, and on no other",
+                  where["models"]["remarks"] == ["agent:visitor wrote under the model `a-model-nobody-declared`, which no agent of this definition declares"])
+            cmd_scorecard(study, A(factory=str(FACTORY), anchor=None))
+            card = json.loads((study.d / "scorecard.json").read_text())
+            check("the scorecard shows the definition's checksum, its declared models, its skills and the models recorded",
+                  card["definition"]["sha256"] == stamp["sha256"] and card["definition"]["skills"] == stamp["skills"]
+                  and card["models"]["recorded_in_the_log"]["agent:visitor"] == ["a-model-nobody-declared"] and card["definition"]["same_as_locked"] is True)
+            other = tmp / "another-definition"
+            shutil.copytree(FACTORY, other, ignore=shutil.ignore_patterns("__pycache__"))
+            agent_file = other / "agents" / "review" / "agent.md"
+            agent_file.write_text(re.sub(r"(?m)^model: .*$", "model: claude-haiku-4-5", agent_file.read_text(), count=1))
+            skill_file = other / "skills" / "read-what-is-known" / "SKILL.md"
+            skill_file.write_text(skill_file.read_text() + "\nOne more line.\n")
+            moved = stage_of(study, other)["definition"]["remarks"]
+            check("status says which agent's model and which skill are not what the lock recorded",
+                  any("the agent `review` declared" in r and "claude-haiku-4-5" in r for r in moved)
+                  and any("the skill `read-what-is-known` is not the skill the lock recorded" in r for r in moved)
+                  and not any("the agent `analysis`" in r for r in moved))
+            # an agent event with no model, added by hand with the right hash: the chain holds and the log check says so
+            ev = study.events()
+            body = {"seq": len(ev), "at": now(), "actor": "agent:quiet", "kind": "remark.added", "data": {"text": "written by hand"}}
+            with study.log.open("a") as f:
+                f.write(json.dumps({**body, "prev": ev[-1]["hash"], "hash": Study._digest(ev[-1]["hash"], body)}, sort_keys=True) + "\n")
+            check("an agent event with no model, added by hand with the right hash, fails the log check",
+                  study.chain_problems() == [] and any("name no model" in q for q in check_log(study)["problems"])
+                  and models_recorded(study.events())["agent:quiet"] == ["none recorded"])
+        finally:
+            Study.default_model = "selftest-model"
+        named = subprocess.run([sys.executable, str(TOOL), "note", "--study", str(tmp / "n-cli-model"), "--by", "agent:x", "--kind", "method",
+                                "--about", "a", "--text", "b"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        check("on the command line an agent with no --model is refused before anything is written",
+              named.returncode == 2 and "names the model that wrote it" in named.stderr and not (tmp / "n-cli-model").exists())
+
         # the finding, the review and the signature
         study = _fresh(tmp, "n-finding")
         _to_lock(study)
@@ -3718,7 +3871,7 @@ def selftest() -> int:
         _to_lock(study)
         plan = checked_plan(study)
         with study.held() as f:
-            other = subprocess.Popen([sys.executable, str(TOOL), "open-held-out", "--study", str(study.d), "--by", "agent:second"],
+            other = subprocess.Popen([sys.executable, str(TOOL), "open-held-out", "--study", str(study.d), "--by", "agent:second", "--model", "selftest-model"],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, stdin=subprocess.DEVNULL)
             time.sleep(1.5)
             waiting = other.poll() is None and not any(e["kind"] == "opening.started" for e in study.events())
@@ -3870,6 +4023,7 @@ def selftest() -> int:
         os.environ.pop("SF_INSIDE_A_LOOK", None)
         if kept is not None:
             os.environ["SF_INSIDE_A_LOOK"] = kept
+    Study.default_model = None
     for name, ok in results:
         print(("PASS  " if ok else "FAIL  ") + name)
     good = all(ok for _, ok in results)
@@ -3928,11 +4082,15 @@ def build_parser() -> argparse.ArgumentParser:
     def add(name, fn, *args):
         p = sub.add_parser(name, allow_abbrev=False)
         p.add_argument("--study", required=True, help="the study directory")
+        if by in args and not any(names == ["--model"] for names, _ in args):
+            args = (*args, model)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
 
     by = (["--by"], {"required": True, "help": "who acts: human:<id> or agent:<id>"})
+    model = (["--model"], {"default": None, "help": "the model that acts, when an agent does: required with --by agent:<id>, declared "
+                                                    "by the caller and recorded in the event; a person's event needs none"})
     anchor = (["--anchor"], {"action": "append", "default": None,
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
@@ -3976,7 +4134,11 @@ def main() -> int:
         refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
-        a.fn(Study(a.study), a)
+        study = Study(a.study)
+        study.model = getattr(a, "model", None)
+        if str(getattr(a, "by", "")).startswith("agent:") and not study.model:
+            raise Refused(NO_MODEL)  # said before anything is run or written
+        a.fn(study, a)
     except Refused as r:
         print(f"REFUSED: {r}", file=sys.stderr)
         return 2

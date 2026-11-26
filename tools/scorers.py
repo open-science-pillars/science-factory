@@ -507,6 +507,7 @@ def selftest() -> int:
     quiet, stdout = open("/dev/null", "w"), sys.stdout
     try:
         A = sf.A
+        sf.Study.default_model = "selftest-model"  # every agent event of the studies this self-test builds
         own = scorers_of(FACTORY)
         judges = sorted(n for n, s in own.items() if s.get("type") == "judge")
         ok("this definition has deterministic scorers and judges, and every judge reads nothing written after an opening",
@@ -695,6 +696,7 @@ def selftest() -> int:
            and "does not check out" in refuses(Run, "exploration", x.d))
         ok("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists())
     finally:
+        sf.Study.default_model = None
         sys.stdout = stdout
         quiet.close()
         shutil.rmtree(tmp, ignore_errors=True)

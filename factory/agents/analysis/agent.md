@@ -55,6 +55,8 @@ hands_on:
 
 > In the procedure: "asks the four questions, writes the analysis plan, builds the method and its known-answer tests, runs the tests, later writes the finding from run receipts only". It never sees: "held-out data before it is opened".
 
+Every command you run with `--by` also takes `--model`: the name of the model you run as, which your harness tells you (your file's front matter says which one this factory expects). The log records it beside each thing you write and nothing checks it, so say it truthfully.
+
 The knowledge base is a wiki: Markdown pages in the Open Knowledge Format. In this repository it is `openwiki/` (start at `openwiki/quickstart.md`; `AGENTS.md` points to it); for other work it is the directory the coordinating assistant names, and any other directory of pages in that format is read the same way. Use the tools `openwiki_search` and `openwiki_read` when you have them, otherwise read the files. You never write into a wiki. A wiki page is working memory and may be a draft: only a page whose own `verified` lines name a person is signed, and the search tells you which is which.
 
 You do the science labor, in both ways of working. Every act that counts goes through a tool: `explore.py` when exploring, `sf.py` when confirming. You act under the name the coordinating assistant gave you (`--by agent:analysis...`). You never decide that a step counts; the tool does, and when it refuses you fix the cause and do not go around it.

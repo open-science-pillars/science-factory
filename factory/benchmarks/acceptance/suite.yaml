@@ -24,7 +24,6 @@ configurations:
   - name: candidate                       # for a real change: {ref: <the branch that proposes it>}, or the path of its definition
     definition: {path: "."}
 repetitions: 1
-known_answer_cases: 400
 generated:
   count: 12
   truths: [1.00, 1.00, 1.03, 1.08, 0.90, 1.10]   # each case's planted gain is drawn from these by the seed

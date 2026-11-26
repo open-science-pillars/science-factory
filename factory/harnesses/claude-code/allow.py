@@ -165,6 +165,16 @@ def options_of(tool: Path, command: str) -> tuple | None:
     return options, plain, remainder
 
 
+def declared_model(fm: dict, root: Path = ROOT) -> str | None:
+    """The model a role's file declares, or the definition's default when the file names none."""
+    if fm.get("model"):
+        return str(fm["model"])
+    try:
+        return str((yaml.safe_load((root / "factory" / "factory.yaml").read_text(encoding="utf-8")).get("agentDefaults") or {}).get("model") or "") or None
+    except (OSError, yaml.YAMLError, AttributeError):
+        return None
+
+
 def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT) -> str | None:
     """Why a command, already in words, is not one this role may run. One shape is taken: `uv run [--script]
     tools/<tool>.py <command>`, then that command's own options, each spelled out in full, and its plain words."""
@@ -214,7 +224,11 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
                 return f"`{w}` is a word `{call}` has no place for: every value follows its option"
             values.append((None, w))
         j += 1
+    declared = declared_model(fm, root)
     for name, value in values:
+        if name == "--model" and declared and value != declared:
+            return (f"`--model {value}` is not the model this role's file declares ({declared}): an agent says which model it is, "
+                    "and under this harness that is the one its file asks for")
         if name == "--by" and not (value == f"agent:{role}" or value.startswith(f"agent:{role}-")):
             return f"`--by {value}` is not this role's name: the {role} assistant acts as agent:{role} or agent:{role}-<suffix>"
         if value and (cwd / value).exists():  # a tool reads the files it is given: what the role may not read, it may not hand to a tool
@@ -373,6 +387,12 @@ def selftest() -> int:
     ok("analysis may start an exploration", not blocked("analysis", "Bash", command=f"uv run tools/explore.py start --exploration {x} --by agent:analysis-1 --id E1"))
     ok("analysis may not record a review", blocked("analysis", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:analysis --verdict no-holes-found --file r.md"))
     ok("analysis may not act under the review role's name", blocked("analysis", "Bash", command=f"uv run tools/explore.py note --exploration {x} --by agent:review --kind missing --about a --text b"))
+    ok("a role may name the model its file declares and no other: another role's model, a made-up one and `auto` are blocked",
+       not blocked("analysis", "Bash", command=f"uv run tools/explore.py note --exploration {x} --by agent:analysis --model claude-sonnet-4-5 --kind missing --about a --text b")
+       and blocked("analysis", "Bash", command=f"uv run tools/explore.py note --exploration {x} --by agent:analysis --model claude-opus-4-1 --kind missing --about a --text b")
+       and blocked("analysis", "Bash", command=f"uv run tools/explore.py note --exploration {x} --by agent:analysis --model auto --kind missing --about a --text b")
+       and blocked("review", "Bash", command=f"uv run tools/sf.py note --study {x} --by agent:review --model=claude-sonnet-4-5 --kind missing --about a --text b")
+       and not blocked("review", "Bash", command=f"uv run tools/sf.py note --study {x} --by agent:review --model=claude-opus-4-1 --kind missing --about a --text b"))
     ok("analysis may not act under a person's name", blocked("analysis", "Bash", command=f"uv run tools/explore.py note --exploration {x} --by human:someone --kind missing --about a --text b"))
     ok("analysis may not make the hand-over", blocked("analysis", "Bash", command=f"uv run tools/explore.py hand-over --exploration {x} --by agent:analysis --study-id S"))
     ok("no role may lock", all(blocked(r, "Bash", command=f"uv run tools/sf.py lock --study s --by agent:{r} --evidence https://e.org/1") for r in ("coordinating", "analysis", "review", "curating")))
