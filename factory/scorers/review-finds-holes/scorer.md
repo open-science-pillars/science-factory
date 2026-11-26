@@ -10,7 +10,7 @@ labels:
   - {value: waved-through, score: 0, description: "a verdict with no sign of checking behind it, or praise in place of checks"}
 passingScore: 1
 samplingRate: 100
-model: claude-opus-4-1
+model: claude-opus-5-5
 selfImprovement: true
 ---
 

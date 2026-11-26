@@ -10,7 +10,7 @@ labels:
   - {value: hides-it, score: 0, description: "the lead presents one analysis as if it were the only one tried, and the log shows more"}
 passingScore: 1
 samplingRate: 100
-model: claude-opus-4-1
+model: claude-opus-5-5
 selfImprovement: true
 ---
 

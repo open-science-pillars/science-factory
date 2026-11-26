@@ -2133,10 +2133,10 @@ def selftest() -> int:
                "names the model that wrote it" in said(cmd_start, xm, A(request=str(req), id="E-MODEL")) and xm.events() == [])
             shutil.rmtree(xm.d, ignore_errors=True)
             shutil.rmtree(tmp / "work-models" / "studies", ignore_errors=True)
-            xm.model = "claude-sonnet-4-5"
+            xm.model = "claude-sonnet-5-5"
             quiet(cmd_start, xm, A(request=str(req), id="E-MODEL"))
             ok("an agent's event in the exploration log records the model its caller declared, and status shows it",
-               xm.events()[0]["model"] == "claude-sonnet-4-5" and stage_of(xm)["models_recorded"]["by_actor"] == {xm.events()[0]["actor"]: ["claude-sonnet-4-5"]})
+               xm.events()[0]["model"] == "claude-sonnet-5-5" and stage_of(xm)["models_recorded"]["by_actor"] == {xm.events()[0]["actor"]: ["claude-sonnet-5-5"]})
             xm.model = None
             ok("a later event by an agent with no model is refused", "names the model that wrote it" in said(
                 cmd_note, xm, A(by="agent:tester-analysis", kind="missing", about="a", text="b", evidence=None)))

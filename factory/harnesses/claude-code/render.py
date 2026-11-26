@@ -196,7 +196,7 @@ def selftest() -> int:
         results.append(("every rendered role carries the hook that reads its role file",
                         all("allow.py\" --role " + p.stem in p.read_text() for p in (tmp / ".claude/agents").glob("*.md"))))
         results.append(("a rendered role carries the model its file declares, and one that declares none carries the default",
-                        "\nmodel: claude-opus-4-1\n" in agent.split("\n---\n")[0] and "\nmodel: claude-sonnet-4-5\n" in coord.split("\n---\n")[0]
+                        "\nmodel: claude-opus-5-5\n" in agent.split("\n---\n")[0] and "\nmodel: claude-sonnet-5-5\n" in coord.split("\n---\n")[0]
                         and "model" not in render_agent("x", {"description": "d"}, "body")
                         and "\nmodel: m-1\n" in render_agent("x", {"description": "d"}, "body", {"model": "m-1"})))
         results.append(("a rendered role names its source and says not to edit it", "Rendered from factory/agents/review/agent.md" in agent))

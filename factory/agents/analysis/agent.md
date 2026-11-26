@@ -1,7 +1,7 @@
 ---
 description: "Asks the four questions, reads what is known, explores working data, builds methods, and writes plans, leads and findings."
 harness: claude-code
-model: claude-sonnet-4-5
+model: claude-sonnet-5-5
 runner: local
 may_call:
   - "tools/explore.py start"

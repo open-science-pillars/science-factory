@@ -618,14 +618,14 @@ def selftest() -> int:
         # ---- the verdict, read back
         v = tmp / "verdict.yaml"
         v.write_text("label: loose-ends\nreasoning: The decision rules name their fields; the screen is described in words that allow two readings.\n")
-        got = record_verdict(tmp / "packet-late", v, "agent:judge-1", "claude-opus-4-1", tmp / "scores" / "judgements.jsonl")
+        got = record_verdict(tmp / "packet-late", v, "agent:judge-1", "claude-opus-5-5", tmp / "scores" / "judgements.jsonl")
         ok("a verdict is recorded with its label, its score, whether it passed, and the model that judged",
-           got["label"] == "loose-ends" and got["score"] == 0.5 and got["passed"] is False and got["model"] == "claude-opus-4-1"
+           got["label"] == "loose-ends" and got["score"] == 0.5 and got["passed"] is False and got["model"] == "claude-opus-5-5"
            and got["judged_by"] == "agent:judge-1" and json.loads((tmp / "scores" / "judgements.jsonl").read_text())["label"] == "loose-ends"
            and got["may_feed_improvement"] is True and "not proven" in got["model_is"])
         ok("a verdict by an agent with no model is refused", "names the model that judged" in refuses(record_verdict, tmp / "packet-late", v, "agent:judge-1", None, tmp / "x.jsonl"))
         ok("a verdict by another model than the scorer declares is refused",
-           "is not this scorer's" in refuses(record_verdict, tmp / "packet-late", v, "agent:judge-1", "claude-sonnet-4-5", tmp / "x.jsonl"))
+           "is not this scorer's" in refuses(record_verdict, tmp / "packet-late", v, "agent:judge-1", "claude-sonnet-5-5", tmp / "x.jsonl"))
         person = record_verdict(tmp / "packet-late", v, "human:throwaway-placeholder", None, tmp / "scores" / "by-hand.jsonl")
         ok("a person may judge a packet by hand, and it is recorded as a person's", person["model"] is None and person["model_is"] == "a person judged")
         v2 = tmp / "verdict-2.yaml"
@@ -656,7 +656,7 @@ def selftest() -> int:
         cj = judge_with_claude(tmp / "packet-claude", str(fake), tmp / "scores" / "claude.jsonl")
         seen = (tmp / "packet-claude" / "seen-input.txt").read_text()
         ok("the Claude Code path hands the judge the rubric and the packet's files and nothing else, asks for the declared model, and records the answer",
-           cj["label"] == "one-reading" and cj["passed"] is True and "--model claude-opus-4-1" in (tmp / "packet-claude" / "seen-args.txt").read_text()
+           cj["label"] == "one-reading" and cj["passed"] is True and "--model claude-opus-5-5" in (tmp / "packet-claude" / "seen-args.txt").read_text()
            and "## The rubric" in seen and "SECRET-OUTCOME" not in seen and "opening.started" not in seen
            and cj["models_the_platform_reported"] == ["claude-test-1"] and cj["judged_by"] == "agent:judge-plan-is-clear")
         fake.write_text("#!/bin/sh\ncat > /dev/null\necho 'I would rather not say.'\n")

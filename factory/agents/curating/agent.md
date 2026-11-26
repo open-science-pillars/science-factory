@@ -1,7 +1,7 @@
 ---
 description: "Turns notes and leads into drafted knowledge pages for the steward's queue; never signs."
 harness: claude-code
-model: claude-sonnet-4-5
+model: claude-sonnet-5-5
 runner: local
 may_call:
   - "tools/explore.py status"

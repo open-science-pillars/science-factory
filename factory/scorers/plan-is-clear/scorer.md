@@ -10,7 +10,7 @@ labels:
   - {value: two-analyses, score: 0, description: "two careful people could run different analyses and both claim to have followed the plan"}
 passingScore: 1
 samplingRate: 100
-model: claude-opus-4-1
+model: claude-opus-5-5
 selfImprovement: true
 ---
 

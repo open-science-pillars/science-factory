@@ -57,7 +57,7 @@ capability:
 # calls the tools (`--model`); nothing proves it.
 agentDefaults:
   harness: claude-code                         # a folder in harnesses/
-  model: claude-sonnet-4-5                     # one of the models that harness lists
+  model: claude-sonnet-5-5                     # one of the models that harness lists
   runner: local                                # a file in runners/
 
 procedure:

@@ -1,7 +1,7 @@
 ---
 description: "Did none of the work; checks it against the record in a fresh context and records what it found."
 harness: claude-code
-model: claude-opus-4-1
+model: claude-opus-5-5
 runner: local
 may_call:
   - "tools/explore.py status"

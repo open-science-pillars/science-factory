@@ -1027,13 +1027,13 @@ def selftest() -> int:
         # references
         case("an agent whose harness is not a folder", lambda d: edit(d, "agents/review/agent.md", "harness: claude-code", "harness: codex"),
              "the harness `codex` is not a folder in harnesses/")
-        case("an agent whose model the harness does not list", lambda d: edit(d, "agents/review/agent.md", "model: claude-opus-4-1", "model: gpt-unlisted"),
+        case("an agent whose model the harness does not list", lambda d: edit(d, "agents/review/agent.md", "model: claude-opus-5-5", "model: gpt-unlisted"),
              "is not one the harness `claude-code` lists")
-        case("an agent whose model is a router", lambda d: edit(d, "agents/analysis/agent.md", "model: claude-sonnet-4-5", "model: auto"),
+        case("an agent whose model is a router", lambda d: edit(d, "agents/analysis/agent.md", "model: claude-sonnet-5-5", "model: auto"),
              "a router or a stand-in, not a concrete model")
         case("an agent whose runner is not a file", lambda d: edit(d, "agents/curating/agent.md", "runner: local", "runner: cluster"),
              "the runner `cluster` is not a file in runners/")
-        case("the default model is not one the default harness lists", lambda d: edit(d, "factory.yaml", "  model: claude-sonnet-4-5 ", "  model: some-other-model "),
+        case("the default model is not one the default harness lists", lambda d: edit(d, "factory.yaml", "  model: claude-sonnet-5-5 ", "  model: some-other-model "),
              "factory.yaml, agentDefaults: the model")
         case("a coordinator that is not an agent", lambda d: edit(d, "factory.yaml", "coordinator: coordinating", "coordinator: foreman"),
              "the coordinator `foreman` is not an agent")
@@ -1045,7 +1045,7 @@ def selftest() -> int:
              lambda d: edit(d, "scorers/notes-curated/scorer.md", "check: notes-on-curation-list", "check: notes-look-tidy"), "is not one the study tool evaluates")
         case("a judge that scores an agent that does not exist",
              lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "agents: [analysis]", "agents: [planner]"), "which is not an agent")
-        case("a judge whose model is not concrete", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "model: claude-opus-4-1", "model: auto"),
+        case("a judge whose model is not concrete", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "model: claude-opus-5-5", "model: auto"),
              "a router or a stand-in")
         case("a benchmark configuration that points at no definition",
              lambda d: edit(d, "benchmarks/built-in-gain/suite.yaml", 'definition: {path: "."}', 'definition: {path: "../elsewhere"}'), "no factory.yaml is there")
@@ -1114,7 +1114,7 @@ def selftest() -> int:
              "at least one label passes and at least one fails")
         case("a judge with a sampling rate that is no percentage", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "samplingRate: 100", "samplingRate: 250"),
              "a percentage between 0 and 100")
-        case("a deterministic scorer dressed as a judge", lambda d: edit(d, "scorers/notes-curated/scorer.md", "selfImprovement: false", "selfImprovement: false\nmodel: claude-opus-4-1"),
+        case("a deterministic scorer dressed as a judge", lambda d: edit(d, "scorers/notes-curated/scorer.md", "selfImprovement: false", "selfImprovement: false\nmodel: claude-opus-5-5"),
              "a deterministic scorer has no model")
         case("a benchmark case that is real held-out data",
              lambda d: edit(d, "benchmarks/built-in-gain/cases/no-gain.yaml", "kind: synthetic", "kind: held-out-data"), "real held-out data is never a benchmark case")
@@ -1146,7 +1146,7 @@ def selftest() -> int:
         results.append(("the change log is no part of the checksum: it is a record about the definition", tree_checksum(a) == tree_checksum(b)))
         edit(b, "agents/review/agent.md", '  - "tools/sf.py note"', '  - "tools/sf.py note"\n  - "tools/sf.py attach"')
         edit(b, "agents/review/agent.md", '  - "path:record/analysis/*"\n', "")
-        edit(b, "agents/analysis/agent.md", "model: claude-sonnet-4-5", "model: claude-opus-4-1")
+        edit(b, "agents/analysis/agent.md", "model: claude-sonnet-5-5", "model: claude-opus-5-5")
         edit(b, "scorers/plan-is-clear/scorer.md", "samplingRate: 100", "samplingRate: 10")
         edit(b, "factory.yaml", "      done_when: [tests-pass, rehearsals-pass]", "      done_when: [tests-pass]")
         (b / "automations/finding-expires/automation.md").unlink()
@@ -1156,7 +1156,7 @@ def selftest() -> int:
                         "TAKE NOTE: the agent `review` may now call: tools/sf.py attach." in said
                         and "no longer has, under `must_never_see`: path:record/analysis/*" in said and said.index("TAKE NOTE") < said.index("Files:")))
         results.append(("the summary names a changed model, a changed scorer, a changed stage and a removed automation",
-                        "the agent `analysis` declares the model claude-opus-4-1 (it was claude-sonnet-4-5)" in said
+                        "the agent `analysis` declares the model claude-opus-5-5 (it was claude-sonnet-5-5)" in said
                         and "the scorer `plan-is-clear`: `samplingRate` was 100 and is 10" in said
                         and "the stage `test` was finished by ['tests-pass', 'rehearsals-pass'] and is now finished by ['tests-pass']" in said
                         and "The automation `finding-expires` is removed." in said))
@@ -1167,7 +1167,7 @@ def selftest() -> int:
         results.append(("the summary of a tree against nothing says everything is new", "everything is new" in summary(tmp / "nowhere", a)[0]))
         st = stamp(a)
         results.append(("the stamp of a definition carries its checksum, the model each agent declares and each skill used by checksum",
-                        st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-4-1"}
+                        st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-5-5"}
                         and set(st["skills"]) == {"read-what-is-known", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
                         and all(SHA.match(v) for v in st["skills"].values())))
         results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 8))

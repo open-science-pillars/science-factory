@@ -53,7 +53,7 @@ $RUN --role analysis --task-file record/tasks/01.md \
 
 # 2. the coordinating step: name the reviewer, before any lead
 uv run tools/explore.py reviewer --exploration $X \
-  --by agent:coordinating-0101 --model claude-sonnet-4-5 \
+  --by agent:coordinating-0101 --model claude-sonnet-5-5 \
   --reviewer agent:review-0101
 
 # 3. the analysis assistant, started again: writes the lead

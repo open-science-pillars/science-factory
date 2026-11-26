@@ -1,7 +1,7 @@
 ---
 description: "Reads where a study or an exploration stands and hands the work to the right role; one conversation per piece of work."
 harness: claude-code
-model: claude-sonnet-4-5
+model: claude-sonnet-5-5
 runner: local
 may_call:
   - "tools/explore.py status"

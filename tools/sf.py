@@ -3670,12 +3670,12 @@ def selftest() -> int:
             study.model = None
             cmd_note(study, A(kind="method", about="a", text="a person's note", evidence=None, by="human:tester"))
             check("a person's event needs no model and carries none", "model" not in study.events()[-1])
-            study.model = "claude-sonnet-4-5"
+            study.model = "claude-sonnet-5-5"
             cmd_test(study, A(what="known-answers", by="agent:analysis"))
             cmd_test(study, A(what="working-data", by="agent:analysis"))
             written = study.events()[-1]
-            check("an agent's event records the model its caller declared", written["model"] == "claude-sonnet-4-5" and written["actor"] == "agent:analysis")
-            forged = study.log.read_text().replace('"model": "claude-sonnet-4-5"', '"model": "claude-opus-4-1"', 1)
+            check("an agent's event records the model its caller declared", written["model"] == "claude-sonnet-5-5" and written["actor"] == "agent:analysis")
+            forged = study.log.read_text().replace('"model": "claude-sonnet-5-5"', '"model": "claude-opus-5-5"', 1)
             check("the model is under the log's hash: changing it in the file breaks the chain",
                   forged != study.log.read_text() and Study._chain(study, Study._parse(forged)) != [] and study.chain_problems() == [])
             study.model = "a-model-nobody-declared"
@@ -3689,11 +3689,11 @@ def selftest() -> int:
                   and bound["definition"]["skills"] == stamp["skills"] and len(stamp["skills"]) >= 5 and len(stamp["models"]) == 4
                   and all(re.fullmatch(r"[0-9a-f]{64}", h) for h in stamp["skills"].values()))
             check("the lock records which models the log's agent events were written under",
-                  bound["models_recorded"] == {"agent:analysis": ["claude-sonnet-4-5"], "agent:visitor": ["a-model-nobody-declared"]})
+                  bound["models_recorded"] == {"agent:analysis": ["claude-sonnet-5-5"], "agent:visitor": ["a-model-nobody-declared"]})
             where = stage_of(study, FACTORY)
             check("status shows the models the definition declares beside the ones the log recorded, and says they are declared, not proven",
                   where["models"]["declared_by_the_definition"]["review"]["model"] == stamp["models"]["review"]["model"]
-                  and where["models"]["recorded_in_the_log"]["agent:analysis"] == ["claude-sonnet-4-5"] and "nothing proves" in where["models"]["note"])
+                  and where["models"]["recorded_in_the_log"]["agent:analysis"] == ["claude-sonnet-5-5"] and "nothing proves" in where["models"]["note"])
             check("status remarks on an agent that wrote under a model no agent of the definition declares, and on no other",
                   where["models"]["remarks"] == ["agent:visitor wrote under the model `a-model-nobody-declared`, which no agent of this definition declares"])
             cmd_scorecard(study, A(factory=str(FACTORY), anchor=None))
@@ -3704,12 +3704,12 @@ def selftest() -> int:
             other = tmp / "another-definition"
             shutil.copytree(FACTORY, other, ignore=shutil.ignore_patterns("__pycache__"))
             agent_file = other / "agents" / "review" / "agent.md"
-            agent_file.write_text(re.sub(r"(?m)^model: .*$", "model: claude-haiku-4-5", agent_file.read_text(), count=1))
+            agent_file.write_text(re.sub(r"(?m)^model: .*$", "model: claude-haiku-5-5", agent_file.read_text(), count=1))
             skill_file = other / "skills" / "read-what-is-known" / "SKILL.md"
             skill_file.write_text(skill_file.read_text() + "\nOne more line.\n")
             moved = stage_of(study, other)["definition"]["remarks"]
             check("status says which agent's model and which skill are not what the lock recorded",
-                  any("the agent `review` declared" in r and "claude-haiku-4-5" in r for r in moved)
+                  any("the agent `review` declared" in r and "claude-haiku-5-5" in r for r in moved)
                   and any("the skill `read-what-is-known` is not the skill the lock recorded" in r for r in moved)
                   and not any("the agent `analysis`" in r for r in moved))
             # an agent event with no model, added by hand with the right hash: the chain holds and the log check says so
