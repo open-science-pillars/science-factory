@@ -8,7 +8,9 @@ Status, plainly. The files and the tool described here exist and are tested. The
 
 ## A factory, as files
 
-![The layout of the repository: tools (the programs you run), factory (this factory as files), methods (the method scripts), compute (where a job runs), studies (two drafts and the practice runs), assistants, skills and runners (the roles, their skills and what starts a role), openwiki (the knowledge base), examples, and docs.](diagrams/repository-layout.svg)
+![The layout of the repository: tools (the programs you run), factory (this factory as files), methods (the built-in method), compute (where a job runs), assistants, skills and runners (the roles, their skills and what starts a role), openwiki (the knowledge base), examples (inputs and recipes), and docs. Beside them, drawn apart: a run is made fresh in a scratch folder, and your own studies live in the repository where the science is; neither is kept here.](diagrams/repository-layout.svg)
+
+The table lists the files of a factory in use. The rows that are runs (`studies/`, `explorations/`, `record/`, `knowledge-queue/`) exist in your repository, where the science lives, and not in this one: this repository is the machinery and keeps no runs (README.md, "Why no runs are kept here"). To see those folders filled in, run `uv run examples/stand-alone/run.py` and open the scratch folder it prints.
 
 | File | What it is | Read by |
 |---|---|---|
@@ -28,11 +30,11 @@ Status, plainly. The files and the tool described here exist and are tested. The
 | `knowledge-queue/` | drafted pages waiting for the steward; none signed | `knowledge.py check-drafts`; the steward |
 | `explore.py`, `knowledge.py`, `runners/` | more machinery, shared by every factory | you run them |
 
-One factory per capability. The machinery lives in this repository. Each capability keeps its own procedure, studies, record of openings and change log in its own repository, under its own stewards, because the method under test and the knowledge it rests on are the capability's.
+One factory per capability (a capability is a discipline's knowledge, skills and computations, released together). The machinery lives in this repository, which depends on no capability. Each capability keeps its own procedure, studies, record of openings and change log in its own repository, under its own stewards, because the method under test and the knowledge it rests on are the capability's.
 
 ## Quickstart
 
-1. **Put the machinery beside your capability.** Clone this repository next to your capability's repository at a commit you write down. The study tool is part of what a study locks, so the commit matters.
+1. **Put the machinery beside your capability.** Clone this repository next to your capability's repository at a commit you write down, and run the three commands on the first screen of README.md to see that it works where you are. The study tool is part of what a study locks, so the commit matters.
 2. **Make the factory.** In your capability's repository create `factory/`. Copy `factory/procedure.yaml` into it and fill in the `capability` block: the repositories it covers, what it borrows, who its stewards are, and where its studies, record of openings and change log are kept. Copy `factory/templates/` beside it.
 3. **Protect the branch.** The two acts by people, the lock and the steward's signature, are pull requests that a person approves and merges. The tool checks that the lock is in a commit; only your repository's rules can check who merged it.
 4. **Accept the factory before you trust it.** Run the system trial (PLAN.md, Part A) in your repository: the whole procedure on a blind test case whose answer nobody in the workspace knows until after the opening. Accept the factory only on a right verdict. An inconclusive trial is closed and another is run.
@@ -64,7 +66,7 @@ The lock records the procedure file's checksum, and `status` and `scorecard` say
 
 A role file's seven keys, and what holds each. `may_call`: the commands the role calls itself, the skills it uses, the roles it may start; the runner's per-call check allows nothing else, and a script run through a look is the look's, not a call. `must_never_see`: in words, and as `path:<pattern>` for a place a runner can refuse (the review role's file names `path:record/analysis/*` and `path:record/*analysis*`, the analysis role's own account in a folder of its own and as flat files). `reads` and `hands_on`: for the coordinating assistant and for people. `writes`: what the role writes by hand, as patterns; every role that writes has `record/<role>/*.md` and no other role's place, and what a tool writes when the role calls it is the tool's.
 
-**The skills.** Five, each a procedure with no facts about a dataset: `read-what-is-known`, `explore-a-record` (with `scripts/describe_record.py`, which counts a flag value by value, and `scripts/plot_xy.py`, which draws one quantity against another or the residual from a line), `write-up-a-lead`, `draft-a-knowledge-page`, `review-work`. The method scripts for a kind of data (pairing a satellite pass with a gauge reading) are the capability's, not the factory's.
+**The skills.** Five, each a procedure with no facts about a dataset: `read-what-is-known`, `explore-a-record` (with `scripts/describe_record.py`, which counts a flag value by value, and `scripts/plot_xy.py`, which draws one quantity against another or the residual from a line), `write-up-a-lead`, `draft-a-knowledge-page`, `review-work`. The method scripts for a kind of data (pairing a satellite pass with a gauge reading, say) belong to the repository where that science lives, not to the factory; the factory ships one built-in method (`methods/`), so that its own procedure can be exercised with nothing beside it.
 
 **The runners.** `runners/claude-code/`: `render.py` writes the files Claude Code reads and fails on drift; `allow.py` decides each tool call from the role file: it takes only a plain command of one known shape with every option spelled out, and refuses the review role a read of the author's account; `run_role.py` starts one role in a fresh context, keeps its task and answer in `record/<role>/`, and refuses a task that points the review role at the author's place. `runners/by-hand/as_role.py` asks the same decision for one command, one write or one read, with no assistant started, and runs an allowed command as its words, with no shell. Neither has been exercised under a platform: the one run by separate assistants so far held the roles by instruction.
 

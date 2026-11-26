@@ -1,5 +1,9 @@
 # The plan as one initiative and ten deliverables, in the organization's roadmap form.
 # The study tool's deliverables name this repository, which the organization's roadmap does not list yet.
+# This repository stands on its own: the first two deliverables and the three that follow the first finding need
+# nothing but it. The deliverables whose `repo` is another repository are the worked example of a first real study
+# (docs/PLAN.md, Part B); they belong to those repositories' own plans and are listed here so the whole can be read.
+# Numbers quoted from the practice run of that study are historical: the record is at the branch records-2026-11.
 # A run receipt, called a receipt below, is the record a run writes, with its code and inputs by checksum and every
 # number it produced, so anyone can re-check the result without trusting whoever ran it.
   - id: science-factory
@@ -20,7 +24,7 @@
         acceptance:
           - "The study tool's self-test passes in the repository's required check, every attack scenario included."
           - "The procedure is read by the study tool: status places a study from its stages, and a stage naming something the tool cannot check is refused; the parts of the procedure file the tool does not read are marked as such in the file."
-          - "The layout is stated where the files land: where they sit in the repository, where the hydrology checkout sits beside them, and the roots lines of both analysis plans agree with it. The tests are run again after any change to a plan."
+          - "The repository stands on its own: every check in its required workflow runs from a bare clone with nothing beside it, and no run is kept in it. The layout a study needs (the factory's clone beside the repository where the study lives, and the roots lines of the plan) is stated in docs/PLAN.md."
           - "The blind test of the system runs unattended and reports how often a false idea is supported and how often a true one is missed."
           - "A decision record states that an analysis plan is a record of a study, not a new concept type, and how notes relate to the ingest loop."
           - "The study tool, the procedure template and the contract for where it runs are shared tooling; each capability carries its own factory (procedure, studies, record of what has been opened, change log with predictions) in its own repository under its own stewards."
@@ -29,7 +33,7 @@
         contributor:
           readiness: owner-only
           champion: PaulMRamirez
-          prerequisites: [Python with uv, the hydrology checkout, organization governance]
+          prerequisites: [Python with uv, organization governance]
         labels: [roadmap, "priority:P1"]
       - id: science-factory-system-trial
         title: Run the system trial on a blind test case
@@ -41,7 +45,7 @@
         acceptance:
           - "The system trial passes its plan check, known-answer tests, working data and rehearsal, is locked by the steward, and opens its held-out data exactly once. The opening runs in the workspace, so the trial accepts the procedure and not a clean place for the opening."
           - "A write-up attached from run receipts, an independent review assistant's verdict recorded after it, and the steward's recorded decision naming that write-up by checksum are in the study log."
-          - "The sealed answer is revealed after the steward's decision, and the verdict in the study log is right. An inconclusive trial is closed as declined and another trial is run beside it (expect about one in eight: 24 of the 200 blind test cases were inconclusive). A wrong verdict is raised as a note and blocks the next deliverable."
+          - "The sealed answer is revealed after the steward's decision, and the verdict in the study log is right. An inconclusive trial is closed as declined and another trial is run beside it (expect about one in eight: 24 of the 200 blind test cases were inconclusive; docs/PLAN.md has the command that makes that result again). A wrong verdict is raised as a note and blocks the next deliverable."
           - "One note is raised on purpose, the curation list is written, and every note raised is accepted, linked or declined; the process scorecard and a change-log entry with its prediction and its observed outcome are filed; the study is closed and its last commit is merged."
         evidence: []
         contributor:

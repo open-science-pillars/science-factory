@@ -1,5 +1,7 @@
 # Science Factory: red team register
 
+*History. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
+
 *The first two rounds of this register were written on 2026-11-25 in the package's earlier vocabulary and were put into the present words later the same day; their findings, numbers and dispositions were meant to stay as they were, and the originals are not kept in this package. The third round, at the end, was written in the present words. WORDS.md maps the earlier words to the present ones, for anyone comparing this with older material.*
 
 **Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-25 · what was attacked, what it found, what changed, what remains. Three rounds: 33 findings, then 15, then 62.**

@@ -75,12 +75,12 @@ These could not all be given one sense each, so each sense is named here.
 | Word | Its senses in this package |
 |---|---|
 | lock | **the lock** is the act by a person that binds the plan and the code. A *lockfile* is the file that pins every library version, and the organization's *release lock* is the file of checksums written for a release; neither has anything to do with the lock |
-| open | **opening** the held-out data; an *open note* is one not yet resolved. For anything not yet decided the documents say "undecided"; the worked request for STUDY-0001 still marks such lines OPEN |
+| open | **opening** the held-out data; an *open note* is one not yet resolved. For anything not yet decided the documents say "undecided"; the worked request of the first real study that was planned marked such lines OPEN (historical; `records-2026-11`) |
 | gate | the **access gate** is a step of the tool. The organization also calls a repository's required checks before a merge its gate (hence the deliverable `findings-checker-in-gate`), and the roadmap file has a field `gate:` for a decision a person takes before work starts. The documents say "required check" for the second |
 | confirmatory | in every status that begins "confirmatory study": the study tests a claim written down beforehand on data nobody had opened. Its opposite is exploratory |
 | the method builder | in the two files under `compute/`: whoever built the method, which is the analysis assistant or the person running it |
 
-Five kinds of trial run have near names. *Known-answer tests*: the method on synthetic data with the truth put in, before the lock, repeated freely. A *rehearsal*: what the opening depends on (its fetch, the form of the finding) run once on working data, before the lock. A *practice run*: what the build environment did with a study, kept in `studies/exhibits/`, stopping before any act by a person. The *system trial*: one whole study (STUDY-0000) on a blind test case sealed at its opening, with a person's lock and signature. The *blind test of the system*: many such cases run unattended by a harness (the script that drives it), with no person, to count wrong verdicts.
+Five kinds of trial run have near names. *Known-answer tests*: the method on synthetic data with the truth put in, before the lock, repeated freely. A *rehearsal*: what the opening depends on (its fetch, the form of the finding) run once on working data, before the lock. A *practice run*: what the build environment did with a study, stopping before any act by a person; none is kept in this repository, the stand-alone example makes one fresh on every run, and those made in November 2026 are at the branch `records-2026-11`. The *system trial*: one whole study on a blind test case sealed at its opening, with a person's lock and signature (its plan is `examples/stand-alone/system-trial`). The *blind test of the system*: many such cases run unattended by a harness (the script that drives it), with no person, to count wrong verdicts.
 
 ## What can be simpler without changing what it does
 
@@ -157,7 +157,7 @@ The first pass changed what the documents and the tool's messages say and left t
 
 | Files and directories, before | Now |
 |---|---|
-| `work-orders/WO-0000`, `WO-0001` | `studies/STUDY-0000`, `STUDY-0001` |
+| `work-orders/WO-0000`, `WO-0001` | `studies/STUDY-0000`, `STUDY-0001` (since taken out; see the last section) |
 | `registration.yaml` | `analysis-plan.yaml` |
 | `order.md` | `study.md` |
 | `ledger.jsonl` | `study-log.jsonl` |
@@ -232,7 +232,7 @@ Names that stay: `rehearsal.run`, `review.verdict`, `finding.attached`; `claim_c
 | the scorecard check `clean-opening` | `no-failed-opening` ("clean" also describes a clean environment) |
 | the key `bars` in the known-answers receipt; `BARS` in `known_answer_tests.py` | `criteria`; `CRITERIA` |
 | the key `unseen` in `kinds-of-question.yaml` | `held_out_data` |
-| `exhibits/practice-run-3-STUDY-0001` | `exhibits/practice-run-STUDY-0001` |
+| `exhibits/practice-run-3-STUDY-0001` | `exhibits/practice-run-STUDY-0001` (since taken out; see the last section) |
 | the variable `SF_SYSTEM_TRIAL_SEAL` | `BLIND_TEST_SEAL`, read only when the seal's command carries `--harness` |
 | job spec: no key for what a job is | `key` (required), and `env` for the variable names a job needs |
 | run log: `environment`, `inputs_manifest`, `markers` | `declared_environment`, `inputs` (declared and observed), `markers` (the place's own) and `job_markers` (the job's); new `argv_started`, `interpreter`, `program` |
@@ -284,14 +284,14 @@ Added later on 2026-11-26, after separate assistants were run and a hydrologist 
 | **in neither** | data that is neither explored nor set aside; the start names it, and nothing protects it |
 | **skimmed** | said of a knowledge page recorded as read but not read whole; the lead says so |
 | **drafted by** | the name the drafting assistant acts under in the logs (`drafted_from.by`), beside `generated.by`, which is the platform and the model |
-| **the run with separate assistants** | the second run of the Baton Rouge demo: each role a separate assistant started from its role file, with no memory of the others |
+| **the run with separate assistants** | the second run of the optional demo (one river gauge, `examples/baton-rouge`): each role a separate assistant started from its role file, with no memory of the others; historical, its record is at `records-2026-11` |
 | **the single-instance run** | the first run of that demo: one model instance playing every role, so its reviews are the author's own |
 
 Words this package no longer uses for these things, because a field scientist reads them another way:
 
 | Not this | This | Why |
 |---|---|---|
-| unflagged, not flagged | the flag's value: "`reach_q` equal to 1" | a quality flag can have a value on every observation; in the Baton Rouge record none is at the clean value, so "unflagged" described passes the product marks |
+| unflagged, not flagged | the flag's value: "`reach_q` equal to 1" | a quality flag can have a value on every observation; in the record the optional demo explored none is at the clean value, so "unflagged" described passes the product marks |
 | sampling interval (for an interval around an estimate) | confidence interval, with the model it comes from | to a hydrologist a sampling interval is the time between samples |
 
 The method scripts under `methods/gain/` and the kept records of both demo runs still carry the two older words, because neither may be edited; the exploring tool refuses them in a new lead.
@@ -317,7 +317,7 @@ These words beside the ones a hydrologist would use, for a first reading:
 
 Applied everywhere a reader or a user can meet a word: the front door (README.md), the design (DESIGN.md, which replaces the separate concept and architecture documents), the build plan (PLAN.md), the templates, both studies and their analysis plans, the procedure file, the method scripts, and the study tool, inside and out (commands, options, messages, statuses, the names of its self-test checks and its own code).
 
-Run again, not renamed: a study log is hash-chained to its names, and each test event carries the tool's own checksum. So the earlier practice runs were discarded, and `practice-run-STUDY-0001`, `system-trial-ready-STUDY-0000` and the blind test of the system were run from the start, the last time on the tool as it stands after the third review round. The known-answer numbers and the blind test result are the same as before. The two records in `factory/change-log.jsonl` are new ones, written by the tool from that practice run: a prediction, and its observed outcome.
+Run again, not renamed: a study log is hash-chained to its names, and each test event carries the tool's own checksum. So the earlier practice runs were discarded, and `practice-run-STUDY-0001`, `system-trial-ready-STUDY-0000` and the blind test of the system were run from the start, the last time on the tool as it stands after the third review round. The known-answer numbers and the blind test result are the same as before. The two records in `factory/change-log.jsonl` are new ones, written by the tool from that practice run: a prediction, and its observed outcome. (All of this paragraph is historical: those runs are at `records-2026-11`.)
 
 The first two rounds in `reviews/RED-TEAM.md` and the whole of `reviews/SCIENTISTS.md` were written in the earlier words and put into the present words later the same day; each says so at its head, and their originals are not kept in this package. The third round was written in the present words. Outside this file the earlier words survive in one place, the option `--anchor`. So the tables above matter mostly for comparing with older material.
 
@@ -325,4 +325,8 @@ Added after the third review round, new names with no earlier form: the plan key
 
 ## Where the files are, since 2026-11-26
 
-The file names in the tables above are the names; the folders changed once more. Everything that sat in `mvp/` moved to a folder named for what it is: `tools/`, `factory/`, `methods/`, `compute/`, `studies/`, and these documents moved to `docs/`. README.md has the layout in a table, `factory/moved-files.yaml` is the table of old and new paths the tools read, and README.md, under "Records made before the layout changed", says what that did to the records kept here.
+The file names in the tables above are the names; the folders changed once more. Everything that sat in `mvp/` moved to a folder named for what it is: `tools/`, `factory/`, `methods/`, `compute/`, `studies/`, and these documents moved to `docs/`. README.md has the layout in a table.
+
+## Where the runs are, since the repository became the factory only
+
+Later in November 2026 every run was taken out of this repository: `studies/` (the two draft studies and the practice runs), and the explorations, drafted pages and records of the demo under `examples/baton-rouge/`. With them went the table of moved files and the tool that replayed old records, which existed only to keep those records checkable. The last commit that holds them is kept as the branch `records-2026-11`. A new term follows from it. A number in these documents is *historical* when it came from one of those records and no command here makes it again; it then carries a pointer to that branch. Every other number is given with the command that reproduces it today from this repository alone.

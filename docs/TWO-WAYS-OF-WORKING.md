@@ -43,7 +43,7 @@ Everything the tool writes says "exploring" on it, and it has no command that si
 
 Built, and tested by the tool's own self-test and by the stand-alone example: everything in the table above; the knowledge loop around it (`knowledge.py`: the pages that bear on a question before work, a queue of drafted pages after it, found again as drafts by the next question); the four roles as files with a check that they agree with the procedure and with their skills; a skill for each part of the loop, with a script that draws a figure; and two runners.
 
-Shown once, by separate assistants on real data (`examples/baton-rouge/with-assistants`): that a review by an assistant that did none of the work changes the lead. The first lead said a gain looked slightly above one after passes "the product itself marks" were left out. The review showed that no pass in the record is at the flag's clean value, that the gain is not distinguishable from one once the product's own slope or a time term is in the fit, and that the proposed test could hardly fail. The revised lead claims less and proposes a different test, and a second review found a way that test could still be met by discarding passes. A hydrologist reviewing the earlier single-instance run, where one instance reviewed itself, found the same faults there, uncaught.
+Shown once, by separate assistants on real data (historical: the recipe and a summary are in `examples/baton-rouge`, and the record of the run is at the branch `records-2026-11`): that a review by an assistant that did none of the work changes the lead. The first lead said a gain looked slightly above one after passes "the product itself marks" were left out. The review showed that no pass in the record is at the flag's clean value, that the gain is not distinguishable from one once the product's own slope or a time term is in the fit, and that the proposed test could hardly fail. The revised lead claims less and proposes a different test, and a second review found a way that test could still be met by discarding passes. A hydrologist reviewing the earlier single-instance run, where one instance reviewed itself, found the same faults there, uncaught.
 
 Not built, or not shown:
 
@@ -54,7 +54,7 @@ Not built, or not shown:
 - **A second independent attack.** The first found twelve holes in these tools. Their fixes were made and tested by one author and have not been attacked by anyone else.
 - **Blindness to earlier answers.** Nothing keeps an analysis assistant from reading a page that already answers its question; the first assistant of the second run did, and said so.
 - **The runner under a platform.** The run by separate assistants held roles to their commands by instruction and the role file. The Claude Code runner, which is built to enforce them, has not been exercised.
-- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `factory/procedure.yaml` still says designed and not built, and was left untouched so that the practice runs report what they reported.
+- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `factory/procedure.yaml` still says designed and not built; its content was left as it is.
 - **Blind analysis and watching studies**, as below.
 
 ## Confirming: when a claim is to be signed
