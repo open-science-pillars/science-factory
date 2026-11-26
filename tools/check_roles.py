@@ -5,24 +5,26 @@
 # ///
 """check_roles: the role files and the procedure say the same thing.
 
-The roles are files in `assistants/`, one per role, in a form no agent
-platform owns. The procedure (factory/procedure.yaml) has an `assistants` block
+The roles are files, `factory/agents/<name>/agent.md`, one per role, in a form no agent
+platform owns. The procedure (factory/factory.yaml) has a `procedure.agents` block
 written for people. This check fails when the two disagree, so neither can
 drift from the other unnoticed. It runs no language model and it edits
 nothing.
 
 What it checks:
 
-  form        every role file has the seven front matter keys (name,
-              purpose, may_call, must_never_see, reads, writes, hands_on),
-              its name is its file name, and its purpose is one sentence
-  same roles  the procedure's `assistants` block and `assistants/` name the
+  form        every role file has the six front matter keys (description,
+              may_call, must_never_see, reads, writes, hands_on), carries
+              no `name` (its name is its folder), and its description is
+              one sentence
+  same roles  the procedure's `agents` block and `factory/agents/` name the
               same roles
   same words  each role file quotes, word for word, what the procedure says
               the role does, may not do and must be, and lists under
               `must_never_see` what the procedure says it never sees
   may_call    every command names a tool in tools/ and a command that tool
-              has; every skill is in skills/; every role is a role
+              has; every skill is a shared one or the
+              role's own; every role is a role
   the acts    no role may call the lock, the signature or the voiding of an
   of people   opening: those belong to people
   separations the review role calls nothing that does the work; only the
@@ -58,7 +60,7 @@ from pathlib import Path
 
 import yaml
 
-KEYS = ("name", "purpose", "may_call", "must_never_see", "reads", "writes", "hands_on")
+KEYS = ("description", "may_call", "must_never_see", "reads", "writes", "hands_on")
 ACTS_OF_PEOPLE = ("tools/sf.py lock", "tools/sf.py signature", "tools/sf.py void-unread")
 SAME_WORDS = {  # a role, the label that begins a paragraph of its file, and the skills that carry the same paragraph
     "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"]},
@@ -108,8 +110,23 @@ def load_role(path: Path) -> tuple:
     return (fm if isinstance(fm, dict) else None), text[end + 5:]
 
 
+DEFINITION = {}  # a repository and the definition tree to read for it, when that is not its `factory/` folder
+
+
+def definition_of(root: Path) -> Path:
+    return DEFINITION.get(root, root / "factory")
+
+
 def roles_in(root: Path) -> dict:
-    return {p.stem: load_role(p) for p in sorted((root / "assistants").glob("*.md"))}
+    return {p.parent.name: load_role(p) for p in sorted((definition_of(root) / "agents").glob("*/agent.md"))}
+
+
+def skill_file(root: Path, role: str, skill: str) -> Path | None:
+    """Where a skill a role names is: the shared folder, or the role's own. Another role's own skill is not this role's."""
+    for f in (definition_of(root) / "skills" / skill / "SKILL.md", definition_of(root) / "agents" / role / "skills" / skill / "SKILL.md"):
+        if f.is_file():
+            return f
+    return None
 
 
 def commands_of(tool: Path) -> set:
@@ -118,22 +135,28 @@ def commands_of(tool: Path) -> set:
     return set(re.findall(r"""\badd\(\s*["']([a-z][a-z-]*)["']""", text)) | set(re.findall(r"""add_parser\(\s*["']([a-z][a-z-]*)["']""", text))
 
 
-def problems(root: Path) -> list:
+def problems(root: Path, definition: Path | None = None) -> list:
+    """Every disagreement, in words. `root` is the repository the tools are in (a command in `may_call` is a file
+    there); `definition` is the definition tree, by default the repository's `factory/` folder."""
+    if definition is not None:
+        DEFINITION[root] = Path(definition)
     p = []
     try:
-        procedure = yaml.safe_load((root / "factory" / "procedure.yaml").read_text(encoding="utf-8"))
-        block = procedure["assistants"]
+        procedure = yaml.safe_load((definition_of(root) / "factory.yaml").read_text(encoding="utf-8"))["procedure"]
+        block = procedure["agents"]
         stages = procedure["stages"]
+        if not isinstance(block, dict):
+            raise TypeError
     except (OSError, yaml.YAMLError, KeyError, TypeError):
-        return ["factory/procedure.yaml is missing, does not parse, or has no `assistants` block and `stages`"]
+        return ["factory/factory.yaml is missing, does not parse, or has no `procedure.agents` block and `procedure.stages`"]
     roles = roles_in(root)
     for name in sorted(set(block) - set(roles)):
-        p.append(f"the procedure names the {name} assistant and assistants/{name}.md does not exist")
+        p.append(f"the procedure names the {name} assistant and factory/agents/{name}/agent.md does not exist")
     for name in sorted(set(roles) - set(block)):
-        p.append(f"assistants/{name}.md is a role the procedure's `assistants` block does not name")
+        p.append(f"factory/agents/{name}/agent.md is a role the procedure's `agents` block does not name")
     tools = {}
     for name, (fm, body) in roles.items():
-        where = f"assistants/{name}.md"
+        where = f"factory/agents/{name}/agent.md"
         if fm is None:
             p.append(f"{where}: no front matter that parses")
             continue
@@ -141,11 +164,11 @@ def problems(root: Path) -> list:
         if missing:
             p.append(f"{where}: front matter lacks {', '.join(missing)}")
             continue
-        if fm["name"] != name:
-            p.append(f"{where}: its name is `{fm['name']}`, not its file name")
-        purpose = str(fm["purpose"]).strip()
+        if "name" in fm:  # the path is the name: the folder the file is in, and nothing else
+            p.append(f"{where}: front matter carries `name`; an agent's name is the folder its file is in")
+        purpose = str(fm["description"]).strip()
         if not purpose.endswith(".") or purpose.count(". ") > 0 or len(purpose.split()) < 5:
-            p.append(f"{where}: `purpose` is one sentence")
+            p.append(f"{where}: `description` is one sentence")
         for k in ("may_call", "must_never_see", "reads", "writes", "hands_on"):
             if not isinstance(fm[k], list):
                 p.append(f"{where}: `{k}` is a list")
@@ -157,8 +180,9 @@ def problems(root: Path) -> list:
         calls = [str(c) for c in fm["may_call"]]
         for c in calls:
             if c.startswith("skill:"):
-                if not (root / "skills" / c[6:] / "SKILL.md").is_file():
-                    p.append(f"{where}: may_call names the skill `{c[6:]}`, and skills/{c[6:]}/SKILL.md does not exist")
+                if skill_file(root, name, c[6:]) is None:
+                    p.append(f"{where}: may_call names the skill `{c[6:]}`, and its SKILL.md does not exist in factory/skills/{c[6:]}/ "
+                             f"or in factory/agents/{name}/skills/{c[6:]}/")
             elif c.startswith("role:"):
                 if c[5:] not in roles:
                     p.append(f"{where}: may_call names the role `{c[5:]}`, which is not a role")
@@ -207,9 +231,9 @@ def problems(root: Path) -> list:
                 p.append(f"{where}: it has no paragraph beginning {label}, which the skills {', '.join(skills)} must carry in the same words")
                 continue
             for skill in skills:
-                f = root / "skills" / skill / "SKILL.md"
-                if f.is_file() and para not in squash(f.read_text(encoding="utf-8")):
-                    p.append(f"{where} and skills/{skill}/SKILL.md do not say the same thing under {label}: the paragraph in the role "
+                f = skill_file(root, name, skill)
+                if f is not None and para not in squash(f.read_text(encoding="utf-8")):
+                    p.append(f"{where} and the skill {skill} (its SKILL.md) do not say the same thing under {label}: the paragraph in the role "
                              "file must stand word for word in the skill, so that the two cannot give different orders")
         del text_
         if name in block:
@@ -227,15 +251,15 @@ def problems(root: Path) -> list:
             if "may_not" in said and "sign" in str(said["may_not"]) and "tools/sf.py signature" in calls:
                 p.append(f"{where}: the procedure says this role may not sign, and may_call holds the signature")
     for st in stages if isinstance(stages, list) else []:
-        done_by = str(st.get("done_by") or "")
+        done_by = st.get("done_by") if isinstance(st.get("done_by"), list) else []
         for (stage, role), cmds in STAGE_COMMANDS.items():
-            if st.get("id") == stage and f"{role} assistant" in done_by and role in roles and roles[role][0]:
+            if st.get("id") == stage and role in done_by and role in roles and roles[role][0]:
                 calls = [str(c) for c in roles[role][0].get("may_call") or []]
                 for cmd in cmds:
                     if cmd not in calls:
-                        p.append(f"the procedure gives the {stage} stage to the {role} assistant, and assistants/{role}.md may not call `{cmd}`")
+                        p.append(f"the procedure gives the {stage} stage to the {role} assistant, and factory/agents/{role}/agent.md may not call `{cmd}`")
     for st in stages if isinstance(stages, list) else []:
-        for role in re.findall(r"(\w+) assistant", str(st.get("done_by") or "")):
+        for role in (st.get("done_by") if isinstance(st.get("done_by"), list) else []):
             if role not in roles:
                 p.append(f"the procedure gives the {st.get('id')} stage to the {role} assistant, which has no role file")
     return p
@@ -247,13 +271,12 @@ def selftest(root: Path) -> int:
     try:
         def copy(name: str) -> Path:
             d = tmp / name
-            for sub in ("assistants", "skills"):
-                shutil.copytree(root / sub, d / sub)
+            for sub in ("agents", "skills"):
+                shutil.copytree(definition_of(root) / sub, d / "factory" / sub)
             (d / "tools").mkdir()
-            (d / "factory").mkdir()
             for f in (root / "tools").glob("*.py"):
                 shutil.copyfile(f, d / f.relative_to(root))
-            shutil.copyfile(root / "factory" / "procedure.yaml", d / "factory" / "procedure.yaml")
+            shutil.copyfile(definition_of(root) / "factory.yaml", d / "factory" / "factory.yaml")
             return d
 
         def edit(d: Path, rel: str, old: str, new: str) -> None:
@@ -269,71 +292,71 @@ def selftest(root: Path) -> int:
             results.append((name, any(expect in q for q in got)))
 
         results.append(("the repository's own role files and procedure agree", problems(copy("clean")) == []))
-        case("a role the procedure names has no file", lambda d: (d / "assistants/curating.md").unlink(), "curating.md does not exist")
-        case("a role file the procedure does not name", lambda d: shutil.copyfile(d / "assistants/review.md", d / "assistants/auditing.md"),
-             "a role the procedure's `assistants` block does not name")
+        case("a role the procedure names has no file", lambda d: (d / "factory/agents/curating/agent.md").unlink(), "curating/agent.md does not exist")
+        case("a role file the procedure does not name", lambda d: shutil.copytree(d / "factory/agents/review", d / "factory/agents/auditing"),
+             "a role the procedure's `agents` block does not name")
         case("the procedure changes what a role does and the role file is not changed",
-             lambda d: edit(d, "factory/procedure.yaml", "relays questions, keeps the study moving", "relays questions and decides what counts"),
+             lambda d: edit(d, "factory/factory.yaml", "relays questions, keeps the study moving", "relays questions and decides what counts"),
              "does not quote what the procedure says under `does`")
         case("a role file changes its quotation of the procedure",
-             lambda d: edit(d, "assistants/review.md", "and records approve or block", "and approves"), "does not quote what the procedure says under `does`")
+             lambda d: edit(d, "factory/agents/review/agent.md", "and records approve or block", "and approves"), "does not quote what the procedure says under `does`")
         case("a role file drops what the procedure says it may not do",
-             lambda d: edit(d, "assistants/curating.md", 'It may not: "merge or sign".', ""), "under `may_not`")
+             lambda d: edit(d, "factory/agents/curating/agent.md", 'It may not: "merge or sign".', ""), "under `may_not`")
         case("a role file drops what the procedure says it must be",
-             lambda d: edit(d, "assistants/review.md", 'It must: "have done none of this study".', ""), "under `must`")
+             lambda d: edit(d, "factory/agents/review/agent.md", 'It must: "have done none of this study".', ""), "under `must`")
         case("the analysis role no longer lists held-out data as never seen",
-             lambda d: edit(d, "assistants/analysis.md", '  - "held-out data before it is opened"\n', ""), "`must_never_see` does not list it")
-        case("a role may call the lock", lambda d: edit(d, "assistants/coordinating.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'),
+             lambda d: edit(d, "factory/agents/analysis/agent.md", '  - "held-out data before it is opened"\n', ""), "`must_never_see` does not list it")
+        case("a role may call the lock", lambda d: edit(d, "factory/agents/coordinating/agent.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'),
              "an act of people")
-        case("a role may call the signature", lambda d: edit(d, "assistants/curating.md", '  - "tools/sf.py resolve"', '  - "tools/sf.py resolve"\n  - "tools/sf.py signature"'),
+        case("a role may call the signature", lambda d: edit(d, "factory/agents/curating/agent.md", '  - "tools/sf.py resolve"', '  - "tools/sf.py resolve"\n  - "tools/sf.py signature"'),
              "an act of people")
-        case("the review role may run a look", lambda d: edit(d, "assistants/review.md", '  - "tools/explore.py recheck"', '  - "tools/explore.py look"'),
+        case("the review role may run a look", lambda d: edit(d, "factory/agents/review/agent.md", '  - "tools/explore.py recheck"', '  - "tools/explore.py look"'),
              "does the work it is there to check")
-        case("the analysis role may record a review", lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py review"'),
+        case("the analysis role may record a review", lambda d: edit(d, "factory/agents/analysis/agent.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py review"'),
              "only the review assistant may call")
-        case("the analysis role may make the hand-over", lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py hand-over"'),
+        case("the analysis role may make the hand-over", lambda d: edit(d, "factory/agents/analysis/agent.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py hand-over"'),
              "only the coordinating assistant may call")
-        case("a role names a command the tool does not have", lambda d: edit(d, "assistants/analysis.md", '"tools/explore.py choice"', '"tools/explore.py decide"'),
+        case("a role names a command the tool does not have", lambda d: edit(d, "factory/agents/analysis/agent.md", '"tools/explore.py choice"', '"tools/explore.py decide"'),
              "has no command `decide`")
-        case("a role names a skill that does not exist", lambda d: edit(d, "assistants/analysis.md", '"skill:explore-a-record"', '"skill:explore-everything"'),
-             "SKILL.md does not exist")
-        case("a role names a role that does not exist", lambda d: edit(d, "assistants/coordinating.md", '"role:review"', '"role:auditing"'), "which is not a role")
-        case("a role file loses a front matter key", lambda d: edit(d, "assistants/review.md", "hands_on:", "gives:"), "front matter lacks hands_on")
+        case("a role names a skill that does not exist", lambda d: edit(d, "factory/agents/analysis/agent.md", '"skill:explore-a-record"', '"skill:explore-everything"'),
+             "its SKILL.md does not exist")
+        case("a role names a role that does not exist", lambda d: edit(d, "factory/agents/coordinating/agent.md", '"role:review"', '"role:auditing"'), "which is not a role")
+        case("a role file loses a front matter key", lambda d: edit(d, "factory/agents/review/agent.md", "hands_on:", "gives:"), "front matter lacks hands_on")
         case("a stage's command is taken from the role the procedure gives it to",
-             lambda d: edit(d, "assistants/analysis.md", '  - "tools/sf.py test"\n', ""), "may not call `tools/sf.py test`")
+             lambda d: edit(d, "factory/agents/analysis/agent.md", '  - "tools/sf.py test"\n', ""), "may not call `tools/sf.py test`")
         case("the procedure gives a stage to a role with no file",
-             lambda d: edit(d, "factory/procedure.yaml", "    done_by: curating assistant", "    done_by: librarian assistant"), "which has no role file")
+             lambda d: edit(d, "factory/factory.yaml", "      done_by: [curating]", "      done_by: [librarian]"), "which has no role file")
         case("the review role's file stops naming the author's account as a place it must never see",
-             lambda d: edit(d, "assistants/review.md", '  - "path:record/analysis/*"\n', ""), "does not name the analysis assistant's own account")
+             lambda d: edit(d, "factory/agents/review/agent.md", '  - "path:record/analysis/*"\n', ""), "does not name the analysis assistant's own account")
         case("the review role's file stops naming the author's account where it is kept as flat files",
-             lambda d: edit(d, "assistants/review.md", '  - "path:record/*analysis*"\n', ""), "(path:record/*analysis*)")
+             lambda d: edit(d, "factory/agents/review/agent.md", '  - "path:record/*analysis*"\n', ""), "(path:record/*analysis*)")
         case("the analysis role may name its own reviewer",
-             lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py reviewer"'),
+             lambda d: edit(d, "factory/agents/analysis/agent.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py reviewer"'),
              "only the coordinating assistant may call")
         case("the coordinating role can no longer name a reviewer",
-             lambda d: edit(d, "assistants/coordinating.md", '  - "tools/explore.py reviewer"\n', ""), "no exploration could reach one")
+             lambda d: edit(d, "factory/agents/coordinating/agent.md", '  - "tools/explore.py reviewer"\n', ""), "no exploration could reach one")
         case("a role loses its own place to write its account",
-             lambda d: edit(d, "assistants/curating.md", '  - "record/curating/*.md"\n', ""), "its own place for its account")
+             lambda d: edit(d, "factory/agents/curating/agent.md", '  - "record/curating/*.md"\n', ""), "its own place for its account")
         case("a role may write in another role's place",
-             lambda d: edit(d, "assistants/review.md", '  - "record/review/*.md"', '  - "record/review/*.md"\n  - "record/analysis/*.md"'), "in the analysis role's place")
+             lambda d: edit(d, "factory/agents/review/agent.md", '  - "record/review/*.md"', '  - "record/review/*.md"\n  - "record/analysis/*.md"'), "in the analysis role's place")
         case("the skill says to set aside in another order than the role file",
-             lambda d: edit(d, "skills/explore-a-record/SKILL.md", "Read what is known before you set anything aside", "Set data aside before you read what is known"),
+             lambda d: edit(d, "factory/agents/analysis/skills/explore-a-record/SKILL.md", "Read what is known before you set anything aside", "Set data aside before you read what is known"),
              "do not say the same thing under **The order.**")
         case("the role file and a skill disagree on when to call end",
-             lambda d: edit(d, "skills/write-up-a-lead/SKILL.md", "do not call `end`: status names the review assistant", "call `end`: status then names the review assistant"),
+             lambda d: edit(d, "factory/agents/analysis/skills/write-up-a-lead/SKILL.md", "do not call `end`: status names the review assistant", "call `end`: status then names the review assistant"),
              "do not say the same thing under **When to end.**")
         case("the role file drops the paragraph the skills must carry",
-             lambda d: edit(d, "assistants/analysis.md", "**When to end.** After", "After"), "no paragraph beginning **When to end.**")
+             lambda d: edit(d, "factory/agents/analysis/agent.md", "**When to end.** After", "After"), "no paragraph beginning **When to end.**")
         case("the review skill says another place to write than the role file",
-             lambda d: edit(d, "skills/review-work/SKILL.md", "Your account for the coordinating assistant goes in `record/review/`", "Your account goes beside the author's"),
+             lambda d: edit(d, "factory/agents/review/skills/review-work/SKILL.md", "Your account for the coordinating assistant goes in `record/review/`", "Your account goes beside the author's"),
              "do not say the same thing under **Where you write.**")
         case("the curating skill lets it start before the end",
-             lambda d: edit(d, "skills/draft-a-knowledge-page/SKILL.md", "Start on an exploration only when", "Start on an exploration whenever notes are open, even before"),
+             lambda d: edit(d, "factory/agents/curating/skills/draft-a-knowledge-page/SKILL.md", "Start on an exploration only when", "Start on an exploration whenever notes are open, even before"),
              "do not say the same thing under **When you start.**")
-        case("the curating role may end an exploration", lambda d: edit(d, "assistants/curating.md", '  - "tools/explore.py resolve"', '  - "tools/explore.py resolve"\n  - "tools/explore.py end"'),
+        case("the curating role may end an exploration", lambda d: edit(d, "factory/agents/curating/agent.md", '  - "tools/explore.py resolve"', '  - "tools/explore.py resolve"\n  - "tools/explore.py end"'),
              "only the analysis assistant may call")
-        case("a purpose that is not one sentence", lambda d: edit(d, "assistants/review.md", "records what it found.\"", "records what it found. It also fixes it.\""),
-             "`purpose` is one sentence")
+        case("a description that is not one sentence", lambda d: edit(d, "factory/agents/review/agent.md", "records what it found.\"", "records what it found. It also fixes it.\""),
+             "`description` is one sentence")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
@@ -355,9 +378,9 @@ def main() -> int:
     for q in found:
         print("check-roles:", q)
     if found:
-        print(f"check-roles: FAIL ({len(found)} disagreement(s) between assistants/ and factory/procedure.yaml)")
+        print(f"check-roles: FAIL ({len(found)} disagreement(s) between factory/agents/ and factory/factory.yaml)")
         return 1
-    print(f"check-roles: PASS ({len(roles_in(root))} roles; assistants/ and the procedure's `assistants` block say the same thing)")
+    print(f"check-roles: PASS ({len(roles_in(root))} roles; factory/agents/ and the procedure's `agents` block say the same thing)")
     return 0
 
 

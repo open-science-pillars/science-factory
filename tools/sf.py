@@ -185,8 +185,8 @@ HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a
 KEPT_PYTHON = ("PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED")  # the only PYTHON variables a command may run under
 IMPORTABLE = (".py", ".pyc", ".so", ".pyd")  # what Python can import from a folder: source, bytecode, extension modules
 TOOL = Path(__file__).resolve()
-REPO = TOOL.parent.parent  # the repository: tools/ holds this file, factory/ the procedure, methods/ the method scripts
-PROCEDURE = REPO / "factory" / "procedure.yaml"
+REPO = TOOL.parent.parent  # the repository: tools/ holds this file, factory/ the definition, methods/ the method scripts
+FACTORY = REPO / "factory"  # this factory's definition: a folder rooted at factory.yaml (tools/check_factory.py validates it)
 # the statuses a log check can give; the others are built where they are decided
 INVALID = "the study log or its files do not check out"
 EXPLORATORY = "exploratory study"
@@ -1509,23 +1509,51 @@ def need_person(a, what: str) -> None:
                       "and all (https://.../pull/N is a placeholder), because an actor name typed at a prompt proves nothing")
 
 
-def procedure_stamp(procedure: Path, lock: dict | None = None) -> dict:
-    """Which procedure file a command read: its path, its checksum, whether it is this factory's own
-    (factory/procedure.yaml in the repository the study tool is in), and whether it is the one the lock recorded."""
-    procedure = Path(procedure).resolve()
-    sha = sha_file(procedure)
-    if sha is None:
-        raise Refused(f"the procedure file {procedure} does not exist")
-    beside = procedure == PROCEDURE.resolve()
-    out = {"path": "factory/procedure.yaml (this factory's own)" if beside else str(procedure), "sha256": sha,
-           "this_factorys_own": beside, "remarks": []}
+def definition_tool():
+    """The validator, loaded from beside this file by its path: it knows how a definition tree is read and
+    what its checksum is, so the lock, `status` and the scorecard name a definition the same way it does."""
+    if "check_factory" not in sys.modules:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("check_factory", TOOL.parent / "check_factory.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["check_factory"] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules["check_factory"]
+
+
+def definition_of(root: Path) -> dict:
+    """The root file of a definition tree, read. Refuses a folder that holds none, and a schema this tool does not know."""
+    fy = Path(root) / "factory.yaml"
+    try:
+        spec = yaml.safe_load(fy.read_text())
+    except (OSError, yaml.YAMLError):
+        spec = None
+    if not isinstance(spec, dict) or not isinstance(spec.get("procedure"), dict):
+        raise Refused(f"{root} is not a factory's definition: it has no factory.yaml with a `procedure` (the definition is a folder "
+                      "rooted at factory.yaml; `tools/check_factory.py` says what is wrong with one)")
+    if spec.get("schemaVersion") not in definition_tool().SCHEMAS:
+        raise Refused(f"the definition at {root} says schema version `{spec.get('schemaVersion')}`, which this study tool does not know")
+    return spec
+
+
+def definition_stamp(root: Path, lock: dict | None = None) -> dict:
+    """Which definition a command read: its folder, the checksum of the whole tree, the version it gives itself,
+    whether it is this factory's own (the factory/ folder in the repository the study tool is in), and whether it
+    is the one the lock recorded."""
+    root = Path(root).resolve()
+    spec = definition_of(root)
+    tree = definition_tool().tree_checksum(root)
+    beside = root == FACTORY.resolve()
+    out = {"path": "factory/ (this factory's own)" if beside else str(root), "sha256": tree["sha256"], "files": tree["files"],
+           "version": str(spec.get("version")), "this_factorys_own": beside, "remarks": []}
     if not beside:
-        out["remarks"].append("this is not this factory's own procedure file (factory/procedure.yaml): what it calls done is its own claim")
-    locked = (lock or {}).get("data", {}).get("procedure") if lock else None
+        out["remarks"].append("this is not this factory's own definition (factory/): what it calls done is its own claim")
+    locked = (lock or {}).get("data", {}).get("definition") if lock else None
     if locked:
-        out["same_as_locked"] = locked.get("sha256") == sha
+        out["same_as_locked"] = locked.get("sha256") == out["sha256"]
         if not out["same_as_locked"]:
-            out["remarks"].append(f"this is not the procedure the lock recorded (the lock recorded sha256 {locked.get('sha256')})")
+            out["remarks"].append(f"this is not the definition the lock recorded (the lock recorded version {locked.get('version')}, "
+                                  f"sha256 {locked.get('sha256')})")
     return out
 
 
@@ -1593,7 +1621,7 @@ def cmd_lock(study: Study, a) -> None:
         if on_disk is None:
             raise Refused(f"the request the study was started with ({request['file']}) is missing; the lock binds it with the plan")
         request = {"file": request["file"], "sha": on_disk, "changed_since_the_start": on_disk != request["sha"]}
-    procedure = procedure_stamp(Path(getattr(a, "procedure", None) or PROCEDURE))
+    definition = definition_stamp(Path(getattr(a, "factory", None) or FACTORY))
     after_opening = any(e["kind"] == "opening.started" for e in ev)
     print("What this lock binds.")
     print(f"the analysis plan: sha256 {psha}" + (" (a system trial: its held-out data is made at its own opening, and it can "
@@ -1607,8 +1635,8 @@ def cmd_lock(study: Study, a) -> None:
               + (" (CHANGED since the study started; this is the text that is bound)" if request["changed_since_the_start"] else ""))
     else:
         print("the request: none was given when the study started, so none is bound")
-    print(f"the procedure: {procedure['path']}, sha256 {procedure['sha256']}")
-    for remark in procedure["remarks"]:
+    print(f"the factory's definition: {definition['path']}, version {definition['version']}, {definition['files']} files, sha256 {definition['sha256']}")
+    for remark in definition["remarks"]:
         print(f"  {remark}")
     print(f"bound files ({len(code)}), each by sha256; a change to any of them, or anything new that Python could import "
           "beside them, blocks the opening:")
@@ -1636,7 +1664,7 @@ def cmd_lock(study: Study, a) -> None:
     e = study.append(a.by, "lock.recorded", {"plan_sha": psha, "code": code, "receipts": bound, "evidence": a.evidence,
                                              "after_opening": after_opening, "request": request,
                                              "uv_environments": environments,
-                                             "procedure": {"path": procedure["path"], "sha256": procedure["sha256"]}})
+                                             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version")}})
     print("The lock: plan and code locked" + (" (AFTER an opening: this study is now exploratory)" if after_opening else ""))
     on_record = record_lines(study)
     spec = plan["tests"]["held-out"]
@@ -2092,12 +2120,11 @@ def stage_checks(study: Study) -> tuple:
     return truth, why
 
 
-def stage_of(study: Study, procedure: Path) -> dict:
-    stamp = procedure_stamp(Path(procedure), study.last("lock.recorded"))
-    try:
-        stages = yaml.safe_load(Path(procedure).read_text())["stages"]
-    except (OSError, yaml.YAMLError, KeyError, TypeError):
-        raise Refused("the procedure file is missing or has no stages")
+def stage_of(study: Study, factory: Path) -> dict:
+    stamp = definition_stamp(Path(factory), study.last("lock.recorded"))
+    stages = definition_of(Path(factory))["procedure"].get("stages")
+    if not isinstance(stages, list) or not stages:
+        raise Refused("the definition's factory.yaml has no procedure.stages")
     truth, why = stage_checks(study)
     closed = study.last("study.closed")
     done, here = [], None
@@ -2115,13 +2142,13 @@ def stage_of(study: Study, procedure: Path) -> dict:
                 here["why"] = {n: why[n] for n in needs if n in why}
     if closed:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
-    return {"study": study.d.name, "procedure": stamp, "done": done, **(here or {"stage": "complete"}),
+    return {"study": study.d.name, "definition": stamp, "done": done, **(here or {"stage": "complete"}),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
 
 def cmd_status(study: Study, a) -> None:
-    print(json.dumps(stage_of(study, Path(a.procedure)), indent=1))
+    print(json.dumps(stage_of(study, Path(a.factory)), indent=1))
 
 
 def cmd_fingerprint(study: Study, a) -> None:
@@ -2379,7 +2406,7 @@ def cmd_scorecard(study: Study, a) -> None:
     rep = check_log(study, a.anchor)
     status = rep["status"]
     card = {"study": study.d.name, "status": status,
-            "procedure": procedure_stamp(Path(a.procedure), study.last("lock.recorded")),
+            "definition": definition_stamp(Path(a.factory), study.last("lock.recorded")),
             "finished": status.startswith("confirmatory study") or status == EXPLORATORY,
             "closed": rep["closed"],
             "elapsed_seconds": int((t1 - t0).total_seconds()) if ev else 0,
@@ -2391,13 +2418,29 @@ def cmd_scorecard(study: Study, a) -> None:
             "notes_raised": sum(1 for e in ev if e["kind"] == "note.raised"),
             "acts_by_people": sum(1 for e in ev if e["actor"].startswith("human:")),
             "acts_by_assistants": sum(1 for e in ev if not e["actor"].startswith("human:")),
-            "checks": run_checks(study, Path(a.procedure), a.anchor)}
+            "checks": run_checks(study, Path(a.factory), a.anchor)}
     (study.d / "scorecard.json").write_text(json.dumps(card, indent=1))
     print(json.dumps(card, indent=1))
 
 
-def run_checks(study: Study, procedure: Path, posted: list | None = None) -> dict:
-    """Evaluate the procedure's process checks against one study. A check
+def deterministic_scorers(factory: Path) -> list:
+    """The definition's deterministic scorers, as (name, check), in the order of their names: every
+    scorers/<name>/scorer.md whose front matter says `type: deterministic`. A judge is not evaluated here."""
+    fd, out = definition_tool(), []
+    for f in sorted((Path(factory) / "scorers").glob("*/scorer.md")):
+        try:
+            fm = fd.front_matter(f.read_text())[0]
+        except (OSError, ValueError, yaml.YAMLError):
+            raise Refused(f"the scorer {f.parent.name} has no front matter that parses")
+        if fm.get("type") == "deterministic":
+            out.append((f.parent.name, fm.get("check")))
+    if not out:
+        raise Refused(f"the definition at {factory} has no deterministic scorer (scorers/<name>/scorer.md)")
+    return out
+
+
+def run_checks(study: Study, factory: Path, posted: list | None = None) -> dict:
+    """Evaluate the definition's deterministic scorers against one study. A check
     that cannot be judged yet says `pending`, never `pass`."""
     ev, rep = study.events(), check_log(study, posted)
     finished = [e for e in ev if e["kind"] == "opening.finished"]
@@ -2423,17 +2466,12 @@ def run_checks(study: Study, procedure: Path, posted: list | None = None) -> dic
             True if any(e["kind"] in ACTS_BY_PEOPLE for e in ev) else None),
         "notes-on-curation-list": (raised - {e["data"]["id"] for e in ev if e["kind"] == "note.resolved"}) <= listed,
     }
-    try:
-        spec = yaml.safe_load(Path(procedure).read_text())
-        checks = spec["measure"]["checks"]
-    except (OSError, yaml.YAMLError, KeyError, TypeError):
-        raise Refused("the procedure file is missing or has no measure.checks")
     out = {}
-    for s in checks:
-        if s.get("kind") not in kinds:
-            raise Refused(f"check {s.get('id')}: unknown kind {s.get('kind')}")
-        v = kinds[s["kind"]]
-        out[s["id"]] = "pending" if v is None else ("pass" if v else "fail")
+    for name, check in deterministic_scorers(factory):
+        if check not in kinds:
+            raise Refused(f"scorer {name}: the check `{check}` is not one this study tool evaluates")
+        v = kinds[check]
+        out[name] = "pending" if v is None else ("pass" if v else "fail")
     return out
 
 
@@ -2471,14 +2509,15 @@ def cmd_log_change(study: Study, a) -> None:
     if why:
         raise Refused(f"{log} cannot be the change log: {why}. The change log is its own file, such as factory/change-log.jsonl")
     study.check_actor(a.by)
-    procedure = Path(a.procedure)
-    if sha_file(procedure) is None:
-        raise Refused(f"the procedure file {procedure} does not exist; a change record names the procedure it was made under")
+    try:
+        definition = definition_stamp(Path(a.factory))
+    except Refused as r:
+        raise Refused(f"{r}; a change record names the definition it was made under")
     with study.held() as f:
         ev = study.read_held(f)
         rec = {"at": now(), "by": a.by, "problem_class": a.problem, "change": a.change,
                "rationale": a.rationale, "predicted": a.predicted, "observed": a.observed,
-               "context": {"model": a.model, "procedure_sha": sha_file(procedure),
+               "context": {"model": a.model, "definition_sha": definition["sha256"], "definition_version": definition["version"],
                            "evidence_study": study.d.name, "log_fingerprint": ev[-1]["hash"] if ev else None},
                "log_event": len(ev)}
         try:
@@ -2683,9 +2722,9 @@ def selftest() -> int:
             git_in(home)("init", "-q")
         study = _fresh(home, "happy")
         check("the procedure places a new study at the test stage, waiting on the tests",
-              stage_of(study, PROCEDURE)["stage"] == "test" and "tests-pass" in stage_of(study, PROCEDURE)["still_needs"])
+              stage_of(study, FACTORY)["stage"] == "test" and "tests-pass" in stage_of(study, FACTORY)["still_needs"])
         _to_lock(study)
-        check("after the lock the procedure places it at the open stage", stage_of(study, PROCEDURE)["stage"] == "open")
+        check("after the lock the procedure places it at the open stage", stage_of(study, FACTORY)["stage"] == "open")
         lock_fp = f"{study.events()[-1]['seq']}:{study.events()[-1]['hash']}"
         if have_git:
             git_in(home)("add", "-A"), git_in(home)("commit", "-q", "-m", "lock")
@@ -2700,15 +2739,18 @@ def selftest() -> int:
         rep = check_log(study, _posted(study))
         check("the happy path reaches ready for the steward's signature with the rule supported",
               rep["status"] == READY and rep["outcomes"]["held-out"] == {"r": "supported"})
-        sc = run_checks(study, PROCEDURE, _posted(study))
+        sc = run_checks(study, FACTORY, _posted(study))
+        check("the checks a definition may name, for a stage and for a deterministic scorer, are exactly the ones this tool evaluates",
+              set(stage_checks(study)[0]) == set(definition_tool().STAGE_CHECKS)
+              and {c for _, c in deterministic_scorers(FACTORY)} == set(definition_tool().SCORER_CHECKS) and len(sc) == 8)
         check("every process check in the procedure passes on the happy path",
               set(sc.values()) == {"pass"} if have_git else {k: v for k, v in sc.items() if v != "pass"} == {"lock-committed": "fail"})
-        cmd_log_change(study, A(by="agent:curating", log=str(tmp / "changes.jsonl"), procedure=str(PROCEDURE), problem="toy",
+        cmd_log_change(study, A(by="agent:curating", log=str(tmp / "changes.jsonl"), factory=str(FACTORY), problem="toy",
                                 change="pr/1", rationale="r", predicted="p", observed=None, model="m"))
         check("a change record lands in the change log and in the study log",
               json.loads((tmp / "changes.jsonl").read_text())["predicted"] == "p" and study.last("change.recorded") is not None)
         check("the change log cannot be pointed at a study log",
-              _refuses(cmd_log_change, study, A(by="agent:curating", log=str(study.log), procedure=str(PROCEDURE), problem="toy",
+              _refuses(cmd_log_change, study, A(by="agent:curating", log=str(study.log), factory=str(FACTORY), problem="toy",
                                                 change="c", rationale="r", predicted="p", observed=None, model="m")))
         check("the steward's signature recorded by an assistant is refused",
               _refuses(cmd_signature, study, A(by="agent:analysis", evidence=URL, decision="signed", anchor=_posted(study), comment=None)))
@@ -2724,7 +2766,7 @@ def selftest() -> int:
               check_log(study, _posted(study))["status"] == READY)
         cmd_signature(study, sign(study))
         check("with the signature recorded the procedure waits on the note's disposition",
-              stage_of(study, PROCEDURE)["stage"] == "learn" and stage_of(study, PROCEDURE)["open_notes"] == ["NOTE-001"])
+              stage_of(study, FACTORY)["stage"] == "learn" and stage_of(study, FACTORY)["open_notes"] == ["NOTE-001"])
         check("the signature records the path and checksum of the finding it signs",
               study.last("signature.recorded")["data"]["finding"] == study.last("finding.attached")["data"]
               and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(tmp / "finding.md"))
@@ -2738,7 +2780,7 @@ def selftest() -> int:
               "only a system trial does" in _refusal(cmd_close, study, close("system-trial-accepted")))
         cmd_close(study, close("finding-signed"))
         check("the study closes as a signed finding and takes nothing more",
-              stage_of(study, PROCEDURE)["stage"] == "closed"
+              stage_of(study, FACTORY)["stage"] == "closed"
               and _refuses(cmd_note, study, A(kind="method", about="x", text="n", evidence=None, by="agent:x")))
         check("and after the close the log check says so", check_log(study)["status"] == SIGNED + "; closed as finding-signed")
         rep = check_log(study, change_log=tmp / "changes.jsonl")
@@ -2759,7 +2801,7 @@ def selftest() -> int:
         check("the lock recorded by an assistant is refused", _refuses(cmd_lock, study, A(by="agent:b", evidence=URL)))
         check("the lock with no evidence of a person's approval is refused", _refuses(cmd_lock, study, A(by="human:tester", evidence=None)))
         check("process checks that cannot be judged yet say pending, not pass",
-              run_checks(study, PROCEDURE)["independent-review"] == "pending")
+              run_checks(study, FACTORY)["independent-review"] == "pending")
         check("an evidence link with no host name, and the placeholders from the documents, are refused",
               _refuses(cmd_lock, study, A(by="human:tester", evidence="https://"))
               and _refuses(cmd_lock, study, A(by="human:tester", evidence="https://.../pull/N"))
@@ -2833,7 +2875,7 @@ def selftest() -> int:
         cmd_open_held_out(study, opening())
         cmd_lock(study, lock())
         check("locking again after an opening makes the study exploratory", check_log(study)["status"] == EXPLORATORY)
-        check("and the plan-adherence check fails on it", run_checks(study, PROCEDURE)["plan-adherence"] == "fail")
+        check("and the plan-adherence check fails on it", run_checks(study, FACTORY)["plan-adherence"] == "fail")
 
         study = _fresh(tmp, "a10")
         tests(study)
@@ -2880,7 +2922,7 @@ def selftest() -> int:
         open_and_review(study)
         check("a planned repeat at an independent site that has not been run keeps the study from ready",
               check_log(study)["status"] == "confirmatory study, a planned opening remains (independent-site)")
-        cmd_scorecard(study, A(procedure=str(PROCEDURE), anchor=None))
+        cmd_scorecard(study, A(factory=str(FACTORY), anchor=None))
         both = json.loads((study.d / "scorecard.json").read_text())["openings_allowed"]
 
         deaf = copy.deepcopy(PLAN)
@@ -3030,7 +3072,7 @@ def selftest() -> int:
               rep["status"] == INVALID and any("analysis plan" in p and "missing" in p for p in rep["problems"])
               and any("receipt on disk" in p for p in rep["problems"]))
         check("and neither the signature nor the scorecard's chain of custody passes while the plan is missing",
-              _refuses(cmd_signature, study, sign(study)) and run_checks(study, PROCEDURE, _posted(study))["chain-of-custody"] == "fail")
+              _refuses(cmd_signature, study, sign(study)) and run_checks(study, FACTORY, _posted(study))["chain-of-custody"] == "fail")
 
         # what the lock binds: every file a command names, read from the study directory
         relative = with_plan(lambda p: p["tests"]["held-out"].update(
@@ -3443,10 +3485,10 @@ def selftest() -> int:
         open_and_review(harness)
         check("outside a git work tree an opening is a remark in the log check and a failed lock-committed check, the blind test harness apart",
               rep["status"] == READY and any("not in a commit" in r for r in rep["remarks"])
-              and run_checks(study, PROCEDURE, _posted(study))["lock-committed"] == "fail"
-              and run_checks(harness, PROCEDURE, _posted(harness))["lock-committed"] == "pass")
+              and run_checks(study, FACTORY, _posted(study))["lock-committed"] == "fail"
+              and run_checks(harness, FACTORY, _posted(harness))["lock-committed"] == "pass")
         check("the scorecard's check for failed openings is named no-failed-opening",
-              "no-failed-opening" in run_checks(study, PROCEDURE) and "clean-opening" not in run_checks(study, PROCEDURE))
+              "no-failed-opening" in run_checks(study, FACTORY) and "clean-opening" not in run_checks(study, FACTORY))
 
         # a plan that does not say what it appears to say
         study = _fresh(tmp, "n-twice")
@@ -3509,24 +3551,26 @@ def selftest() -> int:
               and any("at most" in x for x in plan_problems("n-wrong-way", vacuous("false_confirm_at_edge_max", ">=", 0.5))))
 
         # the procedure a command read
-        doctored = tmp / "doctored-procedure.yaml"
-        doctored.write_text(re.sub(r"done_when: \[[^\]]*\]", "done_when: [started]", PROCEDURE.read_text()))
+        doctored = tmp / "doctored-definition"
+        shutil.copytree(FACTORY, doctored, ignore=shutil.ignore_patterns("__pycache__"))
+        (doctored / "factory.yaml").write_text(re.sub(r"done_when: \[[^\]]*\]", "done_when: [started]", (FACTORY / "factory.yaml").read_text()))
+        tree_sha = lambda d: definition_tool().tree_checksum(d)["sha256"]  # noqa: E731
         where = stage_of(study, doctored)
-        check("the lock records the procedure's checksum, and status says so when it is given another procedure file",
-              study.last("lock.recorded")["data"]["procedure"]["sha256"] == sha_file(PROCEDURE)
-              and where["stage"] == "complete" and where["procedure"]["sha256"] == sha_file(doctored)
-              and not where["procedure"]["this_factorys_own"] and where["procedure"]["same_as_locked"] is False
-              and len(where["procedure"]["remarks"]) == 2 and stage_of(study, PROCEDURE)["procedure"]["remarks"] == [])
-        cmd_scorecard(study, A(procedure=str(doctored), anchor=None))
+        check("the lock records the definition's checksum, and status says so when it is given another definition",
+              study.last("lock.recorded")["data"]["definition"]["sha256"] == tree_sha(FACTORY)
+              and where["stage"] == "complete" and where["definition"]["sha256"] == tree_sha(doctored)
+              and not where["definition"]["this_factorys_own"] and where["definition"]["same_as_locked"] is False
+              and len(where["definition"]["remarks"]) == 2 and stage_of(study, FACTORY)["definition"]["remarks"] == [])
+        cmd_scorecard(study, A(factory=str(doctored), anchor=None))
         card = json.loads((study.d / "scorecard.json").read_text())
-        check("the scorecard file names the procedure it was made with, by path and checksum",
-              card["procedure"]["path"] == str(doctored) and card["procedure"]["sha256"] == sha_file(doctored)
-              and card["procedure"]["remarks"])
+        check("the scorecard file names the definition it was made with, by path and checksum",
+              card["definition"]["path"] == str(doctored) and card["definition"]["sha256"] == tree_sha(doctored)
+              and card["definition"]["remarks"])
         check("the scorecard lists openings allowed only for the tests the plan has",
               card["openings_allowed"] == {"held-out": 1} and both == {"held-out": 1, "independent-site": 1})
         before = len(study.events())
-        check("a change record on a procedure file that does not exist is refused",
-              _refuses(cmd_log_change, study, A(by="agent:curating", log=str(tmp / "changes-2.jsonl"), procedure=str(tmp / "nope.yaml"),
+        check("a change record on a definition that does not exist is refused",
+              _refuses(cmd_log_change, study, A(by="agent:curating", log=str(tmp / "changes-2.jsonl"), factory=str(tmp / "nope"),
                                                 problem="p", change="c", rationale="r", predicted="p", observed=None, model=None))
               and len(study.events()) == before and not (tmp / "changes-2.jsonl").exists())
 
@@ -3655,7 +3699,7 @@ def selftest() -> int:
         shutil.copyfile(_fresh(tmp, "n-other-study").log, innocent)
 
         def change_to(path):
-            return A(by="agent:curating", log=str(path), procedure=str(PROCEDURE), problem="p", change="c", rationale="r",
+            return A(by="agent:curating", log=str(path), factory=str(FACTORY), problem="p", change="c", rationale="r",
                      predicted="p", observed=None, model=None)
         (tmp / "a-new-record").mkdir()
         (tmp / "a-new-record" / "openings.jsonl").touch()  # empty, so only its name says what it is
@@ -3892,7 +3936,7 @@ def build_parser() -> argparse.ArgumentParser:
     anchor = (["--anchor"], {"action": "append", "default": None,
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
-    proc = (["--procedure"], {"default": str(PROCEDURE), "help": "the procedure file (default: factory/procedure.yaml, this factory's own)"})
+    proc = (["--factory"], {"default": str(FACTORY), "help": "the factory's definition, a folder rooted at factory.yaml (default: factory/, this factory's own)"})
     comment = (["--comment"], {"default": None, "help": "free text kept with the event"})
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,

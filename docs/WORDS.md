@@ -169,7 +169,7 @@ The first pass changed what the documents and the tool's messages say and left t
 | `d1_experiments.py` | `known_answer_tests.py` |
 | `worlds.py` | `test_cases.py` |
 | `acceptance.py` | `system_trial.py` |
-| `compute/targets.yaml` | `compute/places.yaml` |
+| `compute/targets.yaml` | `factory/runners/` |
 | `receipts/d1.json`, `d2.json`, `d3.json` | `receipts/known-answers.json`, `working-data.json`, `held-out.json` |
 
 | Keys in the analysis plan, before | Now |

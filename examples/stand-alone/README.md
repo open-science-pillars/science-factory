@@ -26,7 +26,7 @@ Delete the folder when you have looked, or run with `--remove` to have the run d
 - `record-2024.json`: a synthetic two-sensor record, one row a week, made by `make_record.py` from a fixed seed. The answer is known because it was put in by hand: a gain of 1.03, an offset of 0.40 m, noise of 0.05 m, two readings flagged degraded of which one is 2 m off.
 - `openwiki/` at the top of the repository: the knowledge base, a wiki in OpenWiki's form (the Open Knowledge Format v0.2) with three pages and a quickstart. None is signed.
 - `looks/gain.py`: the one look script.
-- `skills/explore-a-record/scripts/plot_xy.py`, from the exploring skill: the script that draws the one figure.
+- `factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py`, from the exploring skill: the script that draws the one figure.
 - `system-trial/analysis-plan.yaml`: the plan of a system trial on a synthetic record, with this repository's own method. The run copies it into `STUDY-B`.
 - `run.py`: the run.
 

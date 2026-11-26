@@ -1,0 +1,14 @@
+title: "A gain of 1.10: the idea is false"
+sampling:
+  kind: synthetic                         # synthetic, or observation-metadata (a real record's times, places and flags with planted values); never real held-out data
+  generator: methods/gain/test_cases.py   # builds both records on the built-in sampling
+  seed: 106                              # each repetition draws its noise from this seed and its own number
+truth:
+  quantity: gain
+  planted: 1.10
+  planted_by: the benchmark harness       # by hand, through the seal; the analysis is given the data alone
+  the_idea_is_true: false                  # the idea under test: the gain is within five percent of one
+seal:
+  where: "the sealed/ folder of the scratch study the harness makes for the run; the study tool passes that file to no command"
+  opened_by: "the harness, after the opening is over and the log has been checked"
+tags: [false-case]

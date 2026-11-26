@@ -128,7 +128,7 @@ def main() -> int:
              and "holds a pattern" in tool("explore.py", *look, "peek through a pattern", "--", "uv", "run", gain_script, later.parent / "record-*.json", expect=2)
              and "set aside" in tool("explore.py", *look, "peek after an equals sign", "--", "uv", "run", gain_script, f"--data={later}", expect=2))
         shutil.rmtree(later.parent)
-        plot = str(ROOT / "skills" / "explore-a-record" / "scripts" / "plot_xy.py")
+        plot = str(ROOT / "factory" / "agents" / "analysis" / "skills" / "explore-a-record" / "scripts" / "plot_xy.py")
         tool("explore.py", *look, "a picture: what is left of the second sensor after its straight line on the reference, coloured by flag",
              "--", "uv", "run", plot, data, "--x", "reference", "--y", "sensor", "--color", "flag", "--label", "time", "--residual", "--out", "figures/residual.svg")
         receipt = json.loads((x / "receipts" / "LOOK-003.json").read_text())

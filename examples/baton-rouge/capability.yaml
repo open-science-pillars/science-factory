@@ -1,6 +1,6 @@
-# The `capability` block of factory/procedure.yaml, filled in for a real
+# The `capability` block of factory/factory.yaml, filled in for a real
 # capability: the hydrology capability of Open Science Pillars. To run this
-# demo as a factory of that capability, copy factory/procedure.yaml into the
+# demo as a factory of that capability, copy factory/factory.yaml into the
 # capability's own repository and put this block in place of the built-in one.
 # The study tool does not read this block; it is for people.
 capability:

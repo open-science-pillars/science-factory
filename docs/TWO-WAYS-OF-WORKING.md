@@ -54,7 +54,7 @@ Not built, or not shown:
 - **A second independent attack.** The first found twelve holes in these tools. Their fixes were made and tested by one author and have not been attacked by anyone else.
 - **Blindness to earlier answers.** Nothing keeps an analysis assistant from reading a page that already answers its question; the first assistant of the second run did, and said so.
 - **The runner under a platform.** The run by separate assistants held roles to their commands by instruction and the role file. The Claude Code runner, which is built to enforce them, has not been exercised.
-- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `factory/procedure.yaml` still says designed and not built; its content was left as it is.
+- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `factory/factory.yaml` still says designed and not built; its content was left as it is.
 - **Blind analysis and watching studies**, as below.
 
 ## Confirming: when a claim is to be signed

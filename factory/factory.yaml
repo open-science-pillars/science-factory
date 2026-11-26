@@ -1,0 +1,206 @@
+# The root of this factory's definition: a science factory, as code.
+#
+# The definition is this folder: this file, agents/, skills/, harnesses/,
+# runners/, scorers/, benchmarks/, automations/, templates/, checkers.yaml and
+# change-log.jsonl. `tools/check_factory.py` validates all of it (every key is
+# known, every name is a path, every reference resolves) and gives one of three
+# results: valid, invalid, or not validated, which is never a pass.
+#
+# What the study tool (sf.py) reads from the definition, and therefore what
+# changing it changes:
+#   procedure.stages[].id, done_by, done_when, does   `sf.py status` works out where a study stands
+#   scorers/<name>/scorer.md of type deterministic    `sf.py scorecard` evaluates them on a study
+#   agents/<name>/agent.md: model, harness            the lock binds the models each agent declares
+#   the whole tree, by checksum                       the lock binds it, so a study says which factory made it
+# The blocks marked "for people" state the design. No tool enforces them, and
+# each says in its own words what does hold it.
+# A `done_when` name the tool cannot check is refused, so a stage cannot claim
+# to be finished by something nothing checks.
+# A change to the definition is a pull request, and every adopted change gets a
+# line in the change log with its prediction.
+#
+# Words: a study is one question taken from request to signed finding. The
+# analysis plan is its analysis-plan.yaml. Held-out data is data nobody opens
+# before the lock. A run receipt is the record a run writes, with its code and
+# inputs by checksum and every number it produced. An assistant is always an AI
+# agent, and its file is in agents/; people are named as people. A harness
+# starts an agent; a runner is where a job computes.
+
+schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
+name: osp-science-factory
+version: 0.8.0                            # the content of this definition; every change to it is in the change log
+description: "Tests claims honestly: a plan locked before held-out data is opened once, with agents doing the labor and a tool keeping the order."
+alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
+product: a signed finding (the specification's finding concept), or a recorded negative result
+by_products: [notes about the data and the method, drafted knowledge, method changes, a scorecard, a change-log entry]
+
+# One factory per capability. In a software factory the unit is a product's
+# repository or repositories. Here it is a capability: its knowledge, skills,
+# computations, reference results and connectors, released together. The tools
+# are shared; each capability carries its own copy of this folder, its own
+# studies, record of what has been opened, and change log, under its own
+# stewards. This copy is filled in for the built-in example, so that it names
+# nothing outside this repository. A block filled in for a real capability is
+# in examples/baton-rouge/capability.yaml.
+capability:
+  name: "the built-in example"
+  repositories: [science-factory]              # a factory spanning several capabilities lists several
+  borrows: []                                  # repositories read by this factory, never written by it
+  stewards: "the capability's code owners"
+  holds: {studies: "studies/", record_of_openings: "studies/openings.jsonl", change_log: "factory/change-log.jsonl"}
+  shared_across_factories: ["the tools", "the curating assistant's reading across factories", "where jobs run", "provider knowledge"]
+  not_yet_shared: "the record of what has been opened is per factory; opening a window once across factories needs an organization-wide record"
+
+# What an agent gets when its own file does not say otherwise. The model is a
+# concrete name, never a router and never `auto`: which model wrote a plan or a
+# review has to be knowable before it runs. It is declared here and by whoever
+# calls the tools (`--model`); nothing proves it.
+agentDefaults:
+  harness: claude-code                         # a folder in harnesses/
+  model: claude-sonnet-4-5                     # one of the models that harness lists
+  runner: local                                # a file in runners/
+
+procedure:
+  coordinator: coordinating                    # the one agent that follows `sf.py status` and starts the others
+
+  study_kinds:
+    confirmatory: "a planned claim and one opening of held-out data; the stages below"
+    system_trial: "the same stages on a blind test case; checks the factory, never signed as a finding. The plan says `study_kind: system_trial`; the study closes only as system-trial-accepted (which needs the verdict in the study log to say the factory was right) or system-trial-declined"
+    exploratory: "built as a tool of its own (tools/explore.py): sets data aside first, explores the rest, ends in a lead that starts a confirmatory study; it has no stages here"
+
+  request:       # what the scientist gives, in their own words (templates/request.md); `sf.py start --request` binds it by checksum
+    fields: [what I want to know, the thing, why it matters, the difference that matters and where it comes from, what I have already looked at,
+             what could be held out, what I will do with each answer, by when, how I expect it to be fooled, who is on it, what I want back,
+             anyone else's product involved]
+    questions_back: "four, asked by the analysis assistant, then stop (templates/kinds-of-question.yaml)"
+    ways_to_hold_data_out: [a later period, sites never opened, a new release, a product never opened, forecasts scored later]
+
+  people:        # for people
+    scientist: asks in a request, in their own words; locks the plan with the steward (the difference that matters and the held-out data are theirs); receives the result first
+    steward: locks the plan and the code with the scientist; signs knowledge; the only one who can sign a finding
+    maintainer: reviews and merges method changes
+
+  agents:        # what each agent does, in a sentence. Each agent's file quotes its line word for word, and the validator fails when they differ.
+    coordinating: {does: "follows sf.py status, relays questions, keeps the study moving", may_not: "lock or sign"}
+    analysis:     {does: "asks the four questions, writes the analysis plan, builds the method and its known-answer tests, runs the tests, later writes the finding from run receipts only", never_sees: [held-out data before it is opened]}
+    review:       {does: "reads the plan, the run receipts, the finding, the study log and the shared knowledge, and records approve or block", must: "have done none of this study"}
+    curating:     {does: "reads notes and study logs across studies, sends each note where it belongs, drafts where a draft is owed", may_not: "merge or sign", runs: on a schedule}
+
+  separations:   # for people: where information must not flow
+    held_out_data:
+      rule: "nobody reads held-out measurements before the opening; only the access gate fetches them"
+      held_by: "sf.py open-held-out (refuses data that arrived early; the run receipt must name the fetched data by checksum); a clean machine for the opening when one is used"
+      not_held_by_the_tool: "public data can be read elsewhere, and where the opening runs does not change that; until the analysis assistant works where it has no route to the withheld values, the barrier is instruction and evidence"
+    independent_review:
+      rule: "the review assistant did none of the study and shares no working context with the analysis assistant"
+      held_by: "sf.py review (refuses anyone who started the study, ran a test, a rehearsal or an opening, attached the finding, locked or signed, by name without regard to case); a fresh context by practice"
+    shared_knowledge:
+      rule: "assistants write notes and may draft; the curating assistant reads across studies; a steward signs"
+      held_by: "sf.py note, curation-list and resolve (a note is never deleted); signatures by the organization's signing tool"
+    outcomes_and_improvement:
+      rule: "what a real opening showed never reaches a model judge or a proposal to change the factory: every scorer declares what it reads, and only scorers that read nothing written after an opening may feed improvement"
+      held_by: "tools/check_factory.py (refuses a judge that reads post-opening material, and the self-improvement flag on any scorer that does); tools/scorers.py (a judging packet holds the declared material and nothing else, each file by a checksum recorded before the opening)"
+      not_held_by_the_tool: "a person or an agent who reads a finding and then edits a prompt has crossed the same line by hand; nothing sees that"
+
+  stages:        # the five stages, with the two acts by people, the learning and the close as steps of their own: nine in all
+    - id: ask
+      done_by: [coordinating]
+      done_when: [started]
+      does: "take the request; the analysis assistant asks the four questions; start the study with the request bound (sf.py start --request)"
+    - id: plan
+      done_by: [analysis]
+      done_when: [plan-complete]
+      does: "search the shared knowledge for anything that already answers or limits the question; read only observation metadata; write the analysis plan"
+      ends_early_when:      # recorded with sf.py close, citing what answered the question
+        - "a signed finding already answers the question (answered-by-existing-knowledge)"
+        - "a signed limit covers the claim (outside-a-signed-domain)"
+        - "the method is a recorded dead end whose reopening condition is not met (dead-end)"
+    - id: test
+      done_by: [analysis]
+      done_when: [tests-pass, rehearsals-pass]
+      does: "plan check, known-answer tests, working data and the rehearsals, repeated freely; every attempt the tool runs is logged"
+    - id: lock
+      done_by: people
+      done_when: [locked]
+      does: "the scientist and the steward lock the plan and the code together, reading what the lock prints (the bound files, the script each command runs, the environment variables each step is given by name, each rule and criterion with its measured rate, the request, this factory's definition by checksum, the models its agents declare and the skills they use); the lock cites the approved review and is committed before anything is opened"
+    - id: open
+      done_by: [coordinating]
+      done_when: [openings-complete]
+      does: "sf.py open-held-out: the access gate fetches the held-out data and runs the locked analysis, once"
+    - id: review
+      done_by: [analysis, review]              # in that order: the finding first, then the review of it
+      done_when: [finding-attached, reviewed]
+      does: "the analysis assistant writes the finding from run receipts only and attaches it; then the review assistant checks the result against the plan and every number in the finding against a run receipt, and records its verdict (a verdict recorded before the finding does not count)"
+    - id: signature
+      done_by: people
+      done_when: [steward-decided]
+      does: "the steward signs the finding, or records the decision not to; the signature event names the finding by path and checksum"
+    - id: learn
+      done_by: [curating]
+      done_when: [notes-resolved]
+      does: "every note accepted, linked or declined; the scorecard filed; the change log updated with what was observed"
+    - id: close
+      done_by: [coordinating]
+      done_when: [closed]
+      does: "sf.py close with the outcome; schedule the re-test the plan names"
+
+  acts_by_people:  # the two acts no agent may call. The validator fails unless these are exactly the stages done by people.
+    lock:
+      who: [scientist, steward]
+      command: "tools/sf.py lock"
+      evidence: "an https link to the person's approving review; the lock itself committed on a protected branch"
+      not_held_by_the_tool: "the tool takes one person's name today; the second approval is scheduled, not built, and who merged is the repository's to say"
+    signature:
+      who: [steward]
+      command: "tools/sf.py signature"
+      evidence: "an https link to the steward's decision; signing is the organization's signing tool"
+      not_held_by_the_tool: "names are typed, not proven"
+
+  rules_for_people:      # for people: not checked by the tool here; each says what does hold it
+    - "Tests are repeated freely. Held-out data is never reopened until it agrees (held by the openings allowed and the record of what has been opened)."
+    - "An assistant never records the lock or the signature (the tool checks only the form of the name and that the evidence is an https link; what holds it is that the lock cites an approved review and is itself committed on a protected branch)."
+    - "A finding quotes no number that is not in a run receipt (held by the findings checker)."
+    - "Nothing about a named provider's product reaches a public place before the third-party findings policy is satisfied (held by where the opening runs and by review)."
+    - "Inconclusive is a result and is final for that data; the next chance is the next data held out."
+
+where_it_runs:   # for people: the study tool does not read this block. The tool runs every command on the machine it is
+                 # called on; the runners a job could be sent to are the files in runners/ and the job contract is compute/adapter.py.
+  default: local
+  tests: local
+  opening_held_out_data: "by hand, with sf.py open-held-out. Both planned openings are run that way: the system trial's in the workspace (its data is made at its own opening), and the first real study's from a fresh clone of the merged lock in a fresh container, which is somewhere the method was not built. A cloud or CI job, a cluster scheduler, or MAAP beside the data are runners an opening could be sent to later; none is wired to the tool"
+
+# The contract every runner keeps (compute/adapter.py is the contract and its
+# proof). Each file in runners/ fills in one table with exactly these twelve
+# keys; a cell is a mapping (how this runner does it) or the words "open
+# question". The validator fails a runner file whose table has other keys.
+runner_contract:
+  keys:
+    submit: "how a job spec becomes a job at this runner"
+    idempotency: "how the same key is the same job, how a different spec under a used key is refused, and what happens when a submit worked and its answer was lost"
+    status: "how queued, running, done, failed and cancelled are told apart, a job that died included"
+    exit: "where the job's own exit code comes from"
+    markers: "who writes `fetch.started`, and when; how the job's own markers come back"
+    collect: "how the declared outputs and the run log come back, and nothing else"
+    cancel: "how a job is stopped, and how the runner knows it is gone"
+    argv: "how the spec's argv, with its tokens, becomes the command that runs"
+    manifest: "who hashes the files the inputs manifest names, and what holds a job back when one differs"
+    resources: "which resources are honoured; any other is refused at submit"
+    clean_interpreter: "whether the interpreter and libraries are ones the method builder could not have changed"
+    blinds_the_method_builder: "whether running here keeps the withheld values from whoever built the method"
+  rules_for_every_runner:
+    - "A job is named by its idempotency key and its id is derived from the key, so the id is known before submit. The same key with the same spec is the same job and nothing runs twice; the same key with a different spec is refused."
+    - "A runner knows only its own jobs. The study log, not the runner, is what limits openings to one: it is to record the opening, with the job id, before the job is submitted, and close it when the job is collected. That wiring is not built."
+    - "The marker that decides whether an opening is used up is `fetch.started`, written by the runner before the job can reach the data, never by the method after it. A job that has the marker has used the opening up, however it ended. A job without it never started, and a person may void it."
+    - "The run log is evidence, not proof. It says what the runner observed and names what it only carried as declared. The receipt still names its inputs by hash, and the study tool still checks the locked plan and code."
+    - "Credentials live in the runner's own secret store and are given to the job that is the opening and to no other: never in a repository, a prompt, or an environment an assistant works in. A job's environment is built from a short list plus the names its spec asks for, and those names are in the run log."
+    - "What a job wrote stays at the runner until a person removes it: the contract has no verb to delete a job. For the third-party window each runner has to say how long that is before an opening is sent to it."
+
+measure:         # how this factory is measured and changed
+  scorecard: "the deterministic scorers in scorers/, worked out from one study's log by `sf.py scorecard`; a check that cannot be judged yet says `pending`"
+  judges: "the judge scorers in scorers/: a model reads a packet of exactly the material the scorer declares, never anything written after an opening, and returns one label (tools/scorers.py). No judge here has been run by a real model"
+  blind_test_of_the_system: "the suites in benchmarks/: sealed cases through the whole procedure under two versions of the definition, compared by a rule stated in advance (tools/benchmark.py); `system_trial.py blind-test` is the same harness on one definition"
+  improving_the_procedure:
+    rule: "failed process checks and notes are grouped into proposals; every proposal is a pull request with its evidence linked; nothing is adopted automatically"
+    change_log: "every adopted change is recorded with the problem it addresses, why, what it was predicted to do, what it did, and the setting it was tried in (sf.py log-change), so a later model or platform change can tell which changes to keep"
+    firewall: "only a scorer whose file says `selfImprovement: true` may feed a proposal, and the validator refuses that flag on any scorer that reads material written after an opening. Outcomes of real openings are counted and shown to people and feed the knowledge loop; they feed no judge and no proposal. The loop that would make proposals is not built"
+    later: "adopt a change only when what it gains outweighs what it breaks on a fixed set of studies and blind test cases that already pass: a pass on the acceptance set (benchmarks/acceptance), which no agent proposing changes may read"

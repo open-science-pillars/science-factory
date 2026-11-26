@@ -15,7 +15,7 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | Component | Represented by | State |
 |---|---|---|
 | A study, and starting one | `sf.py start`, which makes a study wherever `--study` points and binds a request by checksum when given one; the system trial's plan, `examples/stand-alone/system-trial` | built; no study is kept here, and the stand-alone example starts two on every run |
-| The procedure as a file | `factory/procedure.yaml`, read by `sf.py status` and `scorecard`; the lock records its checksum | built |
+| The procedure as a file | `factory/factory.yaml`, read by `sf.py status` and `scorecard`; the lock records its checksum | built |
 | Assistants | four roles (coordinating, analysis, review, curating); four task prompts below, three in Part A and one in Part B | prompts for part of the work; no prompt of its own for the review or the curating assistant; nothing is scheduled |
 | Consulting shared knowledge, ending early | the plan stage's search of the bundles (a prompt, in Part B); `sf.py close` with a citation | the early exits are built and exercised in the self-test; the search is an assistant's task |
 | Analysis plan | `analysis-plan.yaml`; `templates/analysis-plan.yaml`; `sf.py check-plan` (the plan check) | the system trial's plan passes the plan check, and so does the template as written (the study tool's self-test checks both) |
@@ -33,7 +33,7 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | The request | `templates/request.md`, `kinds-of-question.yaml`; two worked requests in `examples/baton-rouge/`; `sf.py start --request` | binding the request by checksum is built; its fields are convention, and checking them is scheduled |
 | Exploratory study | `study_kinds` in the procedure | designed, not built |
 | One factory per capability | the `capability` block in `procedure.yaml`, filled in for the built-in example; a copy filled in for one discipline is in `examples/baton-rouge/capability.yaml` | declared; nothing has landed in any capability |
-| Where it runs | `compute/adapter.py`, `compute/places.yaml` | contract and local place built (34 of 34 conformance checks, and the test of that test passes); scheduler, cloud and MAAP written down, not built; not yet wired into the tests or the opening |
+| Where it runs | `compute/adapter.py`, `factory/runners/` | contract and local place built (34 of 34 conformance checks, and the test of that test passes); scheduler, cloud and MAAP written down, not built; not yet wired into the tests or the opening |
 
 ## What is built, and what it measured
 
@@ -98,7 +98,7 @@ This is deliverable `science-factory-system-trial`. It needs this repository and
 An assistant's session is started by pasting the prompt.
 
 ```
-Follow science-factory/factory/procedure.yaml for
+Follow science-factory/factory/factory.yaml for
 my-science/studies/STUDY-0000, on a new branch
 system-trial of my-science. Make the study's plan
 from science-factory/examples/stand-alone/

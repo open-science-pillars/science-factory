@@ -3,12 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""adapter: the science factory's compute contract, the one place to run
-that is built, the conformance test any place must pass, and the test of
+"""adapter: the science factory's compute contract, the one runner
+that is built, the conformance test any runner must pass, and the test of
 that test.
 
 A known-answer test, a run on working data, a rehearsal and an opening of
-the held-out data are each to be one JOB, and a place to run is anything
+the held-out data are each to be one JOB, and a runner is anything
 that can do four things with a job. Nothing in the study tool calls this
 yet: sf.py still runs its own commands. This file is the contract and its
 proof, ready for that wiring.
@@ -27,9 +27,9 @@ THE JOB SPEC  (JSON; a field not listed here is refused)
              themselves. The run log carries the whole key and the sha256
              of the whole spec.
   argv       The command, as unexpanded tokens. An argument that starts
-             with {name} is expanded by the place: {python} is the
-             place's interpreter and {work} the job's working directory;
-             a place may define more (the local place takes
+             with {name} is expanded by the runner: {python} is the
+             runner's interpreter and {work} the job's working directory;
+             a runner may define more (the local runner takes
              --token kit=DIR). An unknown token is refused. A spec that
              spells out a path of its own is tied to one machine.
   outputs    The files the job will write, as relative paths under its
@@ -38,15 +38,15 @@ THE JOB SPEC  (JSON; a field not listed here is refused)
   inputs_manifest
              Optional. Files that must be what the lock says before the
              job may start: {file: "sha256:<64 hex>"}, each file named by
-             a token or an absolute path. The place hashes each one from
+             a token or an absolute path. The runner hashes each one from
              inside the job's environment and does not start the argv
              when one differs.
   environment
              Optional. What the job expects of its surroundings (a
              commit, an image, a lockfile). Carried, not checked: it
              comes back as declared_environment.
-  resources  Optional. A place honours a resource or refuses the spec.
-             The local place honours walltime_seconds and no other.
+  resources  Optional. A runner honours a resource or refuses the spec.
+             The local runner honours walltime_seconds and no other.
   env        Optional. Names of environment variables the job needs
              beyond the short list below. No name may start with PYTHON.
 
@@ -69,7 +69,7 @@ THE FOUR VERBS
                         limit, could not be run, held back by a manifest
                         that did not match, or its supervisor died
              cancelled  stopped by cancel, and gone
-             lost       this place has no record of that id
+             lost       this runner has no record of that id
   collect  Refused until the job is done, failed or cancelled, which is
            when nothing about it can change. Brings back the declared
            outputs that exist, under their relative paths, and
@@ -85,9 +85,9 @@ THE FOUR VERBS
 MARKERS
 
   fetch.started  decides whether an opening is used up, and it is written
-           by the place, never by the method: after the manifest matched
+           by the runner, never by the method: after the manifest matched
            and before the job can reach any data (before the argv starts;
-           on a place that holds a credential or a network route back,
+           on a runner that holds a credential or a network route back,
            before it is released). A job that has the marker has used its
            opening up, however it ended. A job without it never started,
            and a person may void it.
@@ -99,7 +99,7 @@ THE RUN LOG  (returned by collect and written beside the outputs)
 
   what       job, key, job_id, spec_sha256, argv (as given) and
              argv_started (as expanded; null if it never started)
-  where      place, host, user, platform, and, found from inside the
+  where      runner, host, user, platform, and, found from inside the
              job's environment, program (the file argv[0] resolved to,
              with its sha256) and interpreter (its path and version,
              asked of the program itself when it is a Python interpreter;
@@ -111,7 +111,7 @@ THE RUN LOG  (returned by collect and written beside the outputs)
   result     phase, exit, reason, markers, job_markers, outputs (the
              sha256 of each, taken when the job ended; null if absent),
              outputs_refused, log_sha256 and log_bytes (what the job
-             printed stays at the place; only its hash comes back)
+             printed stays at the runner; only its hash comes back)
 
 THE JOB'S ENVIRONMENT
 
@@ -120,60 +120,60 @@ THE JOB'S ENVIRONMENT
   name starts with PYTHON is dropped, and then three are set:
   PYTHONPYCACHEPREFIX to a new empty temporary directory for each job (so
   bytecode planted beside a source file is never read), PYTHONNOUSERSITE=1
-  and PYTHONDONTWRITEBYTECODE=1. The place adds SF_PLACE_JOB, a tag it
+  and PYTHONDONTWRITEBYTECODE=1. The runner adds SF_PLACE_JOB, a tag it
   uses to find what a job left running. (A Python job may also see
   LC_CTYPE: its own interpreter adds that when the locale is plain C.)
 
 WHAT IS LEFT TO THE STUDY TOOL, AND WHAT IS NOT BUILT
 
-  One opening. A place refuses a second spec under a used key and never
-  runs a key twice, but it knows only its own jobs: a second place, or
+  One opening. A runner refuses a second spec under a used key and never
+  runs a key twice, but it knows only its own jobs: a second runner, or
   the next opening number, is a new job. The study log is what limits
   openings to one. It writes the opening before it submits (the id is
   known beforehand), and it decides whether a job without fetch.started
   may be voided.
-  The locked code. A place checks the files the manifest names and no
+  The locked code. A runner checks the files the manifest names and no
   others. Which files those are, and a module or a folder planted beside
   them under another name, is the study tool's to bind.
-  Who may ask for what. The place records the names a job asked for under
+  Who may ask for what. The runner records the names a job asked for under
   env; which job may be given a credential is for the analysis plan.
-  Not built: removing a job (what a job wrote stays at the place until a
+  Not built: removing a job (what a job wrote stays at the runner until a
   person deletes it), a bound on the size of outputs, any resource but a
   time limit, and steps with a check between them (a job is one argv).
 
-THE LOCAL PLACE
+THE LOCAL RUNNER
 
-  LocalPlace keeps its own records in <root>/state/<job id>/ and runs the
+  LocalRunner keeps its own records in <root>/state/<job id>/ and runs the
   job in <root>/work/<job id>/, so a job that writes only where it was
   put cannot touch them. One supervisor process for each job holds a file
   lock while it lives (which is how status tells a dead job from a
   running one), is handed the argv through a pipe from submit and never
   reads it back from disk, stops the job and everything it left running,
-  then hashes the outputs and copies them into the place's own keep. It
-  is not the place for an opening: the job runs as the same user on the
+  then hashes the outputs and copies them into the runner's own keep. It
+  is not the runner for an opening: the job runs as the same user on the
   same machine as whoever built the method, so a job that goes looking
-  can read and rewrite the place's records, a job that leaves its session
+  can read and rewrite the runner's records, a job that leaves its session
   and drops its tag can outlive a cancel, and the interpreter is the one
   on that machine. Its run log is evidence, not proof.
 
 CONFORMANCE
 
-  `conformance --place REF` runs against any place, using only the four
-  verbs and what collect brings back: the interpreter is the place's
-  ({python}) and the waits are the place's (settle_seconds,
-  grace_seconds). A place is built when it passes. `conformance
+  `conformance --runner REF` runs against any runner, using only the four
+  verbs and what collect brings back: the interpreter is the runner's
+  ({python}) and the waits are the runner's (settle_seconds,
+  grace_seconds). A runner is built when it passes. `conformance
   --self-check` tests the test: it runs it against the deliberately wrong
-  places kept at the end of this file and passes only if every one of
-  them fails on the checks written for its defect, the honest places
-  pass, every check is failed by some wrong place, and the local place's
+  runners kept at the end of this file and passes only if every one of
+  them fails on the checks written for its defect, the honest runners
+  pass, every check is failed by some wrong runner, and the local runner's
   own records stand up to a hand on its disk.
 
 Usage:
-  adapter.py submit  --root DIR --spec SPEC.json [--token NAME=PATH ...] [--place REF]
-  adapter.py status  --root DIR --job ID [--place REF]
-  adapter.py collect --root DIR --job ID --into DIR [--place REF]
-  adapter.py cancel  --root DIR --job ID [--place REF]
-  adapter.py conformance [--place REF]
+  adapter.py submit  --root DIR --spec SPEC.json [--token NAME=PATH ...] [--runner REF]
+  adapter.py status  --root DIR --job ID [--runner REF]
+  adapter.py collect --root DIR --job ID --into DIR [--runner REF]
+  adapter.py cancel  --root DIR --job ID [--runner REF]
+  adapter.py conformance [--runner REF]
   adapter.py conformance --self-check
 
 REF is a class in this file, module:Class, or path/to/file.py:Class; the
@@ -212,11 +212,11 @@ REQUIRED = ("job", "key", "argv", "outputs")
 OPENING_KEY = ["lock", "opening", "study", "test"]
 PASSED_ON = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "USER", "LOGNAME")
 SET_BY_THE_PLACE = {"PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1"}  # and PYTHONPYCACHEPREFIX, new for each job
-TAG = "SF_PLACE_JOB"            # set in a job's environment so the place can find what the job left running
-MARKERS = ("fetch.started",)    # written by the place, never by the job
+TAG = "SF_PLACE_JOB"            # set in a job's environment so the runner can find what the job left running
+MARKERS = ("fetch.started",)    # written by the runner, never by the job
 FINAL = ("done", "failed", "cancelled")
 STATUS_KEYS = ("job_id", "phase", "exit", "reason", "markers", "job_markers")
-RUN_LOG_KEYS = ("job_id", "job", "key", "place", "spec_sha256", "argv", "argv_started", "phase", "exit", "reason", "markers",
+RUN_LOG_KEYS = ("job_id", "job", "key", "runner", "spec_sha256", "argv", "argv_started", "phase", "exit", "reason", "markers",
                 "job_markers", "outputs", "outputs_refused", "inputs", "declared_environment", "resources", "env_names", "host",
                 "user", "platform", "interpreter", "program", "submitted_at", "started_at", "ended_at", "log_sha256", "log_bytes")
 ID = re.compile(r"[0-9a-f]{16}")
@@ -269,7 +269,7 @@ def job_id_of(key: dict) -> str:
 
 
 def expand(arg: str, tokens: dict) -> str:
-    """Put the place's value for a leading {name}; leave anything else as it is."""
+    """Put the runner's value for a leading {name}; leave anything else as it is."""
     m = TOKEN.match(arg)
     return tokens[m[1]] + arg[m.end():] if m else arg
 
@@ -288,8 +288,8 @@ def output_problem(name) -> str | None:
 
 
 def check_spec(spec, tokens, resources, strict_outputs: bool = True) -> dict:
-    """The shape every place checks at submit. `tokens` are the names the
-    place expands and `resources` the ones it honours."""
+    """The shape every runner checks at submit. `tokens` are the names the
+    runner expands and `resources` the ones it honours."""
     def no(why):
         raise Refused(why)
 
@@ -333,14 +333,14 @@ def check_spec(spec, tokens, resources, strict_outputs: bool = True) -> dict:
     for a in [*argv, *(manifest or {})]:
         m = TOKEN.match(a)
         if m and m[1] not in tokens:
-            no(f"`{a}` starts with a token this place does not expand; it expands {sorted(tokens)}")
+            no(f"`{a}` starts with a token this runner does not expand; it expands {sorted(tokens)}")
     wanted = spec.get("resources")
     if wanted is not None:
         if not isinstance(wanted, dict):
             no("resources is an object of names to numbers above zero")
         unknown = sorted(set(wanted) - set(resources))
         if unknown:
-            no(f"this place cannot honour the resources {unknown}; it honours {sorted(resources)}")
+            no(f"this runner cannot honour the resources {unknown}; it honours {sorted(resources)}")
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 for v in wanted.values()):
             no("resources is an object of names to numbers above zero")
     env = spec.get("env")
@@ -410,8 +410,8 @@ def job_markers(work: Path) -> list:
 
 
 def freeze(work: Path, outputs: list, keep: Path) -> dict:
-    """What a place does when a job ends: note the job's own markers, hash
-    each declared output and copy it into the place's keep, so that what
+    """What a runner does when a job ends: note the job's own markers, hash
+    each declared output and copy it into the runner's keep, so that what
     collect hands back later is what was there at the end."""
     hashes, refused = {}, {}
     for name in outputs:
@@ -443,7 +443,7 @@ def born(pid) -> int | None:
 
 def job_processes(tag: str, session, skip=()) -> list:
     """The processes that belong to one job: every one in the session the
-    place started for it, and every one that carries the job's tag in its
+    runner started for it, and every one that carries the job's tag in its
     environment. Linux only; elsewhere the list is empty."""
     found = []
     for entry in (os.listdir("/proc") if os.path.isdir("/proc") else []):
@@ -514,10 +514,10 @@ def has_ended(child) -> bool:
     return child.poll() is not None
 
 
-# ---------------------------------------------------------------- the local place's supervisor
+# ---------------------------------------------------------------- the local runner's supervisor
 
 def supervise(state: Path, lock_fd: int) -> int:
-    """One of these runs for each job at the local place, started by
+    """One of these runs for each job at the local runner, started by
     submit inside the job's environment. It holds the file lock that says
     the job is alive, takes the argv from the pipe submit hands it, checks
     the manifest, writes fetch.started, runs the argv, stops whatever is
@@ -551,7 +551,7 @@ def supervise(state: Path, lock_fd: int) -> int:
         return run_job(state, cfg, end)
     except BaseException as e:  # noqa: BLE001
         stop_processes(f"{TAG}={os.environ.get(TAG)}", None, skip={os.getpid()})
-        end("failed", None, f"the place's supervisor stopped ({type(e).__name__}: {e})")
+        end("failed", None, f"the runner's supervisor stopped ({type(e).__name__}: {e})")
         return 1
 
 
@@ -610,7 +610,7 @@ def run_job(state: Path, cfg: dict, end) -> int:
     code = child.wait()
     left = "" if gone else "; some of its processes could not be stopped"
     if why == "limit":
-        return end("failed", None, f"over the time limit of {limit} s: stopped by the place{left}")
+        return end("failed", None, f"over the time limit of {limit} s: stopped by the runner{left}")
     if code < 0:
         try:
             name = signal.Signals(-code).name
@@ -623,15 +623,15 @@ def run_job(state: Path, cfg: dict, end) -> int:
     return end("done", code, "; ".join(notes + ([left[2:]] if left else [])) or None)
 
 
-# ---------------------------------------------------------------- the contract and the local place
+# ---------------------------------------------------------------- the contract and the local runner
 
-class Place:
-    """The contract. A place is made with one argument, a directory it may
+class Runner:
+    """The contract. A runner is made with one argument, a directory it may
     keep its own records in, and does the four things below. It also says
     how long the conformance test should wait for it."""
     name = "abstract"
-    tokens: dict = {}       # what this place expands besides {python} and {work}
-    resources: tuple = ()   # the resources this place honours; a spec that asks for another is refused
+    tokens: dict = {}       # what this runner expands besides {python} and {work}
+    resources: tuple = ()   # the resources this runner honours; a spec that asks for another is refused
     settle_seconds = 30.0   # how long a job of a few seconds may take to reach a final phase here
     grace_seconds = 2.0     # how long cancel and a time limit wait between SIGTERM and SIGKILL
     poll_seconds = 0.05     # how often it is worth asking for status
@@ -647,9 +647,9 @@ class Place:
     @contextlib.contextmanager
     def plant_in_environment(self, variables: dict):
         """For the conformance test: put these variables where a job at
-        this place could inherit them from, for as long as the block
+        this runner could inherit them from, for as long as the block
         lasts. Here that is the submitting process, which is right for a
-        place whose jobs are its child processes. A place whose jobs
+        runner whose jobs are its child processes. A runner whose jobs
         inherit from somewhere else (a submit script, a node's profile,
         an image) plants them there."""
         before = {k: os.environ.get(k) for k in variables}
@@ -664,14 +664,14 @@ class Place:
                     os.environ[k] = v
 
 
-class LocalPlace(Place):
-    """Jobs as child processes on this machine; see THE LOCAL PLACE at the top of the file."""
+class LocalRunner(Runner):
+    """Jobs as child processes on this machine; see THE LOCAL RUNNER at the top of the file."""
     name = "local"
     resources = ("walltime_seconds",)
 
     def __init__(self, root, tokens: dict | None = None, grace_seconds: float = 2.0):
         if "work" in (tokens or {}):
-            raise Refused("{work} is the job's working directory; a place cannot give it another meaning")
+            raise Refused("{work} is the job's working directory; a runner cannot give it another meaning")
         self.root = Path(root).resolve()
         self.tokens = {"python": sys.executable, **(tokens or {})}
         self.grace_seconds = grace_seconds
@@ -768,14 +768,14 @@ class LocalPlace(Place):
                 log = state / "job.log"
                 write_once(state / "ended.json", {
                     "phase": "failed", "exit": None, "ended_at": now(),
-                    "reason": "the place's supervisor ended without recording an exit (killed, out of memory, or the machine went down)"
+                    "reason": "the runner's supervisor ended without recording an exit (killed, out of memory, or the machine went down)"
                               + ("" if gone else "; some of the job's processes could not be stopped"),
                     "log_sha256": sha_file(log), "log_bytes": log.stat().st_size if log.is_file() else None,
                     **freeze(self._work(job_id), sub["spec"]["outputs"], state / "keep")})
                 if Path(sub.get("pycache_prefix") or "").name.startswith("sf-pycache-"):
                     shutil.rmtree(sub["pycache_prefix"], ignore_errors=True)
             return read_json(state / "ended.json") or {
-                "phase": "failed", "exit": None, "reason": "the place's final record of this job cannot be read", "unreadable": True,
+                "phase": "failed", "exit": None, "reason": "the runner's final record of this job cannot be read", "unreadable": True,
                 "job_markers": []}
         finally:
             os.close(lock)
@@ -793,20 +793,20 @@ class LocalPlace(Place):
                     raise Refused(f"job {job_id} was already submitted under this key with a different spec "
                                   f"(sha256 {str(record.get('spec_sha256'))[:12]}, this one {spec_sha256(spec)[:12]}); "
                                   "a key names one job, and a new attempt needs a new key")
-                return {"job_id": job_id, "place": self.name, "already_submitted": True}
+                return {"job_id": job_id, "runner": self.name, "already_submitted": True}
             self._start(job_id, spec)
-        return {"job_id": job_id, "place": self.name, "already_submitted": False}
+        return {"job_id": job_id, "runner": self.name, "already_submitted": False}
 
     def status(self, job_id: str) -> dict:
         self._known(job_id)
         state = self._state(job_id)
         if read_json(state / "submitted.json") is None:
-            return {"job_id": job_id, "phase": "lost", "exit": None, "reason": "this place has no record of that job",
+            return {"job_id": job_id, "phase": "lost", "exit": None, "reason": "this runner has no record of that job",
                     "markers": [], "job_markers": []}
         end = self._ended(job_id)
         markers = [m for m in MARKERS if (state / f"marker.{m}").is_file()]
         if end is not None and end.get("phase") not in FINAL:
-            end = {"phase": "failed", "exit": None, "reason": "the place's final record of this job cannot be read",
+            end = {"phase": "failed", "exit": None, "reason": "the runner's final record of this job cannot be read",
                    "unreadable": True, "job_markers": []}
         if end is None:
             return {"job_id": job_id, "phase": "running" if markers else "queued", "exit": None, "reason": None,
@@ -817,7 +817,7 @@ class LocalPlace(Place):
     def collect(self, job_id: str, into) -> dict:
         st = self.status(job_id)
         if st["phase"] == "lost":
-            raise Refused(f"job {job_id} is not known to this place; there is nothing to collect")
+            raise Refused(f"job {job_id} is not known to this runner; there is nothing to collect")
         if st["phase"] not in FINAL:
             raise Refused(f"job {job_id} is {st['phase']} and can still change; collect it when it is done, failed or cancelled")
         state = self._state(job_id)
@@ -831,7 +831,7 @@ class LocalPlace(Place):
             raise Refused(f"the spec kept for job {job_id} is not the one that was submitted; nothing was collected")
         into = Path(into).resolve()
         if into == self.root or self.root in into.parents:
-            raise Refused("collect into a directory outside the place's own")
+            raise Refused("collect into a directory outside the runner's own")
         kept = {}
         for name in spec["outputs"]:
             if end["outputs"].get(name) is not None:
@@ -839,7 +839,7 @@ class LocalPlace(Place):
                     kept[name] = (state / "keep" / name).read_bytes()
                 if sha_bytes(kept.get(name, b"")) != end["outputs"][name]:
                     raise Refused(f"the kept copy of `{name}` is not what the job left when it ended; nothing was collected")
-        log = {"job_id": job_id, "job": spec["job"], "key": spec["key"], "place": self.name, "spec_sha256": sub["spec_sha256"],
+        log = {"job_id": job_id, "job": spec["job"], "key": spec["key"], "runner": self.name, "spec_sha256": sub["spec_sha256"],
                "argv": spec["argv"], "argv_started": started.get("argv_started"),
                "phase": st["phase"], "exit": st["exit"], "reason": st["reason"], "markers": st["markers"],
                "job_markers": st["job_markers"], "outputs": {name: end["outputs"].get(name) for name in spec["outputs"]},
@@ -907,7 +907,7 @@ if sys.argv[2] == 'deaf':
 open('count', 'a').write('x')
 pathlib.Path('marker.analysis.started').write_text('')
 time.sleep(float(sys.argv[1]))
-pathlib.Path('late.txt').write_text('written after the place said the job was over')
+pathlib.Path('late.txt').write_text('written after the runner said the job was over')
 pathlib.Path('marker.analysis.done').write_text('')
 """
 LINKS = """\
@@ -935,7 +935,7 @@ ORPHAN = ("import os, signal, sys\nif os.getppid() not in (1, int(sys.argv[1])):
 
 
 def load_place(ref: str):
-    """A place class from `Class` (in this file), `module:Class` or `path/to/file.py:Class`, and a form of the
+    """A runner class from `Class` (in this file), `module:Class` or `path/to/file.py:Class`, and a form of the
     reference that another process can use."""
     here = sys.modules[__name__]
     module, _, cls_name = ref.rpartition(":")
@@ -945,7 +945,7 @@ def load_place(ref: str):
         path = Path(module).resolve()
         spec = importlib.util.spec_from_file_location(path.stem, path)
         if spec is None or not path.is_file():
-            raise Refused(f"no place file at {path}")
+            raise Refused(f"no runner file at {path}")
         mod = importlib.util.module_from_spec(spec)
         sys.modules[path.stem] = mod
         spec.loader.exec_module(mod)
@@ -954,17 +954,17 @@ def load_place(ref: str):
         try:
             mod = importlib.import_module(module)
         except ImportError as e:
-            raise Refused(f"cannot import the place's module `{module}` ({e})") from e
+            raise Refused(f"cannot import the runner's module `{module}` ({e})") from e
         portable = f"{Path(mod.__file__).resolve()}:{cls_name}" if getattr(mod, "__file__", None) else ref
     cls = getattr(mod, cls_name, None)
     if not (isinstance(cls, type) and all(callable(getattr(cls, verb, None)) for verb in ("submit", "status", "collect", "cancel"))):
-        raise Refused(f"`{ref}` is not a place: a class with submit, status, collect and cancel")
+        raise Refused(f"`{ref}` is not a runner: a class with submit, status, collect and cancel")
     return cls, portable
 
 
 def other_process(ref: str, root: Path, verb: str, *args) -> dict | None:
-    """One verb of a place from another process, as a retry from a new shell would make it."""
-    done = subprocess.run([sys.executable, "-B", str(SELF), verb, "--place", ref, "--root", str(root), *args],
+    """One verb of a runner from another process, as a retry from a new shell would make it."""
+    done = subprocess.run([sys.executable, "-B", str(SELF), verb, "--runner", ref, "--root", str(root), *args],
                           capture_output=True, text=True, timeout=300)
     try:
         return json.loads(done.stdout)
@@ -972,10 +972,10 @@ def other_process(ref: str, root: Path, verb: str, *args) -> dict | None:
         return None
 
 
-def conformance(ref: str = "LocalPlace") -> list:
-    """What any place must do, asked through the four verbs and judged by
-    what collect brings back. Nothing here reads a place's own disk; the
-    interpreter is the place's and so are the waits. Returns (check,
+def conformance(ref: str = "LocalRunner") -> list:
+    """What any runner must do, asked through the four verbs and judged by
+    what collect brings back. Nothing here reads a runner's own disk; the
+    interpreter is the runner's and so are the waits. Returns (check,
     passed) pairs."""
     make, ref = load_place(ref)
     out, nonce, numbers = [], secrets.token_hex(4), iter(range(1, 10_000))
@@ -1015,7 +1015,7 @@ def conformance(ref: str = "LocalPlace") -> list:
 
     with tempfile.TemporaryDirectory(prefix="sf-conformance-") as tmp:
         tmp = Path(tmp)
-        root = tmp / "place"
+        root = tmp / "runner"
         t = make(root)
         settle, long = t.settle_seconds, t.grace_seconds + 2.5
         jobs = []
@@ -1047,7 +1047,7 @@ def conformance(ref: str = "LocalPlace") -> list:
             early = refuses(t.collect, (j_deaf or {}).get("job_id"), tmp / "early")
             c_deaf = attempt(t.cancel, (j_deaf or {}).get("job_id"))
             st_c = until(j_deaf, final)
-            r_c1, d_c1 = collect(j_deaf, "c1")  # at the moment the place says the job is over
+            r_c1, d_c1 = collect(j_deaf, "c1")  # at the moment the runner says the job is over
             resub = attempt(t.submit, deaf)
             st_o = until(j_over, final)
             r_o1, _ = collect(j_over, "o1")
@@ -1131,12 +1131,12 @@ def conformance(ref: str = "LocalPlace") -> list:
                     attempt(t.cancel, job_id)
             stop_under(tmp)
 
-        check("a job runs to done with exit 0; status shows the place's fetch.started and the job's own marker",
+        check("a job runs to done with exit 0; status shows the runner's fetch.started and the job's own marker",
               lambda: set(STATUS_KEYS) <= set(st_a) and (st_a["phase"], st_a["exit"]) == ("done", 0)
               and st_a["markers"] == ["fetch.started"] and st_a["job_markers"] == ["analysis.done"] and receipt["said"] == said)
         check("the job id is the one anyone can work out from the key",
               lambda: a["job_id"] == job_id_of(good["key"]) and ID.fullmatch(a["job_id"]) and a["already_submitted"] is False)
-        check("the same spec again, from this place, a second instance and a second process, is the same job and runs nothing twice",
+        check("the same spec again, from this runner, a second instance and a second process, is the same job and runs nothing twice",
               lambda: all(r["job_id"] == a["job_id"] and r["already_submitted"] is True for r in (again, elsewhere, retried))
               and (d_a / "count").read_text() == "x")
         check("the same spec again after the job ended starts nothing: same job, same run log, one run",
@@ -1147,7 +1147,7 @@ def conformance(ref: str = "LocalPlace") -> list:
               lambda: j_1["job_id"] != j_2["job_id"] and j_2["already_submitted"] is False
               and (d_1 / "receipt.json").read_text() == f"first-{nonce}" and (d_2 / "receipt.json").read_text() == f"second-{nonce}"
               and r_2["outputs"]["receipt.json"] == sha_bytes(f"second-{nonce}".encode()))
-        check("tokens are expanded by the place: {python} ran the job, {work} is its working directory, and the run log keeps both forms",
+        check("tokens are expanded by the runner: {python} ran the job, {work} is its working directory, and the run log keeps both forms",
               lambda: receipt["work_is_cwd"] is True and r_a["argv"] == good["argv"] and len(r_a["argv_started"]) == len(good["argv"])
               and r_a["argv_started"][0] == receipt["executable"] and not TOKEN.match(r_a["argv_started"][-1]))
         check("collect brings back the declared outputs that exist, under their relative paths, with the run log, and nothing else",
@@ -1159,7 +1159,7 @@ def conformance(ref: str = "LocalPlace") -> list:
         check("the run log is the file collect wrote, has every field, and says what ran, where and when",
               lambda: read_json(d_a / "run-log.json") == r_a and set(RUN_LOG_KEYS) <= set(r_a)
               and (r_a["job_id"], r_a["job"], r_a["key"], r_a["spec_sha256"]) == (a["job_id"], good["job"], good["key"], spec_sha256(good))
-              and r_a["place"] == t.name and r_a["host"] and r_a["user"] and r_a["log_sha256"]
+              and r_a["runner"] == t.name and r_a["host"] and r_a["user"] and r_a["log_sha256"]
               and all(STAMP.fullmatch(r_a[k]) for k in ("submitted_at", "started_at", "ended_at"))
               and r_a["submitted_at"] <= r_a["started_at"] <= r_a["ended_at"]
               and all(r_a[k] == st_a[k] for k in ("phase", "exit", "reason", "markers", "job_markers")))
@@ -1168,7 +1168,7 @@ def conformance(ref: str = "LocalPlace") -> list:
               and r_a["program"]["sha256"] == receipt["python_sha256"] and r_a["declared_environment"] == good["environment"])
         check("collecting again later gives the same run log and the same files",
               lambda: r_a2 == r_a and files(d_a2) == files(d_a) and all((d_a2 / f).read_bytes() == (d_a / f).read_bytes() for f in files(d_a)))
-        check("the job's environment has no PYTHON variable but the three the place sets, and its bytecode cache prefix is new and empty",
+        check("the job's environment has no PYTHON variable but the three the runner sets, and its bytecode cache prefix is new and empty",
               lambda: set(receipt["python_vars"]) == {"PYTHONPYCACHEPREFIX", "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE"}
               and receipt["python_vars"]["PYTHONNOUSERSITE"] == "1" and receipt["python_vars"]["PYTHONDONTWRITEBYTECODE"] == "1"
               and receipt["python_vars"]["PYTHONPYCACHEPREFIX"] != hostile["PYTHONPYCACHEPREFIX"]
@@ -1191,10 +1191,10 @@ def conformance(ref: str = "LocalPlace") -> list:
               lambda: st_o["phase"] == "failed" and st_o["exit"] != 0 and st_o["reason"] and st_o2 == st_o and r_o2 == r_o1
               and st_o["job_markers"] == ["analysis.started"] and r_o1["outputs"] == {"late.txt": None}
               and r_o1["resources"] == {"walltime_seconds": 1})
-        check("a resource the place cannot honour is refused at submit", lambda: bad_resource)
+        check("a resource the runner cannot honour is refused at submit", lambda: bad_resource)
         check("a job whose supervisor is killed is failed with the reason, not running for ever",
               lambda: st_d["phase"] == "failed" and st_d["reason"] and r_d["phase"] == "failed")
-        check("a job whose inputs manifest matches starts, and the run log names what the place hashed",
+        check("a job whose inputs manifest matches starts, and the run log names what the runner hashed",
               lambda: (st_y["phase"], st_y["exit"]) == ("done", 0) and r_y["outputs"]["count"] == sha_bytes(b"x")
               and r_y["inputs"] == {"{python}": {"declared": learned, "observed": learned}})
         check("a job whose inputs manifest does not match never starts: failed with the reason, no fetch.started, no output",
@@ -1228,7 +1228,7 @@ def conformance(ref: str = "LocalPlace") -> list:
 # ---------------------------------------------------------------- the test of the test
 
 def local_checks() -> list:
-    """What the four verbs cannot show: the local place's own records, with a hand on its disk."""
+    """What the four verbs cannot show: the local runner's own records, with a hand on its disk."""
     out = []
 
     def check(name, test):
@@ -1266,9 +1266,9 @@ def local_checks() -> list:
             (tmp / name).mkdir()
             subprocess.run([sys.executable, str(code / "method.py")], cwd=tmp / name, env=env, capture_output=True)
             controls.append((read_json(tmp / name / "receipt.json") or {}).get("ran"))
-        place = LocalPlace(tmp / "place", tokens={"kit": str(code)})
+        runner = LocalRunner(tmp / "runner", tokens={"kit": str(code)})
 
-        def finish(got, p=place):
+        def finish(got, p=runner):
             end = time.monotonic() + p.settle_seconds
             while (st := p.status(got["job_id"]))["phase"] not in FINAL and time.monotonic() < end:
                 time.sleep(0.05)
@@ -1278,17 +1278,17 @@ def local_checks() -> list:
             method = {"job": "LOCAL/working-data/method", "key": {"study": "LOCAL", "test": "working-data", "run": "method"},
                       "argv": ["{python}", "{kit}/method.py"], "outputs": ["receipt.json"],
                       "inputs_manifest": {f"{{kit}}/{n}": "sha256:" + sha_file(code / n) for n in ("method.py", "helper.py")}}
-            with place.plant_in_environment({"PYTHONPYCACHEPREFIX": str(prefix), "PYTHONOPTIMIZE": "2"}):
-                m = place.submit(method)
+            with runner.plant_in_environment({"PYTHONPYCACHEPREFIX": str(prefix), "PYTHONOPTIMIZE": "2"}):
+                m = runner.submit(method)
             st_m = finish(m)
-            log_m = place.collect(m["job_id"], tmp / "m")
+            log_m = runner.collect(m["job_id"], tmp / "m")
             check("bytecode planted beside a locked source file, and under a cache prefix the submitter set, is not loaded: "
                   "a plain interpreter ran each plant, the job ran the source",
                   lambda: controls == ["from bytecode beside the source", "from bytecode under a cache prefix"]
                   and read_json(tmp / "m" / "receipt.json") == {"ran": "from source"} and st_m["phase"] == "done"
                   and all(v["observed"] == v["declared"] for v in log_m["inputs"].values()) and len(log_m["inputs"]) == 2
                   and [p.name for p in (code / "__pycache__").iterdir()] == [cache] and not os.path.exists(read_json(
-                      place._state(m["job_id"]) / "submitted.json")["pycache_prefix"]))
+                      runner._state(m["job_id"]) / "submitted.json")["pycache_prefix"]))
 
             counts = job(1, COUNTS, outputs=("count",))
             real = subprocess.Popen
@@ -1298,65 +1298,65 @@ def local_checks() -> list:
 
             subprocess.Popen = no_processes
             try:
-                first = refuses(place.submit, counts)
+                first = refuses(runner.submit, counts)
             finally:
                 subprocess.Popen = real
-            between = place.status(job_id_of(counts["key"]))["phase"]
-            retry = place.submit(counts)
+            between = runner.status(job_id_of(counts["key"]))["phase"]
+            retry = runner.submit(counts)
             finish(retry)
-            place.collect(retry["job_id"], tmp / "r")
+            runner.collect(retry["job_id"], tmp / "r")
             check("a submit that could not start the job leaves no job behind, and the retry runs it once",
                   lambda: first and between == "lost" and retry["already_submitted"] is False and (tmp / "r" / "count").read_text() == "x")
 
-            class NeverReleases(LocalPlace):
+            class NeverReleases(LocalRunner):
                 """The state a submitter killed between writing the record and releasing the job leaves behind."""
                 def _config(self, job_id, spec):
                     return {"release": False}
 
             held = job(2, COUNTS, outputs=("count",))
-            st_h = finish(NeverReleases(tmp / "place").submit(held))
+            st_h = finish(NeverReleases(tmp / "runner").submit(held))
             check("a job whose submitter went away before releasing it is failed with the reason, never started, and stays submitted",
                   lambda: st_h["phase"] == "failed" and "never ran" in st_h["reason"] and st_h["markers"] == []
-                  and place.submit(held)["already_submitted"] is True)
+                  and runner.submit(held)["already_submitted"] is True)
 
             forge = ("import os, pathlib, signal, sys\nos.kill(os.getppid(), signal.SIGKILL)\n"
                      "for name, text in (('exit', '0'), ('ended_at', '2026-01-01T00:00:00Z'), ('pid', '1'), ('cancelled', ''),\n"
                      "                   ('spec.json', '{\"job\": \"another study\"}'), ('receipt.json', '{\"gain\": 1.0}')):\n"
                      "    pathlib.Path(name).write_text(text)\nsys.exit(7)\n")
-            f = place.submit(job(3, forge))
+            f = runner.submit(job(3, forge))
             st_f = finish(f)
-            log_f = place.collect(f["job_id"], tmp / "f")
+            log_f = runner.collect(f["job_id"], tmp / "f")
             check("a job that kills its supervisor and writes exit, pid and spec files in its working directory is failed, not done with exit 0",
                   lambda: st_f["phase"] == "failed" and st_f["exit"] is None and "supervisor" in st_f["reason"]
                   and st_f["markers"] == ["fetch.started"] and log_f["job"] == "LOCAL/working-data/3" and log_f["ended_at"] != "2026-01-01T00:00:00Z")
 
-            g = place.submit(job(4, SAYS, '{"gain": 0.5}'))
+            g = runner.submit(job(4, SAYS, '{"gain": 0.5}'))
             finish(g)
-            before = place.collect(g["job_id"], tmp / "g1")
-            (place._work(g["job_id"]) / "receipt.json").write_text('{"gain": 1.0}')
-            (place._work(g["job_id"]) / "marker.invented").write_text("")
-            after = place.collect(g["job_id"], tmp / "g2")
+            before = runner.collect(g["job_id"], tmp / "g1")
+            (runner._work(g["job_id"]) / "receipt.json").write_text('{"gain": 1.0}')
+            (runner._work(g["job_id"]) / "marker.invented").write_text("")
+            after = runner.collect(g["job_id"], tmp / "g2")
             check("what is changed in the working directory after a job ended changes nothing collect brings back",
                   lambda: after == before and (tmp / "g2" / "receipt.json").read_text() == '{"gain": 0.5}' and after["job_markers"] == [])
-            kept = place._state(g["job_id"]) / "keep" / "receipt.json"
+            kept = runner._state(g["job_id"]) / "keep" / "receipt.json"
             kept.write_text('{"gain": 1.0}')
-            edited_output = refuses(place.collect, g["job_id"], tmp / "g3")
+            edited_output = refuses(runner.collect, g["job_id"], tmp / "g3")
             kept.write_text('{"gain": 0.5}')
-            record = place._state(g["job_id"]) / "submitted.json"
+            record = runner._state(g["job_id"]) / "submitted.json"
             honest = record.read_text()
             record.write_text(honest.replace("LOCAL/working-data/4", "ANOTHER-STUDY/held-out/7"))
-            edited_spec = refuses(place.collect, g["job_id"], tmp / "g4")
+            edited_spec = refuses(runner.collect, g["job_id"], tmp / "g4")
             record.write_text(honest)
             check("collect refuses when a kept output or the stored spec was changed after the fact, and brings nothing",
                   lambda: edited_output and edited_spec and not (tmp / "g3").exists() and not (tmp / "g4").exists()
-                  and place.collect(g["job_id"], tmp / "g5") == before)
-            check("collect into the place's own directory is refused", lambda: refuses(place.collect, g["job_id"], place._work(g["job_id"])))
+                  and runner.collect(g["job_id"], tmp / "g5") == before)
+            check("collect into the runner's own directory is refused", lambda: refuses(runner.collect, g["job_id"], runner._work(g["job_id"])))
 
             many = job(5, COUNTS, outputs=("count",))
             with ThreadPoolExecutor(6) as pool:
-                got = list(pool.map(lambda _: LocalPlace(tmp / "place").submit(many), range(6)))
+                got = list(pool.map(lambda _: LocalRunner(tmp / "runner").submit(many), range(6)))
             finish(got[0])
-            place.collect(got[0]["job_id"], tmp / "many")
+            runner.collect(got[0]["job_id"], tmp / "many")
             check("six submits of one spec at once make one job that runs once",
                   lambda: len({r["job_id"] for r in got}) == 1 and sum(r["already_submitted"] is False for r in got) == 1
                   and (tmp / "many" / "count").read_text() == "x")
@@ -1366,11 +1366,11 @@ def local_checks() -> list:
 
 
 def self_check() -> int:
-    """Run the conformance test against the honest places (each must pass)
+    """Run the conformance test against the honest runners (each must pass)
     and the wrong ones (each must fail on the checks written for its
-    defect), then the local place's own checks."""
+    defect), then the local runner's own checks."""
     def run(cls):
-        done = subprocess.run([sys.executable, "-B", str(SELF), "conformance", "--place", cls.__name__, "--json"],
+        done = subprocess.run([sys.executable, "-B", str(SELF), "conformance", "--runner", cls.__name__, "--json"],
                               capture_output=True, text=True)
         try:
             return [tuple(pair) for pair in json.loads(done.stdout)]
@@ -1381,7 +1381,7 @@ def self_check() -> int:
         return " ".join(cls.__doc__.split())
 
     good = True
-    print("honest places (each must pass):")
+    print("honest runners (each must pass):")
     with ThreadPoolExecutor(2) as pool:
         honest = list(pool.map(run, HONEST))
     for cls, res in zip(HONEST, honest):
@@ -1391,7 +1391,7 @@ def self_check() -> int:
               + "".join(f"\n          failed: {n}" for n, p in res if not p))
     names = [n for n, _ in honest[0]]
     good &= bool(names)
-    print("wrong places (each must fail, on the checks written for its defect):")
+    print("wrong runners (each must fail, on the checks written for its defect):")
     with ThreadPoolExecutor(4) as pool:
         wrong = list(pool.map(run, WRONG))
     failed_by = {n: [] for n in names}
@@ -1407,33 +1407,33 @@ def self_check() -> int:
             print(f"          {'caught by' if n in failed else 'NOT CAUGHT BY'}: {n}")
     idle = [n for n in names if not failed_by.get(n)]
     good &= not idle
-    print(f"checks that some wrong place fails: {len(names) - len(idle)} of {len(names)}" + "".join(f"\n  NEVER FAILED: {n}" for n in idle))
-    print("the local place's own records (what the four verbs cannot show):")
+    print(f"checks that some wrong runner fails: {len(names) - len(idle)} of {len(names)}" + "".join(f"\n  NEVER FAILED: {n}" for n in idle))
+    print("the local runner's own records (what the four verbs cannot show):")
     local = local_checks()
     for n, passed in local:
         good &= passed
         print(f"  {'PASS  ' if passed else 'FAIL  '}{n}")
-    print(f"self-check: {'PASS' if good else 'FAIL'} ({sum(bool(r) and all(p for _, p in r) for r in honest)} of {len(HONEST)} honest places "
-          f"pass all {len(names)} checks; {sum(any(not p for _, p in r) for r in wrong)} of {len(WRONG)} wrong places fail; "
+    print(f"self-check: {'PASS' if good else 'FAIL'} ({sum(bool(r) and all(p for _, p in r) for r in honest)} of {len(HONEST)} honest runners "
+          f"pass all {len(names)} checks; {sum(any(not p for _, p in r) for r in wrong)} of {len(WRONG)} wrong runners fail; "
           f"{sum(p for _, p in local)} of {len(local)} local checks pass)")
     return 0 if good else 1
 
 
-# ---------------------------------------------------------------- deliberately wrong places
+# ---------------------------------------------------------------- deliberately wrong runners
 #
-# Each of these is the local place with one thing wrong, and each passed the
+# Each of these is the local runner with one thing wrong, and each passed the
 # conformance test this file had before (9 of 9). They stay here as the test's
 # own test: `conformance --self-check` passes only if every one of them fails,
 # on the checks named in caught_by. The first twelve are an outside reviewer's;
 # the rest were added so that every defect the reviewer listed, and every
-# check, has a wrong place that trips it. Never use one for anything else.
+# check, has a wrong runner that trips it. Never use one for anything else.
 
 def _rewrite(into, log) -> dict:
     (Path(into) / "run-log.json").write_text(json.dumps(log, indent=1, sort_keys=True) + "\n")
     return log
 
 
-class IdFromNameOnly(LocalPlace):
+class IdFromNameOnly(LocalRunner):
     """The job id is the hash of the job's name alone: a changed spec under the same name is 'already submitted' and never runs."""
     caught_by = ("the job id is the one anyone can work out", "a second spec under the same key is refused", "two keys are two jobs")
 
@@ -1444,7 +1444,7 @@ class IdFromNameOnly(LocalPlace):
         return True
 
 
-class SaltedId(LocalPlace):
+class SaltedId(LocalRunner):
     """The job id depends on the process that submits: a retry from a new process is a new job and runs again."""
     caught_by = ("the job id is the one anyone can work out", "a second instance and a second process")
 
@@ -1452,9 +1452,9 @@ class SaltedId(LocalPlace):
         return sha_bytes(canonical(spec["key"]) + str(os.getpid()).encode())[:16]
 
 
-class RerunsFinishedJobs(LocalPlace):
+class RerunsFinishedJobs(LocalRunner):
     """Knows a resubmission only while the job runs (a scheduler that forgets finished jobs): after it ended the
-    same spec runs again in the same directory, and the place still answers already_submitted."""
+    same spec runs again in the same directory, and the runner still answers already_submitted."""
     caught_by = ("after the job ended starts nothing", "after a cancel starts nothing")
 
     def submit(self, spec):
@@ -1469,7 +1469,7 @@ class RerunsFinishedJobs(LocalPlace):
         return res
 
 
-class MarkersOnlyOnSuccess(LocalPlace):
+class MarkersOnlyOnSuccess(LocalRunner):
     """Reports markers only for a job that exited 0: one that started, reached the data and then failed or was
     cancelled looks as if it never started."""
     caught_by = ("a job that fails is done with its own exit code", "a job cancelled after its markers keeps them")
@@ -1481,7 +1481,7 @@ class MarkersOnlyOnSuccess(LocalPlace):
         return st
 
 
-class CancelIsALabel(LocalPlace):
+class CancelIsALabel(LocalRunner):
     """cancel writes the word and stops nothing."""
     caught_by = ("cancel stops the job",)
 
@@ -1499,7 +1499,7 @@ class CancelIsALabel(LocalPlace):
         return end
 
 
-class CollectsEverything(LocalPlace):
+class CollectsEverything(LocalRunner):
     """collect brings back the whole working directory, declared or not: whatever the job fetched comes home with the receipt."""
     caught_by = ("and nothing else",)
 
@@ -1509,7 +1509,7 @@ class CollectsEverything(LocalPlace):
         return log
 
 
-class SuccessWhenKilledOrMissing(LocalPlace):
+class SuccessWhenKilledOrMissing(LocalRunner):
     """A job killed by a signal, a job over its time limit and an argv that cannot be run are all reported done, exit 0."""
     caught_by = ("killed by a signal is failed", "cannot be run is failed", "over its time limit")
 
@@ -1520,7 +1520,7 @@ class SuccessWhenKilledOrMissing(LocalPlace):
         return st
 
 
-class StaleOutputs(LocalPlace):
+class StaleOutputs(LocalRunner):
     """Keeps the first file it ever collected under each output name and hands it back for every later job that exited 0, with a hash to match."""
     caught_by = ("two keys are two jobs",)
     cache: dict = {}
@@ -1537,7 +1537,7 @@ class StaleOutputs(LocalPlace):
         return _rewrite(into, log)
 
 
-class RewritesTheReceipt(LocalPlace):
+class RewritesTheReceipt(LocalRunner):
     """collect edits the numbers in an output and hashes its own edit."""
     caught_by = ("the collected bytes are the bytes the job wrote",)
 
@@ -1551,7 +1551,7 @@ class RewritesTheReceipt(LocalPlace):
         return _rewrite(into, log)
 
 
-class ScrubsOnlyPythonpath(LocalPlace):
+class ScrubsOnlyPythonpath(LocalRunner):
     """Hands the job the submitter's whole environment with PYTHONPATH taken out and nothing set."""
     caught_by = ("no PYTHON variable but the three", "nothing it did not ask for", "bytecode planted beside a source file")
 
@@ -1559,7 +1559,7 @@ class ScrubsOnlyPythonpath(LocalPlace):
         return {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
 
 
-class BareRunLog(LocalPlace):
+class BareRunLog(LocalRunner):
     """The run log says nothing about what ran, where, in what environment or when, and the file on disk is not what collect returned."""
     caught_by = ("the run log is the file collect wrote",)
 
@@ -1575,7 +1575,7 @@ class EverythingWrong(IdFromNameOnly, RerunsFinishedJobs, MarkersOnlyOnSuccess, 
     caught_by = ("the job id is the one anyone can work out", "and nothing else", "cancel stops the job", "killed by a signal is failed")
 
 
-class LeaksMarkers(LocalPlace):
+class LeaksMarkers(LocalRunner):
     """Shows fetch.started for a job that never started, and every job's own markers under every job."""
     caught_by = ("markers are a job's own", "does not match never starts")
 
@@ -1587,7 +1587,7 @@ class LeaksMarkers(LocalPlace):
         return st
 
 
-class IgnoresTheManifest(LocalPlace):
+class IgnoresTheManifest(LocalRunner):
     """Carries the inputs manifest and checks nothing: the declared hashes come back as if they had been observed."""
     caught_by = ("does not match never starts",)
 
@@ -1600,9 +1600,9 @@ class IgnoresTheManifest(LocalPlace):
         return _rewrite(into, {**log, "inputs": {k: {"declared": v, "observed": v} for k, v in declared.items()}})
 
 
-class IgnoresResources(LocalPlace):
+class IgnoresResources(LocalRunner):
     """Accepts any resources and enforces none."""
-    caught_by = ("over its time limit", "a resource the place cannot honour")
+    caught_by = ("over its time limit", "a resource the runner cannot honour")
 
     def check(self, spec):
         return check_spec(spec, {"python", "work", *self.tokens}, (spec.get("resources") or {}) if isinstance(spec, dict) else ())
@@ -1611,7 +1611,7 @@ class IgnoresResources(LocalPlace):
         return {**super()._config(job_id, spec), "walltime": None}
 
 
-class EchoesTheDeclaredEnvironment(LocalPlace):
+class EchoesTheDeclaredEnvironment(LocalRunner):
     """The run log gives the interpreter the spec expected, not the one that ran."""
     caught_by = ("names the interpreter the job itself reports",)
 
@@ -1622,7 +1622,7 @@ class EchoesTheDeclaredEnvironment(LocalPlace):
         return _rewrite(into, log)
 
 
-class FollowsOutputPaths(LocalPlace):
+class FollowsOutputPaths(LocalRunner):
     """Takes any path as an output and copies whatever it leads to: absolute paths, parent directories and
     symlinks all come back, under their last name."""
     caught_by = ("is left behind and named", "are refused at submit")
@@ -1641,7 +1641,7 @@ class FollowsOutputPaths(LocalPlace):
         return _rewrite(into, log)
 
 
-class DeadJobStillRunning(LocalPlace):
+class DeadJobStillRunning(LocalRunner):
     """Never looks whether a job's supervisor is alive: a job that died without a final record is running for ever."""
     caught_by = ("not running for ever",)
     settle_seconds = 6.0
@@ -1650,7 +1650,7 @@ class DeadJobStillRunning(LocalPlace):
         return None
 
 
-class CollectsAnyTime(LocalPlace):
+class CollectsAnyTime(LocalRunner):
     """collect answers at any moment with whatever is there, so what it brings back while a job runs is not what is there later."""
     caught_by = ("collect is refused while a job can still change",)
 
@@ -1662,7 +1662,7 @@ class CollectsAnyTime(LocalPlace):
         return super().collect(job_id, into)
 
 
-class AcceptsHalfASpec(LocalPlace):
+class AcceptsHalfASpec(LocalRunner):
     """Refuses a spec only when argv and outputs are both missing: one without the other is made up and run."""
     caught_by = ("each alone",)
 
@@ -1672,15 +1672,15 @@ class AcceptsHalfASpec(LocalPlace):
         return super().check(spec)
 
 
-class IgnoresUnknownFields(LocalPlace):
-    """A field the place never reads is accepted, so two specs that differ only in it are two jobs or one, as luck has it."""
+class IgnoresUnknownFields(LocalRunner):
+    """A field the runner never reads is accepted, so two specs that differ only in it are two jobs or one, as luck has it."""
     caught_by = ("an unknown field",)
 
     def check(self, spec):
         return super().check({k: v for k, v in spec.items() if k in SPEC_FIELDS} if isinstance(spec, dict) else spec)
 
 
-class LoadsPlantedBytecode(LocalPlace):
+class LoadsPlantedBytecode(LocalRunner):
     """Builds the job's environment from the allow-list but sets no bytecode cache prefix, so bytecode beside a source file is loaded in its place."""
     caught_by = ("bytecode planted beside a source file", "no PYTHON variable but the three")
 
@@ -1690,7 +1690,7 @@ class LoadsPlantedBytecode(LocalPlace):
         return env
 
 
-class PassesTheSubmittersEnvironment(LocalPlace):
+class PassesTheSubmittersEnvironment(LocalRunner):
     """Drops the PYTHON variables and passes on everything else the submitter holds, credentials included."""
     caught_by = ("nothing it did not ask for",)
 
@@ -1698,7 +1698,7 @@ class PassesTheSubmittersEnvironment(LocalPlace):
         return {**{k: v for k, v in os.environ.items() if not k.upper().startswith("PYTHON")}, **super()._job_env(spec)}
 
 
-class AcceptsAChangedSpec(LocalPlace):
+class AcceptsAChangedSpec(LocalRunner):
     """Answers already_submitted to a different spec under a used key, as if it were the same job."""
     caught_by = ("a second spec under the same key is refused",)
 
@@ -1718,7 +1718,7 @@ class CancelIsOneSignal(CancelIsALabel):
         return super().cancel(job_id)
 
 
-class CancelsFinishedJobs(LocalPlace):
+class CancelsFinishedJobs(LocalRunner):
     """cancel relabels a job that had already ended as cancelled."""
     caught_by = ("cancelling a job that already ended",)
 
@@ -1734,16 +1734,16 @@ class CancelsFinishedJobs(LocalPlace):
         return st
 
 
-class RunLogLosesTheTokens(LocalPlace):
+class RunLogLosesTheTokens(LocalRunner):
     """The run log gives the argv only as it was expanded on this machine, so the same job reads differently from every checkout."""
-    caught_by = ("tokens are expanded by the place",)
+    caught_by = ("tokens are expanded by the runner",)
 
     def collect(self, job_id, into):
         log = super().collect(job_id, into)
         return _rewrite(into, {**log, "argv": log["argv_started"]})
 
 
-class CollectStampsItself(LocalPlace):
+class CollectStampsItself(LocalRunner):
     """Every collect writes the moment it was made into the run log, so no two collects of one job agree."""
     caught_by = ("collecting again later gives the same run log",)
 
@@ -1751,15 +1751,15 @@ class CollectStampsItself(LocalPlace):
         return _rewrite(into, {**super().collect(job_id, into), "collected_at": time.time()})
 
 
-class RunLogOmitsTheInputs(LocalPlace):
+class RunLogOmitsTheInputs(LocalRunner):
     """Checks the manifest and then says nothing in the run log about what it hashed."""
-    caught_by = ("the run log names what the place hashed",)
+    caught_by = ("the run log names what the runner hashed",)
 
     def collect(self, job_id, into):
         return _rewrite(into, {**super().collect(job_id, into), "inputs": {}})
 
 
-class InventsUnknownJobs(LocalPlace):
+class InventsUnknownJobs(LocalRunner):
     """Takes anything for a job id and reports a job it has never seen as queued."""
     caught_by = ("an unknown job is lost",)
 
@@ -1771,8 +1771,8 @@ class InventsUnknownJobs(LocalPlace):
         return {**st, "phase": "queued", "reason": None} if st["phase"] == "lost" else st
 
 
-class KeepsJobsSomewhereElse(LocalPlace):
-    """An honest place whose records and working directories are laid out differently (as on any scheduler,
+class KeepsJobsSomewhereElse(LocalRunner):
+    """An honest runner whose records and working directories are laid out differently (as on any scheduler,
     cloud service or platform). It must pass."""
 
     def _state(self, job_id):
@@ -1782,7 +1782,7 @@ class KeepsJobsSomewhereElse(LocalPlace):
         return self.root / "nodes" / "n01" / job_id
 
 
-HONEST = [LocalPlace, KeepsJobsSomewhereElse]
+HONEST = [LocalRunner, KeepsJobsSomewhereElse]
 WRONG = [IdFromNameOnly, SaltedId, RerunsFinishedJobs, MarkersOnlyOnSuccess, CancelIsALabel, CollectsEverything,
          SuccessWhenKilledOrMissing, StaleOutputs, RewritesTheReceipt, ScrubsOnlyPythonpath, BareRunLog, EverythingWrong,
          LeaksMarkers, IgnoresTheManifest, IgnoresResources, EchoesTheDeclaredEnvironment, FollowsOutputPaths,
@@ -1796,51 +1796,51 @@ WRONG = [IdFromNameOnly, SaltedId, RerunsFinishedJobs, MarkersOnlyOnSuccess, Can
 def main() -> int:
     sys.dont_write_bytecode = True
     sys.modules.setdefault("adapter", sys.modules[__name__])
-    if sys.argv[1:2] == ["supervise"]:  # the local place's own supervisor: started by submit, not a command for people
+    if sys.argv[1:2] == ["supervise"]:  # the local runner's own supervisor: started by submit, not a command for people
         return supervise(Path(sys.argv[2]), int(sys.argv[3]))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    ref = dict(default="LocalPlace", metavar="REF", help="a class in this file, module:Class or path/to/file.py:Class")
+    ref = dict(default="LocalRunner", metavar="REF", help="a class in this file, module:Class or path/to/file.py:Class")
     for name in ("submit", "status", "collect", "cancel"):
         p = sub.add_parser(name, allow_abbrev=False)
-        p.add_argument("--root", type=Path, required=True, help="the directory the place keeps its own records in")
-        p.add_argument("--place", **ref)
+        p.add_argument("--root", type=Path, required=True, help="the directory the runner keeps its own records in")
+        p.add_argument("--runner", **ref)
         if name == "submit":
             p.add_argument("--spec", type=Path, required=True)
             p.add_argument("--token", action="append", default=[], metavar="NAME=PATH",
-                           help="a token this place expands at the start of an argument, as in gain=/path/to/methods/gain")
+                           help="a token this runner expands at the start of an argument, as in gain=/path/to/methods/gain")
         else:
             p.add_argument("--job", required=True)
         if name == "collect":
             p.add_argument("--into", type=Path, required=True)
     c = sub.add_parser("conformance", allow_abbrev=False)
-    c.add_argument("--place", **ref)
+    c.add_argument("--runner", **ref)
     c.add_argument("--self-check", action="store_true",
-                   help="test the test: every deliberately wrong place must fail, the honest ones must pass")
+                   help="test the test: every deliberately wrong runner must fail, the honest ones must pass")
     c.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
     try:
         if a.cmd == "conformance":
             if a.self_check:
                 return self_check()
-            results = conformance(a.place)
+            results = conformance(a.runner)
             if a.json:
                 print(json.dumps(results))
                 return 0
             for name, ok in results:
                 print(("PASS  " if ok else "FAIL  ") + name)
             good = all(ok for _, ok in results)
-            label = "local" if a.place == "LocalPlace" else a.place
+            label = "local" if a.runner == "LocalRunner" else a.runner
             print(f"conformance ({label}): {'PASS' if good else 'FAIL'} ({sum(ok for _, ok in results)} of {len(results)})")
             return 0 if good else 1
-        cls, _ = load_place(a.place)
+        cls, _ = load_place(a.runner)
         tokens = {}
         for item in getattr(a, "token", []):
             name, eq, value = item.partition("=")
             if not (eq and re.fullmatch(r"[a-z][a-z0-9_]*", name) and value):
                 raise Refused(f"--token takes NAME=PATH, as in gain=/path/to/methods/gain; got `{item}`")
             tokens[name] = str(Path(value).resolve()) if os.path.exists(value) else value
-        place = cls(a.root, tokens=tokens) if tokens else cls(a.root)
+        runner = cls(a.root, tokens=tokens) if tokens else cls(a.root)
         if a.cmd == "submit":
             try:
                 spec = json.loads(a.spec.read_text())
@@ -1848,13 +1848,13 @@ def main() -> int:
                 raise Refused(f"cannot read the spec at {a.spec} ({e.strerror})") from e
             except ValueError as e:
                 raise Refused(f"the spec at {a.spec} is not JSON ({e})") from e
-            res = place.submit(spec)
+            res = runner.submit(spec)
         elif a.cmd == "status":
-            res = place.status(a.job)
+            res = runner.status(a.job)
         elif a.cmd == "collect":
-            res = place.collect(a.job, a.into)
+            res = runner.collect(a.job, a.into)
         else:
-            res = place.cancel(a.job)
+            res = runner.cancel(a.job)
     except ValueError as e:
         print(f"REFUSED: {e}", file=sys.stderr)
         return 2

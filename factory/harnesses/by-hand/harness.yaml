@@ -1,0 +1,12 @@
+# A harness: what starts an agent. This one starts none: a person, or one assistant playing the roles in turn,
+# asks for one command, one write or one read at a time, and the same decision the Claude Code harness uses says
+# yes or no.
+description: "Checks one command, one write or one read at a time against an agent's file, with no agent started."
+starts: "nothing: as_role.py asks the decision for one call and, for an allowed command, runs it as its words with no shell"
+models: any                         # whoever acts by hand says which model they are (`--model`), or is a person
+status: built
+holds:
+  - "what an agent may call, write and read, for the calls that are put to it"
+by_instruction_only:
+  - "a fresh context: none is started, so one session can play every role"
+  - "which model acts: it is whatever the caller declares"
