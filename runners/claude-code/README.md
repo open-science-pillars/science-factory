@@ -6,7 +6,7 @@ A runner starts the right role with the right tools. This one does it with Claud
 |---|---|
 | `render.py` | writes `.claude/agents/<role>.md`, `.claude/skills/<name>/` and `.mcp.json` from the neutral files; `--check` fails when what is on disk is missing, stale, edited by hand, or has a role or skill with no source |
 | `allow.py` | the decision each tool call of a role gets, read from the role file at the time of the call; Claude Code calls it as a PreToolUse hook that each rendered role carries |
-| `run_role.py` | starts one role in a fresh context with `claude -p --agent <role>` and keeps the task, the answer and which model ran it |
+| `run_role.py` | starts one role in a fresh context with `claude -p --agent <role>` and keeps the task, the answer and which model ran it, in the role's own place (`record/<role>/`); it refuses any other place, and refuses a task that names a path the role must never see |
 
 The rendered files are committed, so the repository works when opened in Claude Code: start the coordinating role with `claude --agent coordinating`, or one role at a time with `run_role.py`. After changing a role or a skill, run `uv run runners/claude-code/render.py` and commit both.
 
@@ -25,12 +25,18 @@ Each rendered role points to the knowledge base as a wiki (`openwiki/` in this r
 - The role's name. A `--by` must be `agent:<role>` or `agent:<role>-<suffix>`, so a role cannot act under another role's name or a person's.
 - Where the role writes. Write and Edit only on paths matching the role's `writes`, and never on a log, the record of what has been opened, a receipt, a recorded lead or verdict, a role, a skill, a tool or the rendered files.
 - Reading a path that an exploration beside it set aside or a study's plan holds out is blocked for Read, Grep and Glob.
+- Reading a place the role file names under `must_never_see` as `path:<pattern>`. The review role's file names `path:record/analysis/*`, the analysis role's own account of the work, so the review role can neither read a file there nor search a folder that holds it. This was added after a review assistant, in a run that did not use this runner, saw the author's account by accident and stopped itself.
 
-**Tested and not exercised.** `allow.py`, `render.py` and `run_role.py` each test themselves (57, 11 and 6 checks). That Claude Code calls the hook from a subagent's front matter, applies `tools` to a role started with `--agent`, and loads the listed skills was **not exercised**: the environment this was built in could not start Claude Code against a model. Until someone runs it, read "enforced" above as "rendered to be enforced".
+**Enforced by `run_role.py`, whatever the platform does.**
+
+- Each role's task and answer are kept in a folder named for the role; a record anywhere else is refused before anything is started.
+- A task for a role that names a path the role must never see is refused before anything is started. It reads the task's text for the place and no further: a task that pastes the author's reasoning in is not caught.
+
+**Tested and not exercised.** `allow.py`, `render.py` and `run_role.py` each test themselves (65, 11 and 8 checks). That Claude Code calls the hook from a subagent's front matter, applies `tools` to a role started with `--agent`, and loads the listed skills was **not exercised**: the environment this was built in could not start Claude Code against a model. Separate assistants have since been run from the role files (`examples/baton-rouge/with-assistants`), but they were started by a coordinating session that gave each one its role file's path and a task, not through this runner: their restrictions were by instruction. Until someone runs it, read "enforced by the platform" and "enforced by `allow.py`" above as "rendered to be enforced".
 
 **Still instruction, on one machine.**
 
 - No route to held-out data. A script run through `explore.py look` or `sf.py test` can read anything the machine can reach, including the network, once it is running. The tools check what a command names and what a look leaves behind; they cannot see inside a running script. Only running the analysis role where the held-out values cannot be reached would close this, and that is not built.
-- A conversation started without the rendered role (plain `claude` in this repository) is held by nothing here.
+- A conversation started without the rendered role (plain `claude` in this repository) is held by nothing here. That is how the one run by separate assistants was made, and its record shows what instruction alone lets through: a look made outside the tool with a plain interpreter, and listings of folders an assistant had been told to keep out of. Both were declared by the assistants that made them.
 - That a role with a fresh context has not been told the other role's reasoning: the coordinating role is instructed not to pass it on, and nothing checks what it passes.
 - Who is behind a name. `agent:review` is typed, as every name in the study tool is.

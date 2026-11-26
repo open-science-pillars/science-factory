@@ -1,0 +1,43 @@
+{
+ "way": "exploring",
+ "id": "LOOK-002",
+ "why": "Run the method the signed recipe rules in, unmodified (the shipped executor at 15 minutes), on the working data, and keep its receipt.",
+ "argv": [
+  "uv",
+  "run",
+  "/home/claude/hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "--inputs",
+  "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--tolerance-minutes",
+  "15",
+  "--out",
+  "work/confrontation-15.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "/home/claude/hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3"
+ },
+ "inputs": [
+  {
+   "word": "/home/claude/hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+   "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3",
+   "bytes": 9486
+  },
+  {
+   "word": "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-002.out.txt",
+  "sha256": "06c595fb1110563659f064373b57002f8973464912952f775b299b7c192a1b68"
+ },
+ "wrote": {
+  "work/confrontation-15.json": "0d54157e4269216c09a501054027cf05029e933b591f5ca022c5af5f2160d59b"
+ },
+ "at": "2026-11-26T06:22:35Z",
+ "by": "agent:analysis-0101"
+}

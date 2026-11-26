@@ -21,6 +21,8 @@ record says which runner was used so that nobody reads it as one.
 Usage:
   uv run runners/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run mvp/loops/explore.py status --exploration X
   uv run runners/by-hand/as_role.py --role review --record DIR/commands.jsonl --write PATH   (asks only whether the role may write PATH)
+  uv run runners/by-hand/as_role.py --role review --record DIR/commands.jsonl --read PATH    (asks only whether the role may read PATH)
+  uv run runners/by-hand/as_role.py --selftest
 """
 import argparse
 import datetime as dt
@@ -33,6 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+sys.dont_write_bytecode = True  # the decision is loaded from allow.py beside the other runner; no bytecode folder is left there
 
 
 def decision():
@@ -42,11 +45,40 @@ def decision():
     return mod.decide
 
 
+def selftest() -> int:
+    import tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="as-role-selftest-"))
+    record = tmp / "commands.jsonl"
+
+    def ask(*words) -> int:
+        return subprocess.run([sys.executable, __file__, "--record", str(record), *words], capture_output=True, text=True).returncode
+
+    results = [
+        ("the review role is refused a read of the analysis role's own account", ask("--role", "review", "--read", "examples/w/record/analysis/01.answer.md") == 2),
+        ("the review role may read the work itself", ask("--role", "review", "--read", "examples/w/explorations/E1/lead.md") == 0),
+        ("a role may write in its own place and not in another's",
+         ask("--role", "review", "--write", "examples/w/record/review/02.answer.md") == 0 and ask("--role", "review", "--write", "examples/w/record/analysis/02.answer.md") == 2),
+        ("a command the role file does not allow is not run", ask("--role", "review", "--", "uv", "run", "mvp/loops/explore.py", "look", "--exploration", "x") == 2),
+        ("every answer is kept in the record, refusals included", len(record.read_text().splitlines()) == 5 and '"allowed": false' in record.read_text()),
+        ("asking leaves no bytecode folder beside the decision it loads", not (ROOT / "runners" / "claude-code" / "__pycache__").exists()),
+    ]
+    record.unlink()
+    tmp.rmdir()
+    failed = [n for n, good in results if not good]
+    for n in failed:
+        print("FAIL:", n)
+    print(f"selftest: {'PASS' if not failed else 'FAIL'} ({len(results) - len(failed)} of {len(results)})")
+    return 0 if not failed else 1
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--selftest"]:
+        return selftest()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--role", required=True)
     ap.add_argument("--record", type=Path, required=True)
     ap.add_argument("--write", default=None, help="a path: ask whether the role may write it, and record the answer")
+    ap.add_argument("--read", default=None, help="a path: ask whether the role may read it, and record the answer")
     ap.add_argument("argv", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     decide = decision()
@@ -55,6 +87,10 @@ def main() -> int:
     if a.write:
         why = decide(a.role, {"tool_name": "Write", "tool_input": {"file_path": a.write}, "cwd": str(ROOT)})
         line.update(write=a.write, allowed=why is None, blocked_because=why)
+        code = 0 if why is None else 2
+    elif a.read:
+        why = decide(a.role, {"tool_name": "Read", "tool_input": {"file_path": a.read}, "cwd": str(ROOT)})
+        line.update(read=a.read, allowed=why is None, blocked_because=why)
         code = 0 if why is None else 2
     else:
         command = shlex.join(argv)

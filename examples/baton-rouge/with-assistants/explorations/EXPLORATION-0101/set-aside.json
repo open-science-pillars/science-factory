@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "exploration": "EXPLORATION-0101",
+ "set_aside": {
+  "how": "a later period",
+  "subject": {
+   "reach": "74210000331",
+   "gauge": "USGS-07374000",
+   "product": "SWOT RiverSP reach Version D"
+  },
+  "window": {
+   "start": "2025-01-01",
+   "end": "9999-12-31",
+   "open_ended": true
+  },
+  "sites": [],
+  "releases": [],
+  "paths": [],
+  "also_set_aside": [],
+  "time_keys": [
+   "time",
+   "t",
+   "date",
+   "datetime",
+   "timestamp"
+  ],
+  "why": "The request says only calendar 2024 has been looked at and that nothing after 2024 has been downloaded or opened. Everything from 2025-01-01 onward is therefore unseen by anyone, and a later period on the same reach and gauge is what a confirming study of this lead would most plausibly use. This is the widest honest set-aside, chosen before the knowledge was read; any processing boundary inside it is to be read from the knowledge afterwards and noted, not used to narrow it.",
+  "working": {
+   "description": "Calendar 2024 SWOT reach passes paired with the gauge at Baton Rouge: the hydrology capability's fixture swot_gauge_baton_rouge_2024.json, already plotted by the requester.",
+   "window": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+   }
+  }
+ },
+ "started": "0:caa6992b197e4135afef6ee6c26b6d8e334b7a00ac6093ae8dd8a2a663da1380",
+ "says": "what this exploration does not look at; a look that names it is refused"
+}

@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-009",
+ "why": "How much do pairing tolerance and the half of the year move the width relation, and does a track's line fitted on the first half hold in the second?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_09_alternatives.py",
+  "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_09_alternatives.py",
+  "sha256": "0e437811377493eb69119a44d9129d86552367b5169e350a1148fe997965c929"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_09_alternatives.py",
+   "sha256": "0e437811377493eb69119a44d9129d86552367b5169e350a1148fe997965c929",
+   "bytes": 1962
+  },
+  {
+   "word": "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-009.out.txt",
+  "sha256": "295b3d2851104f02260e0fdafdccf6254fcd448367029bd9c9a59df3593e2eed"
+ },
+ "wrote": {},
+ "at": "2026-11-26T07:01:32Z",
+ "by": "agent:analysis-0102"
+}

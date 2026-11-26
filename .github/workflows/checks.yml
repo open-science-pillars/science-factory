@@ -57,11 +57,21 @@ jobs:
         run: |
           uv run science-factory/runners/claude-code/allow.py --selftest
           uv run science-factory/runners/claude-code/run_role.py --selftest
-      - name: The demo's drafted knowledge still passes the queue's rules and the organization's checker
-        run: >
-          uv run science-factory/mvp/loops/knowledge.py check-drafts
-          --queue science-factory/examples/baton-rouge/knowledge-queue
-          --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/runners/by-hand/as_role.py --selftest
+      - name: The scripts the exploring skill ships test themselves
+        run: |
+          uv run science-factory/skills/explore-a-record/scripts/describe_record.py --selftest
+          uv run science-factory/skills/explore-a-record/scripts/plot_xy.py --selftest
+      - name: The demo's drafted knowledge, from both runs, still passes the queue's rules and the organization's checker
+        run: |
+          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+      - name: The demo's exploration logs, from both runs, still check out on the tool as it now is
+        run: |
+          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
+          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
+          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
+          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002
 
   stand-alone:
     # Everything added with the assistants and the two loops runs from this repository alone.
@@ -76,7 +86,19 @@ jobs:
           uv run mvp/loops/knowledge.py selftest
           uv run mvp/loops/wiki_server.py --selftest
           uv run assistants/check_roles.py
+          uv run assistants/check_roles.py --selftest
           uv run runners/claude-code/render.py --check
+          uv run runners/claude-code/render.py --selftest
           uv run runners/claude-code/allow.py --selftest
+          uv run runners/claude-code/run_role.py --selftest
+          uv run runners/by-hand/as_role.py --selftest
+          uv run skills/explore-a-record/scripts/describe_record.py --selftest
+          uv run skills/explore-a-record/scripts/plot_xy.py --selftest
       - name: The stand-alone example, end to end
+        run: uv run examples/stand-alone/run.py
+      - name: The stand-alone example again, with a setting that makes the launcher warn on standard error
+        # uv prints a deprecation warning for this variable on every call; the example once read that warning as part of
+        # a tool's answer and crashed. One of its own steps tests the same thing without depending on the launcher.
+        env:
+          UV_NATIVE_TLS: "true"
         run: uv run examples/stand-alone/run.py

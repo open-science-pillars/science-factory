@@ -1,0 +1,26 @@
+[exploring: output of LOOK-015]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+== reach_q equal to 1 and wse_u below 0.2 m (the analyst's limit): n=46
+   gain held at one, constant offset only: residual sd 0.0915 m, residual lag-1 +0.339
+   free gain: 1.0140 (plain standard error 0.0041); residual sd 0.0824 m, residual lag-1 +0.127
+   gain held at one, drift in time: -0.1322 m per year (plain standard error 0.0444); residual sd 0.0844 m, residual lag-1 +0.191
+   gain held at one, step for the lowest third of stage (gauge at or below 2.96 m, n=15): -0.0940 m (plain standard error 0.0254); residual sd 0.0808 m, residual lag-1 +0.044
+   gain held at one, reach slope times a distance: 4042 m (plain standard error 1120 m); residual sd 0.0813 m, residual lag-1 +0.148
+   free gain and the low-stage step together: gain 1.0063 (plain standard error 0.0061), step -0.0644 m (plain standard error 0.0385); residual sd 0.0807 m
+   the product's reach slope rises by 3.179 ppm per metre of gauge elevation (plain standard error 0.264); so one kilometre between the gauge and the point the reach height refers to adds 0.0032 to the gain
+   at the distance the signed recipe states (0.44 km) geometry alone gives a gain excess of 0.0014, against 0.0140 seen; the distance that would give all of what is seen is 4.39 km
+   lowest third (n=15, gauge 1.64 to 2.96 m): mean satellite minus gauge, less the set's mean, -0.0633 m; sd 0.0807 m; dates 2024-01-02 to 2024-12-22
+   middle third (n=16, gauge 2.99 to 6.42 m): mean satellite minus gauge, less the set's mean, +0.0362 m; sd 0.0971 m; dates 2024-01-22 to 2024-12-01
+   highest third (n=15, gauge 6.45 to 10.33 m): mean satellite minus gauge, less the set's mean, +0.0247 m; sd 0.0619 m; dates 2024-02-02 to 2024-06-17
+== the two departing passes left out by date: n=48
+   gain held at one, constant offset only: residual sd 0.0913 m, residual lag-1 +0.339
+   free gain: 1.0146 (plain standard error 0.0040); residual sd 0.0813 m, residual lag-1 +0.120
+   gain held at one, drift in time: -0.1166 m per year (plain standard error 0.0427); residual sd 0.0856 m, residual lag-1 +0.210
+   gain held at one, step for the lowest third of stage (gauge at or below 2.96 m, n=16): -0.0917 m (plain standard error 0.0248); residual sd 0.0811 m, residual lag-1 +0.075
+   gain held at one, reach slope times a distance: 4180 m (plain standard error 1085 m); residual sd 0.0803 m, residual lag-1 +0.147
+   free gain and the low-stage step together: gain 1.0081 (plain standard error 0.0059), step -0.0538 m (plain standard error 0.0369); residual sd 0.0803 m
+   the product's reach slope rises by 3.190 ppm per metre of gauge elevation (plain standard error 0.253); so one kilometre between the gauge and the point the reach height refers to adds 0.0032 to the gain
+   at the distance the signed recipe states (0.44 km) geometry alone gives a gain excess of 0.0014, against 0.0146 seen; the distance that would give all of what is seen is 4.56 km
+   lowest third (n=16, gauge 1.61 to 2.96 m): mean satellite minus gauge, less the set's mean, -0.0612 m; sd 0.0782 m; dates 2024-01-01 to 2024-12-22
+   middle third (n=16, gauge 2.99 to 6.33 m): mean satellite minus gauge, less the set's mean, +0.0328 m; sd 0.1023 m; dates 2024-01-22 to 2024-12-01
+   highest third (n=16, gauge 6.42 to 10.33 m): mean satellite minus gauge, less the set's mean, +0.0283 m; sd 0.0598 m; dates 2024-02-02 to 2024-07-28

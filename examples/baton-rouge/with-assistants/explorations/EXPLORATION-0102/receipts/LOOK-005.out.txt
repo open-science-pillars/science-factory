@@ -1,0 +1,29 @@
+[exploring: output of LOOK-005]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+paired at 15 min: 50 of 52 (gauge provisional throughout)
+
+LEVELS: width_m against stage_m (stage span 1.47 to 10.33 m)
+all pairs                                    n=50  r=+0.683  rho=+0.740  slope  +7.77 (se 1.20) m width per m stage  resid sd  25.1 m  stage-equivalent scatter  3.23 m  stage sd 2.99 m
+without 2024-02-12 (widest, 937.3 m)         n=49  r=+0.745  rho=+0.730  slope  +6.65 (se 0.87) m width per m stage  resid sd  17.9 m  stage-equivalent scatter  2.68 m  stage sd 2.96 m
+without the two height-departed passes       n=48  r=+0.706  rho=+0.771  slope  +8.12 (se 1.20) m width per m stage  resid sd  24.5 m  stage-equivalent scatter  3.02 m  stage sd 2.98 m
+without all three                            n=47  r=+0.776  rho=+0.763  slope  +6.97 (se 0.84) m width per m stage  resid sd  16.9 m  stage-equivalent scatter  2.43 m  stage sd 2.96 m
+track A                                      n=17  r=+0.762  rho=+0.895  slope  +9.86 (se 2.16) m width per m stage  resid sd  27.0 m  stage-equivalent scatter  2.74 m  stage sd 3.13 m
+track B                                      n=18  r=+0.865  rho=+0.907  slope  +7.09 (se 1.03) m width per m stage  resid sd  13.1 m  stage-equivalent scatter  1.85 m  stage sd 3.09 m
+track C                                      n=15  r=+0.973  rho=+0.936  slope  +6.50 (se 0.43) m width per m stage  resid sd   4.6 m  stage-equivalent scatter  0.72 m  stage sd 2.91 m
+track A without 2024-02-12                   n=16  r=+0.908  rho=+0.888  slope  +7.19 (se 0.89) m width per m stage  resid sd  10.5 m  stage-equivalent scatter  1.46 m  stage sd 3.05 m
+track B without 2024-03-26                   n=17  r=+0.914  rho=+0.929  slope  +7.57 (se 0.87) m width per m stage  resid sd  10.8 m  stage-equivalent scatter  1.43 m  stage sd 3.12 m
+track C without 2024-10-30                   n=14  r=+0.973  rho=+0.934  slope  +6.68 (se 0.45) m width per m stage  resid sd   4.6 m  stage-equivalent scatter  0.69 m  stage sd 2.82 m
+
+LEVELS with one constant per track removed (three constants fitted after seeing the tracks):
+pooled, track constants removed              n=50  r=+0.805  rho=+0.887  slope  +7.92 (se 0.84) m width per m stage  resid sd  17.6 m  stage-equivalent scatter  2.23 m  stage sd 2.99 m
+same, without 2024-02-12                     n=49  r=+0.897  rho=+0.884  slope  +6.99 (se 0.50) m width per m stage  resid sd  10.3 m  stage-equivalent scatter  1.48 m  stage sd 2.96 m
+
+Same scores for the HEIGHT, for scale (wse_m against stage_m; a level across datums, shown only as a correlation):
+height all pairs: n=50 r=+0.9958 rho=+0.9987
+
+CHANGES between consecutive paired passes (the signed recipe's form):
+all pairs, consecutive                   n=49  width change vs stage change r=+0.274 rho=+0.242 | height change vs stage change r=+0.9567 | sd of width change 39.7 m, of stage change 1.196 m
+track A, consecutive within track        n=16  width change vs stage change r=+0.675 rho=+0.729 | height change vs stage change r=+0.9996 | sd of width change 53.9 m, of stage change 2.425 m
+track B, consecutive within track        n=17  width change vs stage change r=+0.670 rho=+0.532 | height change vs stage change r=+0.9909 | sd of width change 26.4 m, of stage change 2.311 m
+track C, consecutive within track        n=14  width change vs stage change r=+0.942 rho=+0.934 | height change vs stage change r=+0.9706 | sd of width change 16.4 m, of stage change 2.453 m
+consecutive changes with |stage change| >= 1 m: n=17, width change has the same sign as stage change in 10

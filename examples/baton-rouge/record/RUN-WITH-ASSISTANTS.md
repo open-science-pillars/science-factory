@@ -1,5 +1,7 @@
 # Running this example with real assistants
 
+*Since this page was written, the example has been run with separate assistants: `../with-assistants/`, and `../with-assistants/record/WHO-RAN-THIS.md` for who ran what. That run did not go through the launcher below; each assistant was started by a coordinating session from its role file. What follows is still the way to run it through the Claude Code runner, which has not been exercised. The launcher now keeps each role's record in a folder named for the role, and refuses a review task that points at the analysis role's folder.*
+
 The record here was made by one instance playing every role (WHO-RAN-THIS.md). To make it with real assistants, each in a fresh context and held to its role's tools, from the repository root, with the hydrology and nasa-daac-knowledge checkouts beside the repository:
 
 With Claude Code subagents. Open the repository in Claude Code started as the coordinating role (`claude --agent coordinating`) and give it the text of `01-coordinating.task.md` with a new work folder. It may start only the analysis, review and curating roles, each from `.claude/agents/<role>.md`.
@@ -9,7 +11,7 @@ One role at a time, keeping the record:
 ```
 uv run runners/claude-code/run_role.py --role analysis \
   --task-file examples/baton-rouge/record/02-analysis.task.md \
-  --record <new work folder>/record/02-analysis
+  --record <new work folder>/record/analysis/02
 ```
 
 Use the task files in this folder in order (02 to 08), changing the work folder in each to a new one so that this record is not overwritten. `run_role.py` writes the task, the answer and which model ran the role. Between roles, `uv run mvp/loops/explore.py status --exploration <dir>` says who is next.

@@ -12,18 +12,28 @@ writes what the brief of a working example asks to be kept: the task as it
 was given, what the assistant answered, which model ran it, and when.
 
 Usage:
-  uv run runners/claude-code/run_role.py --role analysis --task-file TASK.md --record DIR/NN-analysis
+  uv run runners/claude-code/run_role.py --role analysis --task-file TASK.md --record DIR/record/analysis/NN
   uv run runners/claude-code/run_role.py --selftest
 
 `--record` names a path without extension: the task is copied to
 <record>.task.md, the answer goes to <record>.answer.md, and what ran goes
 to <record>.run.json. `--claude` names the Claude Code program (default
 `claude`).
+
+Each role's account has its own place. The record of a role goes in a
+folder named for the role (`record/analysis/01`, `record/review/02`), and
+this script refuses any other place, so that the account of the assistant
+that did the work never sits where the assistant that checks it writes.
+It also refuses a task that names a path the role file lists under
+`must_never_see` as `path:<pattern>`: a task for the review role that
+points at `record/analysis/` hands the reviewer the author's account, and
+is not started.
 """
 import argparse
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -34,10 +44,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+def never_seen(role: str, root: Path) -> list:
+    """The `path:<pattern>` entries under `must_never_see` in the role file, read without a YAML library."""
+    f = root / "assistants" / f"{role}.md"
+    head = f.read_text(encoding="utf-8").split("\n---\n", 1)[0] if f.is_file() else ""
+    return [m.strip() for m in re.findall(r"""^\s*-\s*["']?path:([^"'\n]+)""", head, re.M)]
+
+
 def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> int:
     if not (root / ".claude" / "agents" / f"{role}.md").is_file():
         print(f"there is no rendered role .claude/agents/{role}.md; run runners/claude-code/render.py", file=sys.stderr)
         return 2
+    if record.parent.name != role:
+        print(f"the record of the {role} role goes in a folder named `{role}` (for example record/{role}/{record.name}), not in "
+              f"`{record.parent.name}/`: each role's account has its own place, so that one role's account never sits where "
+              "another role writes", file=sys.stderr)
+        return 2
+    for pat in never_seen(role, root):
+        folder = pat.rstrip("*").rstrip("/")
+        if folder and folder in task.replace("\\", "/"):
+            print(f"the task names `{folder}`, which the {role} role must never see (assistants/{role}.md, must_never_see). "
+                  "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
+            return 2
     record.parent.mkdir(parents=True, exist_ok=True)
     Path(f"{record}.task.md").write_text(task)
     started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -76,18 +104,27 @@ def selftest() -> int:
         fake.write_text("#!/bin/sh\ncat > \"$PWD/seen-task.txt\"\necho \"$@\" > \"$PWD/seen-args.txt\"\n"
                         "echo '{\"result\": \"two holes found\", \"modelUsage\": {\"claude-test-1\": {}}, \"num_turns\": 3, \"is_error\": false}'\n")
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
-        code = run("review", "Check EXPLORATION-1.", tmp / "record" / "03-review", str(fake), tmp)
-        meta = json.loads((tmp / "record" / "03-review.run.json").read_text())
-        results.append(("a role runs and its answer is kept", code == 0 and (tmp / "record/03-review.answer.md").read_text().strip() == "two holes found"))
-        results.append(("the task is kept as it was given", (tmp / "record/03-review.task.md").read_text() == "Check EXPLORATION-1." and (tmp / "seen-task.txt").read_text() == "Check EXPLORATION-1."))
+        (tmp / "assistants").mkdir()
+        (tmp / "assistants" / "review.md").write_text('---\nname: review\nmust_never_see:\n  - "held-out data"\n  - "path:record/analysis/*"\n---\n\nbody\n')
+        code = run("review", "Check EXPLORATION-1.", tmp / "record" / "review" / "03", str(fake), tmp)
+        meta = json.loads((tmp / "record" / "review" / "03.run.json").read_text())
+        results.append(("a role runs and its answer is kept, in the role's own place", code == 0 and (tmp / "record/review/03.answer.md").read_text().strip() == "two holes found"))
+        results.append(("the task is kept as it was given", (tmp / "record/review/03.task.md").read_text() == "Check EXPLORATION-1." and (tmp / "seen-task.txt").read_text() == "Check EXPLORATION-1."))
+        results.append(("a record outside the role's own folder is refused, and nothing is started",
+                        run("review", "x", tmp / "record" / "analysis" / "04", str(fake), tmp) == 2 and run("review", "x", tmp / "record" / "04-review", str(fake), tmp) == 2
+                        and not (tmp / "record" / "analysis").exists()))
+        (tmp / "seen-task.txt").unlink()
+        results.append(("a task that hands the review role the author's account is refused, and nothing is started",
+                        run("review", "Check EXPLORATION-1. The author's notes are in examples/w/record/analysis/01.answer.md.", tmp / "record" / "review" / "06", str(fake), tmp) == 2
+                        and not (tmp / "seen-task.txt").exists() and not (tmp / "record/review/06.task.md").exists()))
         results.append(("the role is started from its role file, in print mode", (tmp / "seen-args.txt").read_text().split()[:3] == ["-p", "--agent", "review"]))
         results.append(("the model that ran the role is recorded", meta["models"] == ["claude-test-1"] and meta["role"] == "review"))
-        results.append(("a role with no rendered file is refused", run("auditing", "x", tmp / "record" / "04", str(fake), tmp) == 2))
+        results.append(("a role with no rendered file is refused", run("auditing", "x", tmp / "record" / "auditing" / "04", str(fake), tmp) == 2))
         bad = tmp / "bad-claude"
         bad.write_text("#!/bin/sh\necho '{\"result\": \"Authentication error\", \"is_error\": true}'\n")
         bad.chmod(bad.stat().st_mode | stat.S_IXUSR)
         results.append(("a run that fails is recorded as failed and returns an error",
-                        run("review", "x", tmp / "record" / "05-review", str(bad), tmp) == 1 and json.loads((tmp / "record/05-review.run.json").read_text())["failed"]))
+                        run("review", "x", tmp / "record" / "review" / "05", str(bad), tmp) == 1 and json.loads((tmp / "record/review/05.run.json").read_text())["failed"]))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]

@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-004",
+ "why": "The pass table suggests the width alternates between passes a day or two apart while the stage barely moves: is the reported width tied to the overpass track rather than to the river?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_04_tracks.py",
+  "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_04_tracks.py",
+  "sha256": "e0d477d35863a1f019403b3fb7c5001a2b90ec711bfb37f457e3b10e21cd85e1"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_04_tracks.py",
+   "sha256": "e0d477d35863a1f019403b3fb7c5001a2b90ec711bfb37f457e3b10e21cd85e1",
+   "bytes": 2185
+  },
+  {
+   "word": "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-004.out.txt",
+  "sha256": "d2c6ee230b41635b7504063a69f0d2fd21da20d7a01a9f0a85a4c3f778d98fae"
+ },
+ "wrote": {},
+ "at": "2026-11-26T07:00:03Z",
+ "by": "agent:analysis-0102"
+}

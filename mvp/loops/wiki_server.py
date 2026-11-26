@@ -37,6 +37,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # the server loads knowledge.py from beside it and leaves no bytecode folder in the package
+
 HERE = Path(__file__).resolve().parent
 PROTOCOL = "2024-11-05"
 TOOLS = [
@@ -186,6 +188,7 @@ def selftest() -> int:
         results.append(("the server's search and knowledge.py give the same pages in the same order",
                         [ln.split(" | ")[0] for ln in text(3).splitlines()]
                         == [Path(c["file"]).name for c in k.about("Does the harbour tide gauge drift in warm months?", [wiki], limit=8)]))
+        results.append(("loading the knowledge helpers leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)

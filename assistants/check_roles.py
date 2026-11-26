@@ -31,6 +31,16 @@ What it checks:
               exploration or runs a look
   the stages  each stage the procedure gives to a role has its command in
               that role's may_call
+  own places  every role that writes may write its account in record/<role>/ and in no
+              other role's place, and the review role's `must_never_see`
+              names the analysis role's place as a path, so a runner can
+              refuse it
+  same words  where a role file and a skill both say in what order things
+              are done (what is read before data is set aside, when an
+              exploration is ended, where a review is written, when the
+              curating assistant starts), they say it in the same words:
+              the paragraph in the role file that begins with the label
+              stands, word for word, in each skill named for it
 
 Usage: check_roles.py [--root DIR]      check the repository
        check_roles.py --selftest        every disagreement it claims to catch is caught
@@ -46,12 +56,19 @@ import yaml
 
 KEYS = ("name", "purpose", "may_call", "must_never_see", "reads", "writes", "hands_on")
 ACTS_OF_PEOPLE = ("mvp/sf.py lock", "mvp/sf.py signature", "mvp/sf.py void-unread")
+SAME_WORDS = {  # a role, the label that begins a paragraph of its file, and the skills that carry the same paragraph
+    "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"]},
+    "review": {"**Where you write.**": ["review-work"]},
+    "curating": {"**When you start.**": ["draft-a-knowledge-page"]},
+}
 DOES_THE_WORK = ("mvp/loops/explore.py start", "mvp/loops/explore.py look", "mvp/loops/explore.py choice", "mvp/loops/explore.py lead", "mvp/loops/explore.py end",
+                 "mvp/loops/explore.py correct",
                  "mvp/sf.py start", "mvp/sf.py test", "mvp/sf.py rehearse", "mvp/sf.py attach", "mvp/sf.py open-held-out")
 ONLY = {  # a command and the one role that may call it
     "mvp/loops/explore.py review": "review", "mvp/sf.py review": "review",
     "mvp/loops/explore.py resolve": "curating", "mvp/sf.py resolve": "curating",
     "mvp/loops/explore.py start": "analysis", "mvp/loops/explore.py look": "analysis", "mvp/loops/explore.py lead": "analysis",
+    "mvp/loops/explore.py correct": "analysis", "mvp/loops/explore.py end": "analysis",
     "mvp/loops/explore.py hand-over": "coordinating", "mvp/sf.py open-held-out": "coordinating",
 }
 STAGE_COMMANDS = {  # the stage of the procedure, the role named in `done_by`, the command that stage needs
@@ -159,6 +176,27 @@ def problems(root: Path) -> list:
             for cmd in DOES_THE_WORK:
                 if cmd in calls:
                     p.append(f"{where}: the review assistant may call `{cmd}`, which does the work it is there to check")
+            if "path:record/analysis/*" not in [str(x) for x in fm["must_never_see"]]:
+                p.append(f"{where}: `must_never_see` does not name the analysis assistant's own account as a path (path:record/analysis/*), "
+                         "so no runner can keep the reviewer away from the author's account of the work")
+        writes = [str(w) for w in fm["writes"]]
+        if writes and f"record/{name}/*.md" not in writes:  # a role that writes nothing (the coordinating role) has its tasks kept by the launcher
+            p.append(f"{where}: `writes` does not give the role its own place for its account (record/{name}/*.md)")
+        for other in sorted(set(roles) - {name}):
+            if any(w.startswith(f"record/{other}/") or w in ("record/*", "record/*.md", "record/*/*.md") for w in writes):
+                p.append(f"{where}: `writes` lets this role write in the {other} role's place (record/{other}/); each role's account has its own place")
+        text_ = squash(body)
+        for label, skills in (SAME_WORDS.get(name) or {}).items():
+            para = next((squash(q) for q in body.split("\n\n") if q.strip().startswith(label)), None)
+            if para is None:
+                p.append(f"{where}: it has no paragraph beginning {label}, which the skills {', '.join(skills)} must carry in the same words")
+                continue
+            for skill in skills:
+                f = root / "skills" / skill / "SKILL.md"
+                if f.is_file() and para not in squash(f.read_text(encoding="utf-8")):
+                    p.append(f"{where} and skills/{skill}/SKILL.md do not say the same thing under {label}: the paragraph in the role "
+                             "file must stand word for word in the skill, so that the two cannot give different orders")
+        del text_
         if name in block:
             said = block[name] if isinstance(block[name], dict) else {}
             text = squash(body)
@@ -249,6 +287,28 @@ def selftest(root: Path) -> int:
              lambda d: edit(d, "assistants/analysis.md", '  - "mvp/sf.py test"\n', ""), "may not call `mvp/sf.py test`")
         case("the procedure gives a stage to a role with no file",
              lambda d: edit(d, "mvp/procedure.yaml", "    done_by: curating assistant", "    done_by: librarian assistant"), "which has no role file")
+        case("the review role's file stops naming the author's account as a place it must never see",
+             lambda d: edit(d, "assistants/review.md", '  - "path:record/analysis/*"\n', ""), "does not name the analysis assistant's own account")
+        case("a role loses its own place to write its account",
+             lambda d: edit(d, "assistants/curating.md", '  - "record/curating/*.md"\n', ""), "its own place for its account")
+        case("a role may write in another role's place",
+             lambda d: edit(d, "assistants/review.md", '  - "record/review/*.md"', '  - "record/review/*.md"\n  - "record/analysis/*.md"'), "in the analysis role's place")
+        case("the skill says to set aside in another order than the role file",
+             lambda d: edit(d, "skills/explore-a-record/SKILL.md", "Read what is known before you set anything aside", "Set data aside before you read what is known"),
+             "do not say the same thing under **The order.**")
+        case("the role file and a skill disagree on when to call end",
+             lambda d: edit(d, "skills/write-up-a-lead/SKILL.md", "do not call `end`: status names the review assistant", "call `end`: status then names the review assistant"),
+             "do not say the same thing under **When to end.**")
+        case("the role file drops the paragraph the skills must carry",
+             lambda d: edit(d, "assistants/analysis.md", "**When to end.** After", "After"), "no paragraph beginning **When to end.**")
+        case("the review skill says another place to write than the role file",
+             lambda d: edit(d, "skills/review-work/SKILL.md", "Your account for the coordinating assistant goes in `record/review/`", "Your account goes beside the author's"),
+             "do not say the same thing under **Where you write.**")
+        case("the curating skill lets it start before the end",
+             lambda d: edit(d, "skills/draft-a-knowledge-page/SKILL.md", "Start on an exploration only when", "Start on an exploration whenever notes are open, even before"),
+             "do not say the same thing under **When you start.**")
+        case("the curating role may end an exploration", lambda d: edit(d, "assistants/curating.md", '  - "mvp/loops/explore.py resolve"', '  - "mvp/loops/explore.py resolve"\n  - "mvp/loops/explore.py end"'),
+             "only the analysis assistant may call")
         case("a purpose that is not one sentence", lambda d: edit(d, "assistants/review.md", "records what it found.\"", "records what it found. It also fixes it.\""),
              "`purpose` is one sentence")
     finally:

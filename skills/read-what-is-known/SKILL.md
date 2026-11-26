@@ -14,7 +14,7 @@ There are two ways to read it, and they give the same pages:
 - **When the tools `openwiki_search` and `openwiki_read` are available, use them.** Search with the question, then read every page the search returns. They are read-only.
 - **Otherwise read the files**: start at `<wiki>/quickstart.md`, and use the command in step 1, which lists the pages that bear on a question.
 
-Inside an exploration, run step 1's `explore.py known` in either case: it is what writes the list into the exploration log.
+Before an exploration is started, use `knowledge.py about` (step 1): it reads pages and never data, and it is the only reading done before data is set aside. Once the exploration is started, run `explore.py known` in either case: it is what writes the list into the exploration log.
 
 ## Steps
 
@@ -26,11 +26,11 @@ Inside an exploration, run step 1's `explore.py known` in either case: it is wha
      [--drafts <the queue of drafted pages>]
    ```
 
-   Inside an exploration use `uv run mvp/loops/explore.py known --exploration <dir> --by <you> --wiki ... [--drafts ...]`: it lists the same pages and writes what was listed into the exploration log. The first look is refused until this has run.
+   Inside a started exploration use `uv run mvp/loops/explore.py known --exploration <dir> --by <you> --wiki ... [--drafts ...]`: it lists the same pages and writes what was listed into the exploration log. The first look is refused until this has run and a page is recorded as read.
 
    Add `--tag` for a product, a quantity or a place the question implies and does not say. Run it again with other words if the list looks thin. An empty list is a result: say so.
 
-2. **Read every page listed**, whole, including the ones that came in only by a link. Read the pages a page points at when they bear on the question.
+2. **Read every page listed**, whole, including the ones that came in only by a link. Read the pages a page points at when they bear on the question: the search matches on shared words, so it lists some pages that do not bear on the question and can miss one that a listed page leans on. A page that plainly came in on a stray word may be skimmed, and you say so.
 
 3. **Say what each page is before you lean on it.** The list says, for each page, its status and who signed it.
    - **Signed** (the page's own signature lines name a person: a `verified` event by a person in its front matter, or a `Signed-by: human:...` line): established for this organization. Follow it. If the work would contradict it, stop and raise a note; do not quietly do otherwise.
@@ -42,7 +42,7 @@ Inside an exploration, run step 1's `explore.py known` in either case: it is wha
    - what it **rules out**: something the question as asked would have you do that the page refuses;
    - what it **warns about**: a pitfall that makes a wrong answer look right.
 
-   Inside an exploration record each with `uv run mvp/loops/explore.py read --exploration <dir> --by <you> --concept <file> --takes "<what it changes here>"`.
+   Inside an exploration record each with `uv run mvp/loops/explore.py read --exploration <dir> --by <you> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole. The lead lists what was read, what was skimmed and what was listed and not read.
 
 5. **Say what is missing.** If the question needs something the knowledge does not have, that is a note (`explore.py note --kind missing`, or `sf.py note`), not something to fill in from memory.
 

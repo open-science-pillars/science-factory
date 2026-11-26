@@ -1,0 +1,14 @@
+[exploring: output of LOOK-003]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+shipped executor receipt, tolerance 15 min, collection SWOT_L2_HR_RiverSP_reach_D
+  passes offered 52, paired 50, max offset 861 s
+  unmatched: 2024-02-23T13:43:01Z | no gauge reading within 15 minutes
+  unmatched: 2024-03-15T10:28:03Z | no gauge reading within 15 minutes
+  changes n=49: mean error +0.0019 m, 95 pct [-0.1062, 0.1101], RMSD 0.3823 m, correlation +0.9567, gauge change spread 1.1959 m, RMSD over spread 0.3197
+  level difference (not a bias, not scored): mean -0.2429 m, sd 0.3009 m, min -2.0066, max +0.7162
+  satellite stated per-pass uncertainty, median 0.0958 m
+  gauge approval values used: ['Provisional']
+recipe states: 50 of 52 paired; changes n=49 mean +0.0019 m, RMSD 0.3823 m, r +0.9567, spread 1.1959 m
+this exploration's helper: paired 50, changes n=49, mean +0.0019 m, RMSD 0.3823 m, r +0.9567, spread 1.1959 m
+  helper unmatched: 2024-02-23T13:43:01Z | no reading within 15 min; nearest 17.0 min
+  helper unmatched: 2024-03-15T10:28:03Z | no reading within 15 min; nearest 28.1 min

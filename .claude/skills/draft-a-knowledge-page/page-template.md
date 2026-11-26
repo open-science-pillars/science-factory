@@ -8,7 +8,7 @@ generated: { by: claude-code/MODEL, at: 2026-01-01T00:00:00Z }
 status: draft
 stale_after: 2027-01-01
 seen_while: exploring
-drafted_from: { exploration: EXPLORATION-0000, notes: [NOTE-001], log: "SEQ:HASH" }
+drafted_from: { exploration: EXPLORATION-0000, notes: [NOTE-001], log: "SEQ:HASH", by: "agent:curating-0000" }
 relates_to:
   - { concept: gotchas/an-existing-page.md, relation: extends, why: "what this adds to that page" }
 sources:

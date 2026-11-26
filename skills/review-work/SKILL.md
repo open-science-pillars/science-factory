@@ -9,6 +9,8 @@ A review is by someone who did none of the work and starts from the files. Its j
 
 If you did any part of this work, or were given the reasoning of the assistant that did, stop and say so.
 
+**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating assistant goes in `record/review/`, your own place. You never read `record/analysis/`, where the analysis assistant's own account is: the runner refuses it, and if you see it by accident you say so and stop, so that a fresh review assistant can be started.
+
 ## 1. The record
 
 - An exploration: `uv run mvp/loops/explore.py check-log --exploration <x>` and `status`. A study: `uv run mvp/sf.py check-log --study <s>`, `status`, `scorecard`.
@@ -33,11 +35,16 @@ Ask of an exploration's lead:
 
 - **What was set aside**, and does any look, script or data file reach into it? Read the look scripts, not only their names.
 - **How many things were tried**, and does the lead's claim survive that count? Twenty looks and one striking number is one in twenty.
-- **Choices**: read the scripts for choices that were made and never recorded (a filter, a tolerance, a dropped point). For each recorded choice that "would not change it": was the alternative run, or is that a belief?
+- **Choices**: read the scripts for choices that were made and never recorded (a filter, a tolerance, a dropped point, a term in a fit: the form of the model is a choice). For each recorded choice that "would not change it": was the alternative run, or is that a belief?
+- **The order.** The lead has a section, written by the tool from the log, on the order of looks and choices. A choice written down after the looks it governs was made knowing what they showed; does the lead treat it so? Were the scripts of a battery of looks all there before the first ran?
+- **How many comparisons**, not only how many looks: one look can hold many fits. The lead gives the number the looks declared; read the scripts for the rest.
+- **The pictures.** Open the figures in `figures/`, the ones the lead shows and the ones it does not. A pattern in a residual plot that the lead does not mention is a hole. No figure at all, on a question about how one record follows another, is a hole.
+- **The physical question.** What would someone who works with this kind of record ask first (where the instrument sits, what a flag value means, what the product is a measurement of)? Did any look ask it?
 - **Does a small part of the data carry it?** One point, one season, one flag value.
 - **Where does it not hold?** Did the work look, and does the lead say?
 - **Is the claim wider than the data**: one place, one period, one version, stated as general?
-- **Does the proposed question** ask about the set-aside data, name one quantity, and say what would refute the idea?
+- **Does the proposed question** ask about the set-aside data, name one quantity, and say what would refute the idea? Can the rule fail at all, at the sizes the lead itself reports? Can it be met by throwing observations away?
+- **Words.** Does it call observations "unflagged" when their flag has a value, or an interval anything but a confidence interval with its model named? Would a scientist in the field misread a word?
 - **Does it call itself a lead** throughout?
 
 Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives.
@@ -46,7 +53,7 @@ Ask of a queue of drafts: `uv run mvp/loops/knowledge.py check-drafts --queue <q
 
 ## 5. Write it and record it
 
-Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Then record the verdict with the tool:
+Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Put gaps in the knowledge itself, as against holes in the work, under a heading "For the steward". Then record the verdict with the tool:
 
 ```
 uv run mvp/loops/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md
@@ -59,4 +66,4 @@ uv run mvp/sf.py review --study <s> --by <you> --verdict block --file <s>/review
 
 - Fixing the work, running new looks, or rewriting the lead.
 - A verdict with no file, or a file with no pointers into the record.
-- Reviewing from the author's summary.
+- Reviewing from the author's summary, or reading the author's account of the work at all.

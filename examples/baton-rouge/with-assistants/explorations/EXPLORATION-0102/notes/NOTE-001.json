@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-001",
+ "at": "2026-11-26T07:02:37Z",
+ "by": "agent:analysis-0102",
+ "kind": "missing",
+ "about": "SWOT RiverSP reach width (width_m) in datasets/swot-river-lake.md and connectors/hydrocron-swot.md",
+ "text": "Seen while exploring, one reach, one year. The reported reach width differs by overpass track at like stage. The 52 Version D passes of 2024 at reach 74210000331 fall on three tracks (17, 18 and 17 passes). In all 17 pairs of passes one or two days apart, with the stage moving by at most 0.652 m inside a pair, the second track reports a narrower river than the first: mean difference -39.3 m, median -31.7 m. That offset is about as large as the whole rise of width over the year's stage range on any one track (slope about 7 m of width per metre of stage over about 9 m). Among passes with dark_frac below 0.05 the two track lines still differ by 29.5 m at 5 m stage, so dark water alone does not look like the cause. The signed pages list width and width_u and say nothing of what the reach width is, how it is bounded, or that it may depend on viewing geometry; the cause is not known from this file. Who could say: the RiverSP product description, which no page cites, or PO.DAAC. Until then a width series that mixes tracks should not be read as the river.",
+ "evidence": {
+  "path": "receipts/LOOK-004.json",
+  "sha256": "b6f0dc1b20140895522c080f1240656ae1e1773da1b38ce7316829494c471235"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

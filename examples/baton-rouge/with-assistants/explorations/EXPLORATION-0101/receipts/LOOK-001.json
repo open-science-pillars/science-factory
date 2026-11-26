@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-001",
+ "why": "The shape of the working record before any statistic: keys, counts, ranges, time span, which collection and processing it says it is.",
+ "argv": [
+  "uv",
+  "run",
+  "/home/claude/science-factory/skills/explore-a-record/scripts/describe_record.py",
+  "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "/home/claude/science-factory/skills/explore-a-record/scripts/describe_record.py",
+  "sha256": "7090fba498e68d32b0abeffec4a528d9001846f41d3caa4d53a7173f3252d19e"
+ },
+ "inputs": [
+  {
+   "word": "/home/claude/science-factory/skills/explore-a-record/scripts/describe_record.py",
+   "sha256": "7090fba498e68d32b0abeffec4a528d9001846f41d3caa4d53a7173f3252d19e",
+   "bytes": 3353
+  },
+  {
+   "word": "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-001.out.txt",
+  "sha256": "165f0bcb54f1ffecdd0c2e43e5a6559ae10810702f1eef66b6c19d096e9490ff"
+ },
+ "wrote": {},
+ "at": "2026-11-26T06:21:49Z",
+ "by": "agent:analysis-0101"
+}

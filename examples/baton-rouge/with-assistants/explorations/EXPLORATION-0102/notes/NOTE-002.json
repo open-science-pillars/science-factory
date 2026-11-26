@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-002",
+ "at": "2026-11-26T07:02:37Z",
+ "by": "agent:analysis-0102",
+ "kind": "missing",
+ "about": "the fixture swot_gauge_baton_rouge_2024.json and what marks an unusable width",
+ "text": "Seen while exploring. The pass of 2024-02-12 reports a width of 937.3 m, 89.0 m above its own track's line on stage and 116.5 m wider than the pass of the next day at a stage 0.122 m higher, while its height agrees with the gauge (departure +0.083 m from the median difference). Nothing the file keeps marks it: dark_frac 0.015, reach_q 1, stated height uncertainty 0.094 m. The file has no width_u, which the signed river and lake page says the granule carries; whether width_u is large on that pass cannot be seen. The other way round, the pass of 2024-03-26 (dark_frac 0.692, height +0.947 m off) has a width 29.9 m below its track's line. So in this year a wrong width and a wrong height came together once and apart twice (2024-02-12 width only, 2024-10-30 height only). Three passes fix no rate. Asking the fetch script to keep width_u, cycle and pass number would let the next reader see more; the drafted fixture page in the queue (not signed) already asks for cycle and pass.",
+ "evidence": {
+  "path": "receipts/LOOK-007.json",
+  "sha256": "73cf978f2bba6e5a5a1d709c1169b0983b2420cb10f14cb704a5e3ab5140680f"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

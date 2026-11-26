@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-002",
+ "why": "Every pass by name: is width_m present and free of fill values, how much does it vary, and what stage, height and flags sit beside it.",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_02_pass_table.py",
+  "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_02_pass_table.py",
+  "sha256": "8cb579824625880a582523d1e3ad16746697ea34116bf98874432b5c3fbb367f"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_02_pass_table.py",
+   "sha256": "8cb579824625880a582523d1e3ad16746697ea34116bf98874432b5c3fbb367f",
+   "bytes": 1332
+  },
+  {
+   "word": "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 1,
+ "output": {
+  "file": "receipts/LOOK-002.out.txt",
+  "sha256": "8e70583abbc4912676f1a1673f58f3513152261eab50a12c3374825fa76afaa3"
+ },
+ "wrote": {},
+ "at": "2026-11-26T06:59:32Z",
+ "by": "agent:analysis-0102"
+}

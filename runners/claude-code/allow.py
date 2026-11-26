@@ -21,8 +21,11 @@ file allows and blocks everything else, with the reason.
            been opened, a receipt, a recorded verdict, a recorded lead, a
            role, a skill, a tool, or the rendered files.
   Read,    anything except a path that an exploration beside it set aside
-  Grep,    or that a study's plan beside it holds out.
-  Glob
+  Grep,    or that a study's plan beside it holds out, and a path the role
+  Glob     file names under `must_never_see` as `path:<pattern>` (the review
+           role's file names the analysis role's own account that way:
+           record/analysis/). A search over a folder that holds such a
+           path is blocked too: search a narrower place.
   wiki     the two read-only wiki tools, openwiki_search and openwiki_read,
            from any server; no other tool of any server.
   Skill    only a skill in the role's `may_call`.
@@ -142,10 +145,33 @@ def fenced_paths(p: Path) -> list:
     return out
 
 
-def read_problem(path: str | None, fm: dict, cwd: Path) -> str | None:
-    if not path or not fm.get("must_never_see"):
+def never_seen_patterns(fm: dict) -> list:
+    """The `path:<pattern>` entries of a role's `must_never_see`: places the role has no business reading, as patterns."""
+    return [str(x)[5:].strip() for x in fm.get("must_never_see") or [] if str(x).startswith("path:") and str(x)[5:].strip()]
+
+
+def read_problem(path: str | None, fm: dict, cwd: Path, search: bool = False) -> str | None:
+    if not fm.get("must_never_see"):
         return None
-    p = Path(os.path.normpath(cwd / path))
+    p = Path(os.path.normpath(cwd / (path or ".")))
+    posix = p.as_posix()
+    for pat in never_seen_patterns(fm):
+        folder = pat.rstrip("*").rstrip("/")  # record/analysis/* names everything in that folder, and the folder
+        if fnmatch.fnmatch(posix, "*/" + pat) or posix.endswith("/" + folder) or f"/{folder}/" in posix + "/":
+            return (f"`{path}` is in a place this role must never see ({pat}): the account of the assistant whose work it "
+                    "checks. Work from the files of the work itself")
+        if search and p.is_dir():  # a search over a folder that holds such a place would read it
+            depth = len(p.parts)
+            for base, dirs, _files in os.walk(p):
+                if len(Path(base).parts) - depth >= 6:
+                    dirs[:] = []
+                    continue
+                dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+                if (Path(base).as_posix() + "/").endswith("/" + folder + "/"):
+                    return (f"a search over `{path or '.'}` would read a place this role must never see ({pat}); search a narrower "
+                            "place, such as the exploration's own folder")
+    if not path:
+        return None
     for q in fenced_paths(p):
         q = Path(os.path.normpath(q))
         if p == q or q in p.parents:
@@ -166,7 +192,7 @@ def decide(role: str, call: dict, root: Path = ROOT) -> str | None:
     if tool in WRITE_TOOLS:
         return write_problem(str(given.get("file_path") or given.get("notebook_path") or ""), role, fm, cwd)
     if tool in READ_TOOLS:
-        return read_problem(given.get("file_path") or given.get("path"), fm, cwd)
+        return read_problem(given.get("file_path") or given.get("path"), fm, cwd, search=tool in ("Grep", "Glob"))
     if tool == "Skill":
         name = str(given.get("skill") or given.get("name") or "")
         return None if f"skill:{name}" in (fm.get("may_call") or []) else f"the {role} assistant may not use the skill `{name}`"
@@ -232,7 +258,11 @@ def selftest() -> int:
     ok("curating may not write the queue's index by hand", blocked("curating", "Write", file_path="examples/w/knowledge-queue/queue.json"))
     ok("curating may not write a role file", blocked("curating", "Edit", file_path="assistants/curating.md"))
     ok("curating may not write into a path outside the queue", blocked("curating", "Write", file_path="../hydrology/knowledge/gotchas/a.md"))
-    ok("coordinating writes nothing", blocked("coordinating", "Write", file_path=f"{x}/looks/a.py") and blocked("coordinating", "Write", file_path="notes.md"))
+    ok("coordinating writes nothing", blocked("coordinating", "Write", file_path=f"{x}/looks/a.py") and blocked("coordinating", "Write", file_path="notes.md")
+       and blocked("coordinating", "Write", file_path=f"{x}/review/r.md"))
+    ok("analysis may correct the wording of its lead, and no other role may",
+       not blocked("analysis", "Bash", command=f"uv run mvp/loops/explore.py correct --exploration {x} --by agent:analysis --old a --new b --why c")
+       and blocked("review", "Bash", command=f"uv run mvp/loops/explore.py correct --exploration {x} --by agent:review --old a --new b --why c"))
     ok("no role may edit the tools", all(blocked(r, "Edit", file_path="mvp/loops/explore.py") for r in ("coordinating", "analysis", "review", "curating")))
     ok("analysis may use its skills", not blocked("analysis", "Skill", skill="explore-a-record"))
     ok("analysis may not use the curating skill", blocked("analysis", "Skill", skill="draft-a-knowledge-page"))
@@ -244,6 +274,19 @@ def selftest() -> int:
        not any(blocked(r, "mcp__openwiki__openwiki_search", query="x") or blocked(r, "mcp__openwiki__openwiki_read", path="a.md") for r in ("coordinating", "analysis", "review", "curating")))
     ok("any other tool of a server is blocked, a writing one included", blocked("curating", "mcp__openwiki__openwiki_write", path="a.md") and blocked("analysis", "mcp__other__fetch", url="x"))
     ok("a role with no file gets nothing", blocked("auditing", "Read", file_path="README.md"))
+    # each role has its own place for its account, and the review role has no route to the author's
+    ok("each role may write its account in its own place",
+       not any(blocked(r, "Write", file_path=f"examples/w/record/{r}/01.answer.md") for r in ("analysis", "review", "curating"))
+       and blocked("coordinating", "Write", file_path="examples/w/record/coordinating/01.task.md"))
+    ok("no role may write in another role's place",
+       blocked("review", "Write", file_path="examples/w/record/analysis/01.answer.md") and blocked("analysis", "Write", file_path="examples/w/record/review/02.answer.md")
+       and blocked("curating", "Write", file_path="examples/w/record/review/02.answer.md"))
+    ok("the review role may not read the analysis role's own account of the work",
+       blocked("review", "Read", file_path="examples/w/record/analysis/01.answer.md") and blocked("review", "Grep", path="examples/w/record/analysis", pattern="gain"))
+    ok("the review role may read the work itself, and its own earlier review",
+       not blocked("review", "Read", file_path=f"{x}/lead.md") and not blocked("review", "Read", file_path="examples/w/record/review/02.answer.md"))
+    ok("the analysis role may read its own account, and a review handed back to it",
+       not blocked("analysis", "Read", file_path="examples/w/record/analysis/01.answer.md") and not blocked("analysis", "Read", file_path=f"{x}/verdicts/REVIEW-001.md"))
     import tempfile
     tmp = Path(tempfile.mkdtemp(prefix="allow-selftest-")).resolve()
     try:
@@ -255,6 +298,12 @@ def selftest() -> int:
         ok("reading a path an exploration set aside is blocked", decide("analysis", {"tool_name": "Read", "tool_input": {"file_path": str(held)}, "cwd": str(tmp)}) is not None)
         ok("reading a study's held-out data path is blocked", decide("review", {"tool_name": "Read", "tool_input": {"file_path": str(tmp / "studies/S1/data/held.json")}, "cwd": str(tmp)}) is not None)
         ok("reading working data is allowed", decide("analysis", {"tool_name": "Read", "tool_input": {"file_path": str(tmp / "working.json")}, "cwd": str(tmp)}) is None)
+        (tmp / "run" / "record" / "analysis").mkdir(parents=True)
+        (tmp / "run" / "explorations" / "E2").mkdir(parents=True)
+        ok("a search by the review role over a folder that holds the author's account is blocked",
+           decide("review", {"tool_name": "Grep", "tool_input": {"path": str(tmp / "run"), "pattern": "gain"}, "cwd": str(tmp)}) is not None)
+        ok("a search by the review role inside the exploration is allowed",
+           decide("review", {"tool_name": "Grep", "tool_input": {"path": str(tmp / "run" / "explorations" / "E2"), "pattern": "gain"}, "cwd": str(tmp)}) is None)
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)

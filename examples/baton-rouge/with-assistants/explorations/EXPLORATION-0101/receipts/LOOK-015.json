@@ -1,0 +1,37 @@
+{
+ "way": "exploring",
+ "id": "LOOK-015",
+ "why": "REVIEW-001 holes 3 and 4: with the gain held at one, does a drift, a low-stage step or the reach slope times a distance fit the screened pairs as well as a free gain; and what gain the river's own slope would give per kilometre between gauge and reach reference point, at the distance the signed recipe states",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_15_explanations.py",
+  "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "0.44"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_15_explanations.py",
+  "sha256": "8b45839b7898b271f10d905b91a7125ca3fc982eb3792fbc3dc6c0214db7da9b"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_15_explanations.py",
+   "sha256": "8b45839b7898b271f10d905b91a7125ca3fc982eb3792fbc3dc6c0214db7da9b",
+   "bytes": 3807
+  },
+  {
+   "word": "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-015.out.txt",
+  "sha256": "f249a2a614309b0b44a1c5b20a9e09df9253548cb16409637d3003f322371630"
+ },
+ "wrote": {},
+ "at": "2026-11-26T06:43:29Z",
+ "by": "agent:analysis-0101"
+}

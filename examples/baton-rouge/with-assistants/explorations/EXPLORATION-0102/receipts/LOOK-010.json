@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-010",
+ "why": "LOOK-008's period scan was scored badly and merged two tracks; does a grouping that uses only the gaps between passes, and no period, give the same three tracks, and what repeat interval does the file itself show?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_10_tracks_from_gaps.py",
+  "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_10_tracks_from_gaps.py",
+  "sha256": "ddbcdcd4b83210bc98a83f0cd2ee508a4ec8e1172cfe782d06c06304e40739fb"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_10_tracks_from_gaps.py",
+   "sha256": "ddbcdcd4b83210bc98a83f0cd2ee508a4ec8e1172cfe782d06c06304e40739fb",
+   "bytes": 1562
+  },
+  {
+   "word": "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-010.out.txt",
+  "sha256": "eb2165ba83806457034219a0c837f77236db23dbe65e285ec5f25878c9c25dc0"
+ },
+ "wrote": {},
+ "at": "2026-11-26T07:01:48Z",
+ "by": "agent:analysis-0102"
+}

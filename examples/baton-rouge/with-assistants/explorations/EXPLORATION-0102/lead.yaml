@@ -1,0 +1,57 @@
+what_looks_true: >
+  At reach 74210000331 (Mississippi at Baton Rouge), calendar 2024, collection SWOT_L2_HR_RiverSP_reach_D,
+  the reach width looks as if it does rise and fall with the stage at USGS-07374000, but only when passes of
+  one overpass track are read together. Inside a track the width grows by about 7 m per metre of stage
+  (slopes +9.86, +7.09 and +6.50 m of width per m of stage on tracks A, B and C; n=17, 18 and 15 pairs; r=+0.762,
+  +0.865 and +0.973), over a stage span of 1.47 to 10.33 m. Across tracks it does not hold as a usable relation:
+  track A reports a wider river than track B in 17 of 17 pairs of passes one or two days apart (mean difference
+  -39.3 m, with the stage moving at most 0.652 m inside a pair), so over all 50 pairs the correlation is +0.683
+  with a residual of 25.1 m, which is 3.23 m of stage, more than the year's stage standard deviation of 2.99 m.
+  Changes between consecutive passes, the form the signed recipe uses for height, correlate at only +0.274 for
+  width against +0.9567 for height, because consecutive passes alternate tracks. As a check on the height it
+  looks coarse: the scatter of height about a per-track width line is 1.81 m (median, leave one out), so only
+  gross height errors could be seen. With three track lines and a 3 scatter threshold chosen after looking,
+  3 of 52 passes are singled out: the two whose height departs from the gauge (2024-03-26 and 2024-10-30) and
+  one whose height agrees with the gauge and whose width is the odd one (2024-02-12, 937.3 m). On 2024-03-26
+  the width itself is off (29.9 m below its track line, dark_frac 0.692), so there the check fires for the
+  reason the scientist feared, a bad pass spoiling both quantities. The gauge is provisional throughout.
+how_it_was_found: >
+  Read the knowledge first. The signed pages give the pairing rule, the collection and the warning about fill
+  values, and say nothing about what a reach width is. Four drafted, unsigned pages in the queue saved the
+  survey of the file, the reach_q census and the names of the two passes whose height departs; each was checked
+  on this file before use. Looked at the shape of the record (LOOK-001), then at every pass by name (LOOK-003,
+  after LOOK-002 failed on a wrong assumption about the gauge block). The pass table had the width alternating
+  between passes a day apart, so the passes were grouped into overpass tracks (LOOK-004). The grouping first
+  used a repeat period supplied from memory; a first check of that from the file was badly scored and is a dead
+  end (LOOK-008, NOTE-004); a grouping from the gaps alone agrees (LOOK-010). Then the relation in levels and
+  changes, overall and by track, with and without three named passes (LOOK-005); the use as a check on height
+  with no gauge (LOOK-006); what goes with a width off its line (LOOK-007); and pairing tolerance and the two
+  halves of the year (LOOK-009). A line for all tracks together was tried first and is kept in the numbers
+  above as the case where the idea does not hold.
+evidence: [LOOK-001, LOOK-003, LOOK-004, LOOK-005, LOOK-006, LOOK-007, LOOK-009, LOOK-010]
+choices_that_would_change_it:
+  - {choice: CHOICE-002, how: "With one line for all passes and tracks ignored the correlation is +0.683 and the residual 25.1 m of width, 3.23 m in stage terms; inside tracks it is +0.762, +0.865 and +0.973 (LOOK-005). With one constant per track removed and pooled it is +0.805. The track grouping is inferred, not read from the file, which has no pass number."}
+  - {choice: CHOICE-003, how: "Scored as changes between consecutive paired passes, the signed recipe's form, width against stage correlates at +0.274 over all pairs and at +0.675, +0.670 and +0.942 inside tracks A, B and C (LOOK-005). Read that way alone the answer would be that there is hardly a relation."}
+  - {choice: CHOICE-004, how: "A curve was not tried. If width steps up where water reaches ground between the levees, a straight line is the wrong form and the slope means little. The rank correlations (+0.895, +0.907, +0.936 by track) do not depend on the form."}
+  - {choice: CHOICE-005, how: "With the pass of 2024-02-12 left out by date, track A goes from r=+0.762 and a residual of 27.0 m to r=+0.908 and 10.5 m; all pairs go from +0.683 to +0.745 (LOOK-005). It was singled out after looking and no rule written beforehand would have named it."}
+  - {choice: CHOICE-007, how: "With one line for all tracks the pass of 2024-10-30 falls to rank 5 of 52 at -1.89 scatters and would not be singled out. At 2 scatters with track lines a fourth pass is singled out. The threshold of 3 was chosen after seeing the output (LOOK-006)."}
+choices_that_would_not:
+  - {choice: CHOICE-001, why: "Pairing at 60 minutes (52 pairs) or 7 minutes (48 pairs) gives all-pairs correlations of +0.685 and +0.708 against +0.683 at 15 minutes, and track lines that move by at most a few tenths of a metre of width per metre of stage (LOOK-009)."}
+  - {choice: CHOICE-006, why: "Without the two passes whose height departs, all pairs go from r=+0.683 to +0.706; track C is +0.973 either way and track B goes from +0.865 to +0.914 (LOOK-005). The reading, a relation inside tracks and a poor one across them, is the same."}
+pitfalls:
+  - "Width depends on the overpass track at like stage; nothing in the knowledge names this. Raised as NOTE-001."
+  - "One pass (2024-02-12) has a width far off its line with nothing in the file marking it, and the file has no width_u. Raised as NOTE-002."
+  - "The file has no pass number, so tracks are inferred; the drafted page knowledge-queue/gotchas/swot-gauge-baton-rouge-fixture-lacks-processing-fields.md (a draft, not signed) names the missing fields. The repeat period is in no page: NOTE-003."
+  - "Two passes carry most of the height disagreement; named by the drafted page knowledge-queue/gotchas/swot-gauge-change-scores-carried-by-two-passes.md (a draft, not signed) and met here in LOOK-006."
+  - "reach_q values are undefined in the knowledge and never 0 here; drafted page knowledge-queue/gotchas/swot-reach-q-values-undefined-and-never-zero.md (a draft, not signed). No screen was written on it."
+  - "Fill values must be filtered, not averaged: signed page connectors/hydrocron-swot.md. None met in width_m (LOOK-003)."
+  - "The gauge is provisional throughout 2024 and may be revised: signed pages recipes/swot-gauge-confrontation.md and gotchas/nwis-provisional-data.md."
+  - "A reach width is an aggregate over roughly 10 km set beside a stage at one point: signed page gotchas/swot-reach-node-scope.md."
+  - "The track lines were fitted and the three odd passes named on the same year. In the second half of 2024 stage only reached 6.42 m, so the half year check in LOOK-009 does not test the lines at high water."
+proposed_plan:
+  question: "On passes of reach 74210000331 from 2025-01-01 onward, in SWOT_L2_HR_RiverSP_reach_D with the overpass track read from the product's pass number, does the reach width correlate with the stage at USGS-07374000 once one constant per track is removed?"
+  quantity_estimated: "the Pearson correlation of width_m with gauge stage over passes paired within 15 minutes, after subtracting each track's own mean width and mean stage, with the signed recipe's sampling interval (lag-1 model, effective sample capped at the count)"
+  difference_that_matters: "Nobody has stated one; the request asks only whether there is a relation at all. Proposed here, for the scientist to decide: a correlation of 0.7 or more counts as a relation worth using, and one below 0.4 as none. The 2024 value this is proposed from, +0.805, was seen before the rule was proposed."
+  rule_sketch: "Supported if the correlation is 0.7 or more and the lower end of its interval is above 0.4. Refuted if the upper end of its interval is below 0.7. Anything else is inconclusive. No pass is left out unless a screen is written before the data is opened, from the product description and not from this lead."
+  hard_cases: "A synthetic series with a track offset of 40 m and no stage relation must not pass. One with a within-track slope of 7 m per m and a single width outlier of 90 m must be scored with the outlier in. A window that crosses the change of processing identifier on 2025-04-28 (named by a drafted, unsigned page from the signed lakes page) must be scored per identifier. Fewer than ten pairs on a track must refuse. Large negative fills in width_m must be dropped by name."
+  what_this_could_not_show: "Why the tracks differ, whether the offsets hold at other reaches, and whether width can catch a wrong height: the 2024 scatter of height about width is far larger than the height errors seen, so a relation that holds would still leave the check coarse. One leveed reach says nothing about reaches that do widen freely."

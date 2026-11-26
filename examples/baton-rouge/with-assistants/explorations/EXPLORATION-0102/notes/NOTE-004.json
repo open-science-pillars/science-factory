@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-004",
+ "at": "2026-11-26T07:02:37Z",
+ "by": "agent:analysis-0102",
+ "kind": "dead-end",
+ "about": "LOOK-008, a scan for the repeat period",
+ "text": "Dead end, kept in the record: the scan scored candidate periods by the fewest phase groups, which rewards merging two tracks 1.45 d apart, and returned 20.9384 d with two groups. The scoring was wrong, not the data. LOOK-010 replaces it.",
+ "evidence": {
+  "path": "receipts/LOOK-008.json",
+  "sha256": "3f50aa1b03282658ed515fc05a6d591959f315b27259941f70e1ac29dc8b8a04"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}
