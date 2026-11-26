@@ -4,7 +4,7 @@
 
 **If you are an analysis assistant starting fresh on one of these requests, stop reading here.** The second half of this page states what an earlier run found. That is an answer to the question, not knowledge, and reading it before you look means you are no longer blind to it. Take the request (`request-1.md` or `request-2.md`) and nothing else from this folder.
 
-What is in this folder: the two requests, as inputs (`request-1.md`, how well the satellite height follows the gauge; `request-2.md`, whether the reported river width says anything about stage), and `system-trial/analysis-plan.yaml`, the plan of the stand-alone system trial with the pairing step exchanged for the script the hydrology capability ships.
+What is in this folder: `capability.yaml`, the `capability` block of the procedure filled in for the hydrology capability (the factory's own copy names only the built-in example); the two requests, as inputs (`request-1.md`, how well the satellite height follows the gauge; `request-2.md`, whether the reported river width says anything about stage), and `system-trial/analysis-plan.yaml`, the plan of the stand-alone system trial with the pairing step exchanged for the script the hydrology capability ships.
 
 ## Run it yourself
 
