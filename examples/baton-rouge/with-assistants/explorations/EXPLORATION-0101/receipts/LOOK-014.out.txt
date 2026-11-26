@@ -1,0 +1,56 @@
+[exploring: output of LOOK-014]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+footing: 15 minutes nearest reading; plain interval = Student t on n minus the number of fitted terms; effective-sample interval = the same widened by the lag-1 effective sample of that fit's residuals, capped at n
+== all paired passes, no screen: n=50
+   gauge alone: gain 1.0345 (plain standard error 0.0137; plain 95 pct [1.0069, 1.0621]; effective-sample 95 pct [1.0034, 1.0656]); plain interval excludes one, effective-sample interval excludes one; residual sd 0.2856 m, residual lag-1 +0.103, n_eff 40.7
+   gauge and time: gain 1.0255 (plain standard error 0.0160; plain 95 pct [0.9931, 1.0580]; effective-sample 95 pct [0.9900, 1.0611]); plain interval includes one, effective-sample interval includes one; residual sd 0.2853 m, residual lag-1 +0.076, n_eff 43.0
+      drift -0.1734 m per year (plain standard error 0.1634; effective-sample 95 pct [-0.5352, +0.1884])
+   gauge and reach slope: gain 0.9961 (plain standard error 0.0141; plain 95 pct [0.9675, 1.0247]; effective-sample 95 pct [0.9675, 1.0247]); plain interval includes one, effective-sample interval includes one; residual sd 0.2393 m, residual lag-1 -0.011, n_eff 50.0
+      distance term 9752 m (plain standard error 2110 m)
+   gauge, time and reach slope: gain 0.9887 (plain standard error 0.0156; plain 95 pct [0.9571, 1.0203]; effective-sample 95 pct [0.9571, 1.0203]); plain interval includes one, effective-sample interval includes one; residual sd 0.2389 m, residual lag-1 -0.033, n_eff 50.0
+      drift -0.1493 m per year (plain standard error 0.1369; effective-sample 95 pct [-0.4260, +0.1274])
+      distance term 9663 m (plain standard error 2107 m)
+   lower half of stage (split at the median gauge elevation 4.496 m), n=25: gain 1.1149 (plain standard error 0.0788; plain 95 pct [0.9506, 1.2792]; effective-sample 95 pct [0.9506, 1.2792]); effective-sample interval includes one; residual sd 0.3457 m
+   upper half of stage (split at the median gauge elevation 4.496 m), n=25: gain 0.9909 (plain standard error 0.0229; plain 95 pct [0.9431, 1.0387]; effective-sample 95 pct [0.9268, 1.0551]); effective-sample interval includes one; residual sd 0.1971 m
+   how tangled the regressors are on this set: correlation of gauge with time -0.526, gauge with reach slope +0.588, time with reach slope -0.335
+   residual from the gauge-alone line: rising faster than 0.02 m/day mean -0.0142 m (n=18), falling faster than 0.02 m/day mean +0.0139 m (n=28), difference -0.0281 m, plain standard error 0.0736 m
+== reach_q equal to 1 (the three passes with reach_q 2 left out): n=47
+   gauge alone: gain 1.0190 (plain standard error 0.0077; plain 95 pct [1.0034, 1.0346]; effective-sample 95 pct [0.9968, 1.0412]); plain interval excludes one, effective-sample interval includes one; residual sd 0.1558 m, residual lag-1 +0.292, n_eff 25.7
+   gauge and time: gain 1.0121 (plain standard error 0.0094; plain 95 pct [0.9930, 1.0312]; effective-sample 95 pct [0.9859, 1.0384]); plain interval includes one, effective-sample interval includes one; residual sd 0.1548 m, residual lag-1 +0.257, n_eff 27.8
+      drift -0.1240 m per year (plain standard error 0.0991; effective-sample 95 pct [-0.3994, +0.1515])
+   gauge and reach slope: gain 0.9894 (plain standard error 0.0051; plain 95 pct [0.9791, 0.9998]; effective-sample 95 pct [0.9778, 1.0011]); plain interval excludes one, effective-sample interval includes one; residual sd 0.0855 m, residual lag-1 +0.099, n_eff 38.5
+      distance term 7820 m (plain standard error 761 m)
+   gauge, time and reach slope: gain 0.9840 (plain standard error 0.0057; plain 95 pct [0.9724, 0.9955]; effective-sample 95 pct [0.9716, 0.9963]); plain interval excludes one, effective-sample interval excludes one; residual sd 0.0829 m, residual lag-1 +0.049, n_eff 42.6
+      drift -0.1023 m per year (plain standard error 0.0531; effective-sample 95 pct [-0.2167, +0.0121])
+      distance term 7765 m (plain standard error 739 m)
+   lower half of stage (split at the median gauge elevation 5.544 m), n=23: gain 1.0133 (plain standard error 0.0176; plain 95 pct [0.9766, 1.0500]; effective-sample 95 pct [0.9675, 1.0591]); effective-sample interval includes one; residual sd 0.0773 m
+   upper half of stage (split at the median gauge elevation 5.544 m), n=24: gain 0.9826 (plain standard error 0.0251; plain 95 pct [0.9303, 1.0350]; effective-sample 95 pct [0.9145, 1.0508]); effective-sample interval includes one; residual sd 0.1984 m
+   how tangled the regressors are on this set: correlation of gauge with time -0.580, gauge with reach slope +0.561, time with reach slope -0.352
+   residual from the gauge-alone line: rising faster than 0.02 m/day mean -0.0513 m (n=17), falling faster than 0.02 m/day mean +0.0388 m (n=26), difference -0.0900 m, plain standard error 0.0412 m
+== reach_q equal to 1 and wse_u below 0.2 m (the analyst's limit): n=46
+   gauge alone: gain 1.0140 (plain standard error 0.0041; plain 95 pct [1.0056, 1.0223]; effective-sample 95 pct [1.0043, 1.0236]); plain interval excludes one, effective-sample interval excludes one; residual sd 0.0824 m, residual lag-1 +0.127, n_eff 35.6
+   gauge and time: gain 1.0101 (plain standard error 0.0050; plain 95 pct [1.0000, 1.0201]; effective-sample 95 pct [0.9987, 1.0214]); plain interval excludes one, effective-sample interval includes one; residual sd 0.0816 m, residual lag-1 +0.103, n_eff 37.4
+      drift -0.0713 m per year (plain standard error 0.0524; effective-sample 95 pct [-0.1910, +0.0484])
+   gauge and reach slope: gain 1.0048 (plain standard error 0.0085; plain 95 pct [0.9876, 1.0219]; effective-sample 95 pct [0.9846, 1.0249]); plain interval includes one, effective-sample interval includes one; residual sd 0.0819 m, residual lag-1 +0.138, n_eff 34.8
+      distance term 2887 m (plain standard error 2341 m)
+   gauge, time and reach slope: gain 0.9983 (plain standard error 0.0093; plain 95 pct [0.9796, 1.0170]; effective-sample 95 pct [0.9771, 1.0194]); plain interval includes one, effective-sample interval includes one; residual sd 0.0804 m, residual lag-1 +0.100, n_eff 37.7
+      drift -0.0839 m per year (plain standard error 0.0524; effective-sample 95 pct [-0.2034, +0.0355])
+      distance term 3488 m (plain standard error 2330 m)
+   lower half of stage (split at the median gauge elevation 5.034 m), n=23: gain 1.0133 (plain standard error 0.0176; plain 95 pct [0.9766, 1.0500]; effective-sample 95 pct [0.9675, 1.0591]); effective-sample interval includes one; residual sd 0.0773 m
+   upper half of stage (split at the median gauge elevation 5.034 m), n=23: gain 0.9871 (plain standard error 0.0095; plain 95 pct [0.9672, 1.0070]; effective-sample 95 pct [0.9640, 1.0101]); effective-sample interval includes one; residual sd 0.0753 m
+   how tangled the regressors are on this set: correlation of gauge with time -0.574, gauge with reach slope +0.876, time with reach slope -0.439
+   residual from the gauge-alone line: rising faster than 0.02 m/day mean -0.0317 m (n=17), falling faster than 0.02 m/day mean +0.0222 m (n=25), difference -0.0539 m, plain standard error 0.0244 m
+== the two departing passes left out by date: n=48
+   gauge alone: gain 1.0146 (plain standard error 0.0040; plain 95 pct [1.0065, 1.0226]; effective-sample 95 pct [1.0053, 1.0238]); plain interval excludes one, effective-sample interval excludes one; residual sd 0.0813 m, residual lag-1 +0.120, n_eff 37.7
+   gauge and time: gain 1.0118 (plain standard error 0.0046; plain 95 pct [1.0025, 1.0210]; effective-sample 95 pct [1.0014, 1.0221]); plain interval excludes one, effective-sample interval excludes one; residual sd 0.0809 m, residual lag-1 +0.094, n_eff 39.8
+      drift -0.0563 m per year (plain standard error 0.0466; effective-sample 95 pct [-0.1616, +0.0490])
+   gauge and reach slope: gain 1.0054 (plain standard error 0.0084; plain 95 pct [0.9886, 1.0223]; effective-sample 95 pct [0.9857, 1.0252]); plain interval includes one, effective-sample interval includes one; residual sd 0.0808 m, residual lag-1 +0.135, n_eff 36.6
+      distance term 2860 m (plain standard error 2305 m)
+   gauge, time and reach slope: gain 1.0002 (plain standard error 0.0090; plain 95 pct [0.9820, 1.0184]; effective-sample 95 pct [0.9798, 1.0206]); plain interval includes one, effective-sample interval includes one; residual sd 0.0798 m, residual lag-1 +0.096, n_eff 39.6
+      drift -0.0683 m per year (plain standard error 0.0467; effective-sample 95 pct [-0.1744, +0.0378])
+      distance term 3444 m (plain standard error 2311 m)
+   lower half of stage (split at the median gauge elevation 4.496 m), n=24: gain 1.0131 (plain standard error 0.0181; plain 95 pct [0.9754, 1.0508]; effective-sample 95 pct [0.9677, 1.0586]); effective-sample interval includes one; residual sd 0.0764 m
+   upper half of stage (split at the median gauge elevation 4.496 m), n=24: gain 0.9930 (plain standard error 0.0090; plain 95 pct [0.9742, 1.0119]; effective-sample 95 pct [0.9714, 1.0146]); effective-sample interval includes one; residual sd 0.0777 m
+   how tangled the regressors are on this set: correlation of gauge with time -0.504, gauge with reach slope +0.881, time with reach slope -0.373
+   residual from the gauge-alone line: rising faster than 0.02 m/day mean -0.0298 m (n=18), falling faster than 0.02 m/day mean +0.0211 m (n=26), difference -0.0509 m, plain standard error 0.0234 m
+== leave one out on the 46 pairs of 'reach_q equal to 1 and wse_u below 0.2 m (the analyst's limit)': gain 1.0140; leave-one-out gains span 1.0127 (without 2024-09-28) to 1.0155 (without 2024-09-30)

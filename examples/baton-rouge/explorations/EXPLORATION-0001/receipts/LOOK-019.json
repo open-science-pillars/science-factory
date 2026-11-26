@@ -1,0 +1,50 @@
+{
+ "way": "exploring",
+ "id": "LOOK-019",
+ "why": "The package's own gain method with its interval that allows for correlation in time, flag screen on",
+ "argv": [
+  "uv",
+  "run",
+  "../../../../mvp/confront.py",
+  "--executor",
+  "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "--inputs",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--screen-reach-q",
+  "2",
+  "--out",
+  "confront-screened.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "../../../../mvp/confront.py",
+  "sha256": "c2a057d2b7af66dc1df4e0527346579c026ed3b31a239b4c5c6c9c22565e6336"
+ },
+ "inputs": [
+  {
+   "word": "../../../../mvp/confront.py",
+   "sha256": "c2a057d2b7af66dc1df4e0527346579c026ed3b31a239b4c5c6c9c22565e6336",
+   "bytes": 12435
+  },
+  {
+   "word": "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+   "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3",
+   "bytes": 9486
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-019.out.txt",
+  "sha256": "894d20111c8bfe532fface9b39eb1a09e2c2f7adc9e0b0e4cd4f5a476a8f885e"
+ },
+ "wrote": {
+  "confront-screened.json": "757d615b2a36c9cfedebc475239097c7e93d3700df40cde3d83e1b5fb2dc3053"
+ },
+ "at": "2026-11-26T05:43:59Z",
+ "by": "agent:analysis-0001"
+}

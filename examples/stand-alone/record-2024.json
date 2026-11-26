@@ -1,0 +1,322 @@
+{
+ "what": "a synthetic two-sensor record with a known answer; see openwiki/the-two-sensor-record.md",
+ "window": {
+  "start": "2024-01-01",
+  "end": "2024-12-31"
+ },
+ "units": "metres",
+ "rows": [
+  {
+   "time": "2024-01-03T12:00:00Z",
+   "reference": 4.9658,
+   "sensor": 5.5803,
+   "flag": 1
+  },
+  {
+   "time": "2024-01-10T12:00:00Z",
+   "reference": 5.4973,
+   "sensor": 6.1049,
+   "flag": 1
+  },
+  {
+   "time": "2024-01-17T12:00:00Z",
+   "reference": 6.3153,
+   "sensor": 6.9402,
+   "flag": 1
+  },
+  {
+   "time": "2024-01-24T12:00:00Z",
+   "reference": 6.117,
+   "sensor": 6.642,
+   "flag": 1
+  },
+  {
+   "time": "2024-01-31T12:00:00Z",
+   "reference": 6.5257,
+   "sensor": 7.1654,
+   "flag": 1
+  },
+  {
+   "time": "2024-02-07T12:00:00Z",
+   "reference": 7.6952,
+   "sensor": 8.3965,
+   "flag": 1
+  },
+  {
+   "time": "2024-02-14T12:00:00Z",
+   "reference": 7.8509,
+   "sensor": 8.4751,
+   "flag": 1
+  },
+  {
+   "time": "2024-02-21T12:00:00Z",
+   "reference": 7.5708,
+   "sensor": 8.1176,
+   "flag": 1
+  },
+  {
+   "time": "2024-02-28T12:00:00Z",
+   "reference": 7.9233,
+   "sensor": 8.5145,
+   "flag": 1
+  },
+  {
+   "time": "2024-03-06T12:00:00Z",
+   "reference": 8.7831,
+   "sensor": 9.4983,
+   "flag": 1
+  },
+  {
+   "time": "2024-03-13T12:00:00Z",
+   "reference": 8.9096,
+   "sensor": 9.5121,
+   "flag": 1
+  },
+  {
+   "time": "2024-03-20T12:00:00Z",
+   "reference": 8.5308,
+   "sensor": 9.2557,
+   "flag": 1
+  },
+  {
+   "time": "2024-03-27T12:00:00Z",
+   "reference": 9.0797,
+   "sensor": 9.6862,
+   "flag": 2
+  },
+  {
+   "time": "2024-04-03T12:00:00Z",
+   "reference": 8.4037,
+   "sensor": 9.1284,
+   "flag": 1
+  },
+  {
+   "time": "2024-04-10T12:00:00Z",
+   "reference": 9.0697,
+   "sensor": 9.7564,
+   "flag": 1
+  },
+  {
+   "time": "2024-04-17T12:00:00Z",
+   "reference": 8.9746,
+   "sensor": 9.6141,
+   "flag": 1
+  },
+  {
+   "time": "2024-04-24T12:00:00Z",
+   "reference": 8.4413,
+   "sensor": 9.162,
+   "flag": 1
+  },
+  {
+   "time": "2024-05-01T12:00:00Z",
+   "reference": 8.158,
+   "sensor": 8.8468,
+   "flag": 1
+  },
+  {
+   "time": "2024-05-08T12:00:00Z",
+   "reference": 8.411,
+   "sensor": 9.0694,
+   "flag": 1
+  },
+  {
+   "time": "2024-05-15T12:00:00Z",
+   "reference": 7.3514,
+   "sensor": 7.9942,
+   "flag": 1
+  },
+  {
+   "time": "2024-05-22T12:00:00Z",
+   "reference": 7.7221,
+   "sensor": 8.2548,
+   "flag": 1
+  },
+  {
+   "time": "2024-05-29T12:00:00Z",
+   "reference": 7.0039,
+   "sensor": 7.6596,
+   "flag": 1
+  },
+  {
+   "time": "2024-06-05T12:00:00Z",
+   "reference": 7.1152,
+   "sensor": 7.709,
+   "flag": 1
+  },
+  {
+   "time": "2024-06-12T12:00:00Z",
+   "reference": 6.7967,
+   "sensor": 7.4781,
+   "flag": 1
+  },
+  {
+   "time": "2024-06-19T12:00:00Z",
+   "reference": 5.807,
+   "sensor": 6.2953,
+   "flag": 1
+  },
+  {
+   "time": "2024-06-26T12:00:00Z",
+   "reference": 5.0668,
+   "sensor": 5.5935,
+   "flag": 1
+  },
+  {
+   "time": "2024-07-03T12:00:00Z",
+   "reference": 5.5701,
+   "sensor": 6.1382,
+   "flag": 1
+  },
+  {
+   "time": "2024-07-10T12:00:00Z",
+   "reference": 4.7004,
+   "sensor": 5.3028,
+   "flag": 1
+  },
+  {
+   "time": "2024-07-17T12:00:00Z",
+   "reference": 3.9671,
+   "sensor": 4.4429,
+   "flag": 1
+  },
+  {
+   "time": "2024-07-24T12:00:00Z",
+   "reference": 3.9678,
+   "sensor": 4.438,
+   "flag": 1
+  },
+  {
+   "time": "2024-07-31T12:00:00Z",
+   "reference": 3.0375,
+   "sensor": 3.5222,
+   "flag": 1
+  },
+  {
+   "time": "2024-08-07T12:00:00Z",
+   "reference": 2.9711,
+   "sensor": 3.4122,
+   "flag": 1
+  },
+  {
+   "time": "2024-08-14T12:00:00Z",
+   "reference": 2.294,
+   "sensor": 2.7588,
+   "flag": 1
+  },
+  {
+   "time": "2024-08-21T12:00:00Z",
+   "reference": 2.4037,
+   "sensor": 2.8921,
+   "flag": 1
+  },
+  {
+   "time": "2024-08-28T12:00:00Z",
+   "reference": 1.5832,
+   "sensor": 2.0591,
+   "flag": 1
+  },
+  {
+   "time": "2024-09-04T12:00:00Z",
+   "reference": 1.6999,
+   "sensor": 2.2003,
+   "flag": 1
+  },
+  {
+   "time": "2024-09-11T12:00:00Z",
+   "reference": 1.6198,
+   "sensor": 2.1533,
+   "flag": 1
+  },
+  {
+   "time": "2024-09-18T12:00:00Z",
+   "reference": 0.6026,
+   "sensor": 0.9605,
+   "flag": 1
+  },
+  {
+   "time": "2024-09-25T12:00:00Z",
+   "reference": 0.4557,
+   "sensor": -1.1482,
+   "flag": 2
+  },
+  {
+   "time": "2024-10-02T12:00:00Z",
+   "reference": 1.0685,
+   "sensor": 1.4705,
+   "flag": 1
+  },
+  {
+   "time": "2024-10-09T12:00:00Z",
+   "reference": 0.9591,
+   "sensor": 1.4608,
+   "flag": 1
+  },
+  {
+   "time": "2024-10-16T12:00:00Z",
+   "reference": 1.0963,
+   "sensor": 1.6042,
+   "flag": 1
+  },
+  {
+   "time": "2024-10-23T12:00:00Z",
+   "reference": 1.5191,
+   "sensor": 2.0594,
+   "flag": 1
+  },
+  {
+   "time": "2024-10-30T12:00:00Z",
+   "reference": 1.675,
+   "sensor": 2.1426,
+   "flag": 1
+  },
+  {
+   "time": "2024-11-06T12:00:00Z",
+   "reference": 2.0432,
+   "sensor": 2.5222,
+   "flag": 1
+  },
+  {
+   "time": "2024-11-13T12:00:00Z",
+   "reference": 2.4058,
+   "sensor": 2.9146,
+   "flag": 1
+  },
+  {
+   "time": "2024-11-20T12:00:00Z",
+   "reference": 2.1029,
+   "sensor": 2.6781,
+   "flag": 1
+  },
+  {
+   "time": "2024-11-27T12:00:00Z",
+   "reference": 2.3986,
+   "sensor": 2.8752,
+   "flag": 1
+  },
+  {
+   "time": "2024-12-04T12:00:00Z",
+   "reference": 3.0174,
+   "sensor": 3.419,
+   "flag": 1
+  },
+  {
+   "time": "2024-12-11T12:00:00Z",
+   "reference": 3.2583,
+   "sensor": 3.7411,
+   "flag": 1
+  },
+  {
+   "time": "2024-12-18T12:00:00Z",
+   "reference": 4.2219,
+   "sensor": 4.6985,
+   "flag": 1
+  },
+  {
+   "time": "2024-12-25T12:00:00Z",
+   "reference": 4.6682,
+   "sensor": 5.2478,
+   "flag": 1
+  }
+ ]
+}

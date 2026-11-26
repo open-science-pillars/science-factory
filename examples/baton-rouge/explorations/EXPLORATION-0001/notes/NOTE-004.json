@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-004",
+ "at": "2026-11-26T05:45:01Z",
+ "by": "agent:analysis-0001",
+ "kind": "dead-end",
+ "about": "pairing tolerance below the gauge's reporting interval",
+ "text": "Seen while exploring. Pairing within 5 minutes keeps 31 of 52 passes, because the gauge reports every 15 minutes; 15 minutes keeps 50 and 60 minutes keeps all 52 with the same spread (0.298 m and 0.293 m) and, with the flag screen, a gain of 1.0121 and 1.0115. A tolerance tighter than the gauge interval only throws passes away.",
+ "evidence": {
+  "path": "receipts/LOOK-016.json",
+  "sha256": "790127f48cf48ae5235c07db88fd04634b1476531cc2ee153c2ee152889e1a49"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

@@ -1,0 +1,11 @@
+[exploring: output of LOOK-017]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+- all paired passes: changes n=49, RMSD 0.3823 m, gauge change spread 1.1959 m, RMSD over spread 0.3197, below 0.05: False
+- reach_q below 2: changes n=46, RMSD 0.1859 m, gauge change spread 1.2386 m, RMSD over spread 0.1501, below 0.05: False
+- leave out only the flagged pass that departs: changes n=48, RMSD 0.1828 m, gauge change spread 1.2053 m, RMSD over spread 0.1517, below 0.05: False
+- leave out only the unflagged pass that departs: changes n=48, RMSD 0.3556 m, gauge change spread 1.1690 m, RMSD over spread 0.3042, below 0.05: False
+- leave out both departing passes by date: changes n=47, RMSD 0.1043 m, gauge change spread 1.1782 m, RMSD over spread 0.0885, below 0.05: False
+- reach_q below 2 and wse_u below 0.2 m: changes n=45, RMSD 0.1051 m, gauge change spread 1.2119 m, RMSD over spread 0.0867, below 0.05: False
+- reach_q below 2 and dark_frac below 0.5: changes n=45, RMSD 0.1051 m, gauge change spread 1.2119 m, RMSD over spread 0.0867, below 0.05: False
+- wse_u below 0.2 m only: changes n=48, RMSD 0.3556 m, gauge change spread 1.1690 m, RMSD over spread 0.3042, below 0.05: False
+lowest RMSD over spread under any of these screens: 0.0867

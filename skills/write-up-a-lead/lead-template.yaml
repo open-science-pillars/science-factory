@@ -1,0 +1,32 @@
+# A lead file. Copy it to <exploration>/lead.yaml, fill every required key, then:
+#   uv run mvp/loops/explore.py lead --exploration <x> --by <you> --file <x>/lead.yaml
+# The tool adds the count of looks and of the comparisons they declared, the full record of each choice and how many
+# looks had run when it was written down, the order of looks and choices, what was read and what was set aside.
+# Every decimal number in the words below (the proposed plan apart) must be printed, whole, by a look under `evidence`,
+# or stand in a knowledge page recorded as read. Quote numbers as printed.
+what_looks_true: >
+  A short paragraph with numbers, units, counts, place and period. "Looks", not "is".
+how_it_was_found: >
+  The path taken, including what was tried first and dropped.
+evidence: [LOOK-001]          # the looks every number here comes from; each ran without failing
+choices_that_would_change_it:
+  - {choice: CHOICE-001, how: "what the answer becomes the other way, with the number if the alternative was run; say so if it was not"}
+choices_that_would_not:
+  - {choice: CHOICE-002, why: "why the other way gives the same answer, with the look that showed it"}
+pitfalls:
+  - "the pitfall, and the knowledge page that names it (signed, unsigned or a draft) or the note raised"
+proposed_plan:
+  question: "One sentence about the data that was set aside, ending in a question mark?"
+  quantity_estimated: "one quantity, with how it is estimated"
+  difference_that_matters: "the scientist's number, or: nobody has stated one; proposed here, for the scientist to decide"
+  rule_sketch: "what would support the idea, what would refute it; anything else is inconclusive. Can it fail? Can it be met by discarding observations?"
+  hard_cases: "what the known-answer tests must include, from the pitfalls"
+  what_this_could_not_show: "what a result either way would leave open"
+  # other keys of your own are allowed here, such as prerequisites
+# Optional keys. Leave a key out when there is nothing to say.
+# what_does_not_hold: >
+#   What a reader might expect that the looks do not bear out; what an earlier version claimed and this one withdraws.
+# open_explanations: >
+#   What could explain what was seen and was not settled. Not things seen.
+# figures:
+#   - {file: figures/residual-against-stage.svg, shows: "what the picture shows, in words"}

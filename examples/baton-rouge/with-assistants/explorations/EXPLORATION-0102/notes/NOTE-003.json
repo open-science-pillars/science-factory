@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-003",
+ "at": "2026-11-26T07:02:37Z",
+ "by": "agent:analysis-0102",
+ "kind": "missing",
+ "about": "the SWOT repeat period and overpass track identity, in the knowledge base",
+ "text": "No page read for this question states the repeat period of the science orbit, and the fixture has no pass number (the drafted fixture page, not signed, says so). I first grouped passes with a period supplied from memory, 20.86455 d, which the read-what-is-known skill does not allow as a fact. The file itself shows intervals between passes of one track with median 20.86464 d, and a grouping from the gaps alone agrees with the phase grouping on every pass once the missing pass of 2024-03-25 is allowed for. A page that states the repeat, or a fixture that keeps pass_id, would remove the inference.",
+ "evidence": {
+  "path": "receipts/LOOK-010.json",
+  "sha256": "27aa3851f31235ef3aa39502e9571f6bd71a3500e671ee7c97f77085c69fde10"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

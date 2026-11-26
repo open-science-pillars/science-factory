@@ -1,0 +1,14 @@
+{
+ "way": "exploring",
+ "exploration": "EXPLORATION-0101",
+ "generated": "2026-11-26T06:54:13Z",
+ "open_notes": 0,
+ "notes": [],
+ "lead": {
+  "file": "lead.json",
+  "version": 3,
+  "status": "a lead, not a finding: found by exploring, tested on nothing, and it cannot be signed"
+ },
+ "log_fingerprint": "58:178bc65603b5ec4df739f1831bee79f2b13688cbb1a6e052995476846aabb442",
+ "contract": "the curating assistant drafts at status draft with its own generated event; it never merges and never signs. A lead is never drafted as a finding: what may be drafted from it is its pitfalls and what it learned about the data, each marked as seen while exploring"
+}

@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-005",
+ "at": "2026-11-26T06:45:36Z",
+ "by": "agent:analysis-0101",
+ "kind": "missing",
+ "about": "knowledge: meaning of reach_q values and the bitwise flag for RiverSP reach Version D (datasets/swot-river-lake.md)",
+ "text": "No knowledge page says what the values of reach_q mean for a river reach. In the working year the flag is 1 on 49 of 52 passes and 2 on 3; no pass has 0 or 3 (LOOK-013). The signed lakes page gives the lake flag as 0 good, 1 suspect, 2 degraded, 3 bad; if the reach flag has the same ladder then every pass of 2024 at this reach is marked at least suspect, and nothing in the knowledge says why. The bitwise flag behind reach_q, the crossover calibration quality, and any field saying how much of the reach was observed are not in the working file. Wanted from the product description, by the steward: the value ladder for reach_q, the bits behind it, and which fields say that a reach was partly observed. A screen for a confirming study cannot be written from the knowledge as it stands. Extends NOTE-002.",
+ "evidence": {
+  "path": "receipts/LOOK-013.json",
+  "sha256": "d10c3a33244f6309d4ec70669c0efe0026db07ef7f83a83e279103505571e7e5"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

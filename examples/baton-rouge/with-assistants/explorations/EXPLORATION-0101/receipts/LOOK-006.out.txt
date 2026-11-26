@@ -1,0 +1,12 @@
+[exploring: output of LOOK-006]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+all paired: n=50, gain 1.0345; leave-one-out gains span 1.0196 to 1.0366
+   leaving out 2024-10-30 moves the gain by -0.0149 to 1.0196
+   leaving out 2024-03-26 moves the gain by -0.0051 to 1.0294
+   leaving out 2024-09-30 moves the gain by +0.0021 to 1.0366
+   leaving out 2024-04-26 moves the gain by +0.0020 to 1.0365
+reach_q below 2: n=47, gain 1.0190; leave-one-out gains span 1.0140 to 1.0208
+   leaving out 2024-03-26 moves the gain by -0.0050 to 1.0140
+   leaving out 2024-04-26 moves the gain by +0.0018 to 1.0208
+   leaving out 2024-09-30 moves the gain by +0.0015 to 1.0205
+   leaving out 2024-09-28 moves the gain by -0.0013 to 1.0177

@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "exploration": "EXPLORATION-0102",
+ "set_aside": {
+  "how": "a later period",
+  "subject": {
+   "gauge": "usgs-07374000",
+   "product": "swot riversp reach version d",
+   "reach": "74210000331"
+  },
+  "window": {
+   "start": "2025-01-01",
+   "end": "9999-12-31",
+   "open_ended": true
+  },
+  "sites": [],
+  "releases": [],
+  "paths": [],
+  "also_set_aside": [],
+  "time_keys": [
+   "time",
+   "t",
+   "date",
+   "datetime",
+   "timestamp"
+  ],
+  "why": "The request offers everything after 2024 as held out, calendar 2024 has already been looked at, and the record beside the studies already sets aside 2025-01-01 onward for this reach and gauge; the same boundary is kept so a confirming study has unseen passes.",
+  "working": {
+   "description": "the 2024 confrontation fixture swot_gauge_baton_rouge_2024.json: SWOT reach width, height and flags per pass, with the paired gauge stage",
+   "window": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+   }
+  }
+ },
+ "started": "0:3894f8dee08c33e5ec0e3cf6c716dcffc3279d65741517a5619caec99bd3977f",
+ "says": "what this exploration does not look at; a look that names it is refused"
+}

@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-008",
+ "why": "Is the gain above one explained by the reach slope times a distance between the gauge and the reach centre?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_08_slope_term.py",
+  "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_08_slope_term.py",
+  "sha256": "e72ec2c67d753452e769718c62cf8502a882af1ff3b241a8e646df47e1ac5158"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_08_slope_term.py",
+   "sha256": "e72ec2c67d753452e769718c62cf8502a882af1ff3b241a8e646df47e1ac5158",
+   "bytes": 2148
+  },
+  {
+   "word": "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-008.out.txt",
+  "sha256": "36bfe4f07378ec7cf7766642b0017f9df5d48fcc376a4c41b4635eee711d18cc"
+ },
+ "wrote": {},
+ "at": "2026-11-26T06:24:08Z",
+ "by": "agent:analysis-0101"
+}

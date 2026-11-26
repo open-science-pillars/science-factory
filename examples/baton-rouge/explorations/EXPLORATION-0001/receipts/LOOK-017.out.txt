@@ -1,0 +1,3 @@
+[exploring: output of LOOK-017]
+tolerance 60 min; reach_q screen 2; dark_frac screen None: 49 of 52 pairs kept
+gain 1.0115, plain least squares 95 percent interval 0.9931 to 1.0298 (too narrow: no allowance for correlation in time), residual sd 0.154 m

@@ -1,0 +1,6 @@
+[exploring: output of LOOK-021]
+Traceback (most recent call last):
+  File "/home/claude/science-factory/examples/baton-rouge/explorations/EXPLORATION-0001/looks/show.py", line 13, in <module>
+    node = node[part]
+           ~~~~^^^^^^
+KeyError: 'scores'

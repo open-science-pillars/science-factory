@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "id": "LOOK-026",
+ "why": "After the review: spreads as sample standard deviations, to set beside the recipe's receipt",
+ "argv": [
+  "uv",
+  "run",
+  "looks/pairs_v2.py",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--mode",
+  "count"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/pairs_v2.py",
+  "sha256": "aaf06cba1d6cd82ff53b620e1899ad2c74c2ae64ef2d0cce27b8a2bf71b9c461"
+ },
+ "inputs": [
+  {
+   "word": "looks/pairs_v2.py",
+   "sha256": "aaf06cba1d6cd82ff53b620e1899ad2c74c2ae64ef2d0cce27b8a2bf71b9c461",
+   "bytes": 7226
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-026.out.txt",
+  "sha256": "539498785b185a53058c293593635db8246a6241f3a4db87946812cf657c1662"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:47:22Z",
+ "by": "agent:analysis-0001"
+}

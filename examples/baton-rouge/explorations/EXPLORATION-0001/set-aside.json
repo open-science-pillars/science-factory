@@ -1,0 +1,37 @@
+{
+ "way": "exploring",
+ "exploration": "EXPLORATION-0001",
+ "set_aside": {
+  "how": "a later period",
+  "subject": {
+   "reach_id": "74210000331",
+   "gauge": "USGS-07374000",
+   "collection": "SWOT_L2_HR_RiverSP_reach_D"
+  },
+  "window": {
+   "start": "2025-04-28",
+   "end": "9999-12-31",
+   "open_ended": true
+  },
+  "sites": [],
+  "releases": [],
+  "paths": [],
+  "time_keys": [
+   "time",
+   "t",
+   "date",
+   "datetime",
+   "timestamp"
+  ],
+  "why": "The hydrology bundle's signed SWOT lake dataset concept records that the Version D family changes from reprocessing (PGD0, through 2025-04-27) to forward processing (PID0) on 2025-04-28, and its signed river concept records the same two processing identifiers. Everything from that date on is one processing baseline, the request says none of it has been looked at, and it keeps growing, so it is what a later test would want. 2025-01-01 to 2025-04-27 is neither explored nor set aside.",
+  "working": {
+   "description": "Calendar 2024, the committed fixture swot_gauge_baton_rouge_2024.json in the hydrology capability (52 Version D passes, the gauge readings around each, and 47 Version C passes kept for the version step)",
+   "window": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+   }
+  }
+ },
+ "started": "0:57535d4c6c6b60ac21017220026a49112088fd83e6472f7a413b5ae124cff795",
+ "says": "what this exploration does not look at; a look that names it is refused"
+}

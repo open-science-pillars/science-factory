@@ -1,0 +1,38 @@
+{
+ "way": "exploring",
+ "id": "LOOK-021",
+ "why": "What does the recipe's own receipt say for 2024, to set beside my change scores",
+ "argv": [
+  "uv",
+  "run",
+  "looks/show.py",
+  "recipe-15min.json",
+  "scores",
+  "level_difference"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/show.py",
+  "sha256": "4539d132bf2fb22c819e357846d9e8ef266259d8c6cb5dc1885ac85c484406ae"
+ },
+ "inputs": [
+  {
+   "word": "looks/show.py",
+   "sha256": "4539d132bf2fb22c819e357846d9e8ef266259d8c6cb5dc1885ac85c484406ae",
+   "bytes": 372
+  },
+  {
+   "word": "recipe-15min.json",
+   "sha256": "4ac7b4ac7754ae2f1f82d327266ad324ccb1cd0204c1c8571bcd9170d30c77b6",
+   "bytes": 15267
+  }
+ ],
+ "exit_code": 1,
+ "output": {
+  "file": "receipts/LOOK-021.out.txt",
+  "sha256": "bcc2a455fcd02efa42076294d698e6d7699bb6975052839d29f34aff90840633"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:44:34Z",
+ "by": "agent:analysis-0001"
+}

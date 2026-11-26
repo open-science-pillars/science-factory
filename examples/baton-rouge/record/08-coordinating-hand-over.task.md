@@ -1,0 +1,1 @@
+EXPLORATION-0001 stands at `hand-over`. In this example the scientist's answer to "is the lead worth a test" is taken as yes, so that the hand-over can be shown; no person gave it. Take the lead to the confirming way as far as an assistant may.

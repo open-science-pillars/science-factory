@@ -1,0 +1,14 @@
+{
+ "mcpServers": {
+  "openwiki": {
+   "command": "uv",
+   "args": [
+    "run",
+    "--script",
+    "mvp/loops/wiki_server.py",
+    "--wiki",
+    "openwiki"
+   ]
+  }
+ }
+}

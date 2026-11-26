@@ -1,0 +1,6 @@
+[exploring: output of LOOK-029]
+screen: 3 of 50 pairs excluded (reach_q at or above 2)
+tolerance 15 min: 47 pairs, 2 passes with no reading inside it ['2024-02-23T13:43:01Z', '2024-03-15T10:28:03Z']
+lowest third of stage (1.64 to 2.96 m): n=15, median -0.091 m, mean -0.063 m, sd 0.081 m (sample), min -0.186, max +0.101; flags []
+middle third (2.99 to 6.33 m): n=15, median +0.027 m, mean +0.038 m, sd 0.100 m (sample), min -0.166, max +0.220; flags []
+highest third (6.42 to 10.33 m): n=17, median +0.023 m, mean +0.079 m, sd 0.229 m (sample), min -0.061, max +0.939; flags []

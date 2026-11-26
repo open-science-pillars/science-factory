@@ -1,0 +1,5 @@
+[exploring: output of LOOK-004]
+tolerance 15 min; reach_q screen 2: 47 of 50 pairs kept
+lowest third of stage (1.64 to 2.96 m): n=15, median width 758.9 m, sample spread 19.1 m
+middle third (2.99 to 6.33 m): n=15, median width 781.4 m, sample spread 13.2 m
+highest third (6.42 to 10.33 m): n=17, median width 813.6 m, sample spread 38.1 m

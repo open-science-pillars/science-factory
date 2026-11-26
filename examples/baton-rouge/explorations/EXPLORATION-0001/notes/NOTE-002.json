@@ -1,0 +1,15 @@
+{
+ "way": "exploring",
+ "id": "NOTE-002",
+ "at": "2026-11-26T05:45:01Z",
+ "by": "agent:analysis-0001",
+ "kind": "missing",
+ "about": "SWOT RiverSP dark_frac and wse_u on an unflagged pass (knowledge: datasets/swot-river-lake.md)",
+ "text": "Seen while exploring the same record. One pass with reach_q 1 (2024-03-26, gauge 7.68 m) is 0.939 m above the rest. It has the highest dark_frac of the year (0.692; the next highest third starts at 0.026) and the largest stated uncertainty (wse_u 0.296 m against a median of 0.096 m). So here the quality flag missed a bad pass that dark_frac and wse_u both mark. One pass in one year: enough to warn, not enough to set a threshold. With it and the three flagged passes left out the residual spread about the gain line is 0.082 m, below the product's median stated uncertainty.",
+ "evidence": {
+  "path": "receipts/LOOK-023.json",
+  "sha256": "6bb0b377a119a3aaf20f5312f2295d6187fc8e61ebd8b363b27ec68629223729"
+ },
+ "status": "open",
+ "from": "an exploration: what it says was seen while exploring and is not a tested claim"
+}

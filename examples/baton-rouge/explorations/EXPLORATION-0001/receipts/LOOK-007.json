@@ -1,0 +1,43 @@
+{
+ "way": "exploring",
+ "id": "LOOK-007",
+ "why": "The recipe's method again, with a place to write its receipt (LOOK-002 failed on a missing folder)",
+ "argv": [
+  "uv",
+  "run",
+  "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "--inputs",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--tolerance-minutes",
+  "15",
+  "--out",
+  "recipe-15min.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3"
+ },
+ "inputs": [
+  {
+   "word": "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+   "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3",
+   "bytes": 9486
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-007.out.txt",
+  "sha256": "014dba7892bcc64965407aade1416bcd41a3987f67ac0faaecbc9e66a597a827"
+ },
+ "wrote": {
+  "recipe-15min.json": "4ac7b4ac7754ae2f1f82d327266ad324ccb1cd0204c1c8571bcd9170d30c77b6"
+ },
+ "at": "2026-11-26T05:43:36Z",
+ "by": "agent:analysis-0001"
+}

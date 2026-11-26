@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-005",
+ "why": "The question itself: does width rise and fall with stage, in levels and in changes, overall and inside each overpass track, and how much do the widest pass and the two passes the drafted page names move the answer?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_05_relation.py",
+  "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_05_relation.py",
+  "sha256": "cc489153d2444e323263335ad21297c2f6bacd43695b654e6c9ee515f87deccb"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_05_relation.py",
+   "sha256": "cc489153d2444e323263335ad21297c2f6bacd43695b654e6c9ee515f87deccb",
+   "bytes": 3509
+  },
+  {
+   "word": "/home/claude/src/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-005.out.txt",
+  "sha256": "f454f3a4402695255915e8a24b7fe4282f88b8a642e9a5243f7deb059026c6d2"
+ },
+ "wrote": {},
+ "at": "2026-11-26T07:00:23Z",
+ "by": "agent:analysis-0102"
+}

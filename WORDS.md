@@ -291,6 +291,76 @@ Names that stay: `rehearsal.run`, `review.verdict`, `finding.attached`; `claim_c
 
 New in the third review round, with no earlier name: the event `trial.verdict`; the scorecard check `lock-committed`; the plan keys `study_kind`, `writes` and `power_evidence.waived`; the options `start --request` and `--asked-by`, `lock --procedure`, `check-log --change-log`, `close --anchor`, `system_trial.py seal --answer` and `--harness`, `system_trial.py verdict --by`, and `adapter.py conformance --place`; the file `mvp/templates/analysis-plan.yaml`.
 
+## Words added with the assistants and the two loops
+
+Added on 2026-11-26, with no earlier form. One line each.
+
+| Word | What it means here |
+|---|---|
+| **exploration** | one question looked into freely: a directory with its own log, like a study, kept by the exploring tool (`explore.py`); it ends in a lead, a note, a method or a stop |
+| **set aside** | named as not to be looked at, before anything is looked at; what an exploration sets aside is what a later study may hold out |
+| **look** | one script run on working data through the exploring tool, logged with its data by checksum and what came out; the earlier vocabulary's "look" (opening the held-out data) is not this |
+| **lead** | something that looks true and is worth testing: what, how it was found, how many looks, which choices would change it, and a proposed plan; never a finding |
+| **choice** | a decision made while exploring, recorded with its alternatives and what it rests on |
+| **fence** | what keeps set-aside data out of an exploration: the checks the exploring tool makes on a look, and the record a later study respects |
+| **spoiled** | said of an exploration that set-aside data reached; it can end only as a stop |
+| **hand-over** | what an exploration writes so that the study tool can start a confirming study from its lead |
+| **recheck** | running a logged look again, in a copy, to see that it gives the same output |
+| **role** | one assistant's job as a file in `assistants/`: what it may call, must never see, reads, writes and hands on |
+| **skill** | a written procedure a role follows, with any script beside it; it carries no facts about a dataset |
+| **runner** | what starts a role with its tools on some platform; the role does not depend on it |
+| **rendered** | written out from the role and skill files into the files a platform reads; never edited by hand |
+| **wiki** | a knowledge base as a directory of Markdown pages in the Open Knowledge Format (`openwiki/` in a repository), read as files or through the two read-only tools `openwiki_search` and `openwiki_read` |
+| **working memory** | what a wiki page is until a person signs it |
+| **signed** (of a page) | its own signature lines name a person; only a person adds them |
+| **draft** | a page an assistant wrote for the queue; at status draft, with sources, never signed |
+| **queue** | the folder of drafts waiting for the steward, beside the work and outside the wiki |
+| **beside** (of a draft) | on the same subject as a page, making another point, in conflict with nothing |
+
+Added later on 2026-11-26, after separate assistants were run and a hydrologist reviewed the result. One line each.
+
+| Word | What it means here |
+|---|---|
+| **figure** | a picture a look wrote into the exploration's `figures/` folder; the receipt lists it by checksum and a lead may show it |
+| **the order** (of looks and choices) | what the lead shows from the log: which looks had already run when each choice was written down |
+| **written down** (of a choice) | when the log received it, which is all the log knows; a choice written down after a look is read as made after it |
+| **correction** | one phrase of a recorded lead replaced without a new version; no number may change, and the lead shows the old and the new words |
+| **comparisons** | the fits, cuts and groups inside one look, declared by the look's own output and added up in the lead beside the count of looks |
+| **account** | what a role tells the coordinating assistant about what it did, as against the work itself; the review assistant never reads the author's |
+| **own place** | `record/<role>/`, where a role's account and its task are kept, apart from every other role's |
+| **remark** (of `check-log`) | where a log that checks out departs from the order the tool now holds; the log was written before the tool refused that and is kept as it is |
+| **in neither** | data that is neither explored nor set aside; the start names it, and nothing protects it |
+| **skimmed** | said of a knowledge page recorded as read but not read whole; the lead says so |
+| **drafted by** | the name the drafting assistant acts under in the logs (`drafted_from.by`), beside `generated.by`, which is the platform and the model |
+| **the run with separate assistants** | the second run of the Baton Rouge demo: each role a separate assistant started from its role file, with no memory of the others |
+| **the single-instance run** | the first run of that demo: one model instance playing every role, so its reviews are the author's own |
+
+Words this package no longer uses for these things, because a field scientist reads them another way:
+
+| Not this | This | Why |
+|---|---|---|
+| unflagged, not flagged | the flag's value: "`reach_q` equal to 1" | a quality flag can have a value on every observation; in the Baton Rouge record none is at the clean value, so "unflagged" described passes the product marks |
+| sampling interval (for an interval around an estimate) | confidence interval, with the model it comes from | to a hydrologist a sampling interval is the time between samples |
+
+The method scripts under `mvp/` and the kept records of both demo runs still carry the two older words, because neither may be edited; the exploring tool refuses them in a new lead.
+
+These words beside the ones a hydrologist would use, for a first reading:
+
+| Here | A hydrologist might say |
+|---|---|
+| set aside (exploring), held out (confirming) | withheld for validation; the same thing in two tools |
+| look | one analysis run, with its script and output kept |
+| lead | a hypothesis worth testing, with how it was arrived at |
+| fence | the check that keeps withheld data out of the analysis |
+| known-answer tests | synthetic recovery tests |
+| gain | regression slope or scale factor: metres of rise in one record per metre of rise in the other ("slope" is kept for the water surface) |
+| departure | residual from the median difference |
+| spread | standard deviation |
+| level difference | the offset between two records, datum included; not called a bias, because most of it is not error |
+| confrontation | comparison of a product with in situ data |
+| wiki, bundle | where knowledge lives: a directory of pages; a page is also called a concept |
+| steward | the person who holds a knowledge bundle and signs what enters it |
+
 ## What was applied
 
 Applied everywhere a reader or a user can meet a word: the front door (README.md), the design (DESIGN.md, which replaces the separate concept and architecture documents), the build plan (PLAN.md), the templates, both studies and their analysis plans, the procedure file, the method scripts, and the study tool, inside and out (commands, options, messages, statuses, the names of its self-test checks and its own code).

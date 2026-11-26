@@ -1,0 +1,1 @@
+From the coordinating assistant. `explore.py status` says revise-or-end, last review holes-found. Here is the review file and nothing else: explorations/EXPLORATION-0001/verdicts/REVIEW-001.md. Answer each hole.

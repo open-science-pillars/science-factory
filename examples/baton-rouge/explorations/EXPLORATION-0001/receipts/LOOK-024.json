@@ -1,0 +1,36 @@
+{
+ "way": "exploring",
+ "id": "LOOK-024",
+ "why": "What keys the recipe's receipt carries (LOOK-021 guessed a key that is not there)",
+ "argv": [
+  "uv",
+  "run",
+  "../../../../skills/explore-a-record/scripts/describe_record.py",
+  "recipe-15min.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "../../../../skills/explore-a-record/scripts/describe_record.py",
+  "sha256": "7090fba498e68d32b0abeffec4a528d9001846f41d3caa4d53a7173f3252d19e"
+ },
+ "inputs": [
+  {
+   "word": "../../../../skills/explore-a-record/scripts/describe_record.py",
+   "sha256": "7090fba498e68d32b0abeffec4a528d9001846f41d3caa4d53a7173f3252d19e",
+   "bytes": 3353
+  },
+  {
+   "word": "recipe-15min.json",
+   "sha256": "4ac7b4ac7754ae2f1f82d327266ad324ccb1cd0204c1c8571bcd9170d30c77b6",
+   "bytes": 15267
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-024.out.txt",
+  "sha256": "0d764697c05fbcde303165e5e99e6ccb1d1fe07de05f62144633446babc2f228"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:45:00Z",
+ "by": "agent:analysis-0001"
+}

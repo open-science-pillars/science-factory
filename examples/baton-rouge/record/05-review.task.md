@@ -1,0 +1,1 @@
+From the coordinating assistant. A revised lead (version 4) is recorded in examples/baton-rouge/explorations/EXPLORATION-0001. Review it against the record, and against the holes in verdicts/REVIEW-001.md.

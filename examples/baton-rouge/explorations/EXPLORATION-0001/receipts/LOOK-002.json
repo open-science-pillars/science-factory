@@ -1,0 +1,41 @@
+{
+ "way": "exploring",
+ "id": "LOOK-002",
+ "why": "The signed recipe's own method at its own tolerance: do I get the change scores the recipe states for 2024",
+ "argv": [
+  "uv",
+  "run",
+  "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "--inputs",
+  "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+  "--tolerance-minutes",
+  "15",
+  "--out",
+  "methods/recipe-15min.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+  "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3"
+ },
+ "inputs": [
+  {
+   "word": "../../../../../hydrology/skills/swot-hydro/scripts/load_swot_confrontation.py",
+   "sha256": "2d2b31dc0f6e3283de81d87d144f6b68453b235e05bb36c097a83b9e21de47c3",
+   "bytes": 9486
+  },
+  {
+   "word": "../../../../../hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 1,
+ "output": {
+  "file": "receipts/LOOK-002.out.txt",
+  "sha256": "a943cc07e40cc0280d40bb2d651c54b573ff22c54ae2a9f7013d65259ae6e89d"
+ },
+ "wrote": {},
+ "at": "2026-11-26T05:43:05Z",
+ "by": "agent:analysis-0001"
+}

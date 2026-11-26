@@ -1,0 +1,5 @@
+[exploring: output of LOOK-002]
+tolerance 15 min; reach_q screen 2: 47 of 50 pairs kept
+width: min 740.2 m, max 937.3 m, median 784.5 m, sample spread 34.8 m
+rank correlation of width with stage +0.744; straight-line correlation +0.684
+straight line: +8.03 m of width per m of stage; spread of width about the line 25.4 m; the line takes up 0.47 of the width's variance

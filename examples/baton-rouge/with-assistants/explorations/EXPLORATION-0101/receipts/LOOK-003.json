@@ -1,0 +1,42 @@
+{
+ "way": "exploring",
+ "id": "LOOK-003",
+ "why": "Do the executor's scores on the working data match what the signed recipe states for 2024, and does my pairing helper reproduce them?",
+ "argv": [
+  "uv",
+  "run",
+  "looks/look_03_recipe_scores.py",
+  "work/confrontation-15.json",
+  "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json"
+ ],
+ "launcher": "uv run",
+ "script": {
+  "word": "looks/look_03_recipe_scores.py",
+  "sha256": "64a46451babe06f089074cc1891a329edf6e991fa5af8b00ae94acba58993afc"
+ },
+ "inputs": [
+  {
+   "word": "looks/look_03_recipe_scores.py",
+   "sha256": "64a46451babe06f089074cc1891a329edf6e991fa5af8b00ae94acba58993afc",
+   "bytes": 1727
+  },
+  {
+   "word": "work/confrontation-15.json",
+   "sha256": "0d54157e4269216c09a501054027cf05029e933b591f5ca022c5af5f2160d59b",
+   "bytes": 15267
+  },
+  {
+   "word": "/home/claude/hydrology/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
+   "sha256": "b56b65d56c3db43fc30b7b0cdc49f3158f651a6e0cd420c7c111e88afa423f27",
+   "bytes": 73145
+  }
+ ],
+ "exit_code": 0,
+ "output": {
+  "file": "receipts/LOOK-003.out.txt",
+  "sha256": "5e2bc0a9be5cf2f47eadb3f5c8b71c361d66525ad653323e48da1fa817e7e4df"
+ },
+ "wrote": {},
+ "at": "2026-11-26T06:22:35Z",
+ "by": "agent:analysis-0101"
+}

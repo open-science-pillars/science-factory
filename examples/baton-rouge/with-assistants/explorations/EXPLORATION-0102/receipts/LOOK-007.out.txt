@@ -1,0 +1,27 @@
+[exploring: output of LOOK-007]
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+Width residual about each track's own line on stage (lines fitted on all paired passes of the track), largest first:
+date       track stage_m width_m resid_m dark_frac reach_q wse_u_m
+2024-02-12  A   9.098   937.3   +89.0   0.015    1    0.094
+2024-03-26  B   7.684   756.0   -29.9   0.692    1    0.296
+2024-06-16  A   9.656   827.0   -26.7   0.016    1    0.094
+2024-09-07  A   2.063   805.3   +26.4   0.016    1    0.096
+2024-02-13  B   9.220   820.8   +24.0   0.013    1    0.096
+2024-06-17  B   9.473   821.2   +22.6   0.015    1    0.097
+2024-05-27  B  10.272   784.5   -19.7   0.141    1    0.098
+2024-01-22  A   5.544   793.5   -19.6   0.018    1    0.094
+2024-05-05  A   9.004   831.5   -15.8   0.013    1    0.095
+2024-07-28  A   6.416   806.2   -15.6   0.015    1    0.093
+
+residual against dark_frac, 50 pairs: r=-0.315 rho=-0.313
+dark_frac >= 0.10: n=10, mean residual -7.9 m; dark_frac < 0.10: n=40, mean residual +2.0 m
+
+dark_frac by track (all 52 passes): A: n>=0.10 is 1 of 17; B: n>=0.10 is 6 of 18; C: n>=0.10 is 4 of 17
+reach_q 2 passes: [('2024-01-01', 'A', -3.5), ('2024-11-30', 'A', -0.4), ('2024-10-30', 'C', 4.6)]
+
+Raw width against dark_frac ignoring track and stage, 52 passes: r=-0.360 rho=-0.621
+track A dark_frac mean 0.031, track B 0.107, track C 0.053
+low dark_frac only (<0.05): width at 5 m stage on track A line 802.4 m (n=15, without 2024-02-12), on track B line 773.0 m (n=9); difference 29.5 m
+track A line: width at 2 m stage 778.2 m, at 5 m 807.8 m, at 9 m 847.2 m
+track B line: width at 2 m stage 745.6 m, at 5 m 766.9 m, at 9 m 795.2 m
+track C line: width at 2 m stage 762.2 m, at 5 m 781.7 m, at 9 m 807.7 m
