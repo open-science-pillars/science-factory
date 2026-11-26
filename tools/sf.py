@@ -2058,14 +2058,17 @@ def standings(ev: list) -> dict:
     return {"lock": standing_of(ev, last("lock.recorded")), "signature": standing_of(ev, last("signature.recorded"))}
 
 
-def finding_line(ev: list) -> str:
-    """The first line of a finding wherever the tool shows one: how its two acts stand now, and so whether it is signed."""
+def finding_line(ev: list, status: str | None = None) -> str:
+    """The first line of a finding wherever the tool shows one: how its two acts stand now, and so whether it is
+    signed. Given the log check's status, it never says signed of a study the log check does not call signed."""
     st = standings(ev)
     sig = next((e for e in reversed(ev) if e["kind"] == "signature.recorded"), None)
     if PRACTICE in st.values():
         return PRACTICE_WORDS
     said = f"lock: {st['lock'] or 'not made'}; signature: {st['signature'] or 'not made'}"
     if sig and sig["data"].get("decision") == "signed" and st["lock"] == VERIFIED and st["signature"] == VERIFIED:
+        if status is not None and not status.startswith(SIGNED):
+            return f"NOT SIGNED: both acts are verified ({said}), and the log check says: {status}."
         return f"SIGNED ({said}): the platform confirmed the people who approved the lock and the signature."
     if sig and sig["data"].get("decision") == "declined":
         return f"NOT SIGNED: the steward declined ({said})."
@@ -2731,7 +2734,7 @@ def cmd_show_finding(study: Study, a) -> None:
     att = attached_finding(ev)
     if not att:
         raise Refused("no finding is attached")
-    print(finding_line(ev))
+    print(check_log(study)["finding_first_line"])
     print()
     print((study.d / att["data"]["file"]).read_text(), end="")
 
@@ -3052,6 +3055,9 @@ def cmd_curation_list(study: Study, a) -> None:
             by_subject.setdefault(str(f.get("about")), []).append({**f, "route": route.get(f.get("kind"), "steward review")})
     out = {"study": study.d.name, "generated": now(), "open_notes": sum(len(v) for v in by_subject.values()),
            "by_subject": by_subject,
+           "acts": standings(study.events()),
+           "what_a_draft_says_of_this_study": ("a page drafted from this study says how its two acts stand, in these words: "
+                                               + finding_line(study.events())),
            "contract": "the curating assistant drafts at status draft with its own generated event; "
                        "it never merges and never signs"}
     (study.d / "curation-list.json").write_text(json.dumps(out, indent=1))
@@ -3676,7 +3682,7 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     return {"study": study.d.name, "status": status, "problems": problems, "purity": purity,
             "remarks": remarks, "outcomes": outcomes, "reviews": verdicts,
             "finding": att["data"]["file"] if att else None,
-            "acts": standings(ev), "finding_first_line": finding_line(ev) if att else None,
+            "acts": standings(ev), "finding_first_line": finding_line(ev, status) if att else None,
             "signature": sig["data"]["decision"] if sig else None,
             "closed": closed["data"]["outcome"] if closed else None,
             "openings_without_a_committed_lock": no_commit,
@@ -4498,6 +4504,17 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
                   and rep3["finding_first_line"].startswith("SIGNED (lock: verified; signature: verified)")
                   and shown["signature"]["approved_by"] == ["example-scientist"] and shown["signature"]["pull_request"].endswith("/pull/8")
                   and r3.last("act.verification")["actor"] == "platform:github" and stage_of(r3, FACTORY)["awaiting_verification"] == [])
+            cmd_curation_list(r3, A())
+            listed = json.loads((r3.d / "curation-list.json").read_text())
+            attached = r3.d / r3.last("finding.attached")["data"]["file"]
+            kept_words = attached.read_text()
+            attached.write_text(kept_words + "\nedited after it was attached\n")
+            spoiled = check_log(r3, posted3)
+            attached.write_text(kept_words)
+            check("the curation list, which is what drafted knowledge is made from, carries the standings of the study's acts; and the first "
+                  "line the tool puts on a finding never says signed of a study the log check does not call signed",
+                  listed["acts"] == {"lock": VERIFIED, "signature": VERIFIED} and "SIGNED (lock: verified; signature: verified)" in listed["what_a_draft_says_of_this_study"]
+                  and spoiled["status"] == INVALID and spoiled["finding_first_line"].startswith("NOT SIGNED: both acts are verified"))
             cmd_close(r3, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted3))
             cmd_verify_acts(r3, A(by="agent:coordinating", factory=str(FACTORY)))
             check("a study with two verified acts closes as a signed finding, and anybody can verify it again after the close",
@@ -5923,7 +5940,8 @@ def build_parser() -> argparse.ArgumentParser:
     record_merge = (["--record-merge"], {"default": None, "dest": "record_merge", "metavar": "COMMIT",
                                          "help": "record this act from the merge commit of its approved pull request (run by the job that follows the merge)"})
     platform_rec = (["--platform-record"], {"default": None, "dest": "platform_record",
-                                            "help": "the JSON file the recording job wrote from the platform's record of the pull request"})
+                                            "help": "the JSON file the recording job wrote from the platform's record of the pull request. "
+                                                    "The names in it are recorded as handed to the tool and verify nothing"})
     add("request-lock", cmd_request_lock, by, proc)
     add("request-signature", cmd_request_signature, by, proc, anchor, (["--decision"], {"required": True, "help": "signed or declined"}))
     add("check-request", cmd_check_request, proc, (["--act"], {"required": True, "help": "lock or signature"}))
