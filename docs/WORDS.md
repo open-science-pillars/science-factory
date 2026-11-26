@@ -254,7 +254,7 @@ Added on 2026-11-26, with no earlier form. One line each.
 | **look** | one script run on working data through the exploring tool, logged with its data by checksum and what came out; the earlier vocabulary's "look" (opening the held-out data) is not this |
 | **lead** | something that looks true and is worth testing: what, how it was found, how many looks, which choices would change it, and a proposed plan; never a finding |
 | **choice** | a decision made while exploring, recorded with its alternatives and what it rests on |
-| **fence** | what keeps set-aside data out of an exploration: the checks the exploring tool makes on a look, and the record a later study respects |
+| **fence** | what keeps set-aside data out of an exploration: the checks the exploring tool makes on a look's command, the scratch folder its script runs in, the reading of what it prints and leaves, and the record a later study respects. It is a fence around a look, not around a person or an assistant with a shell |
 | **spoiled** | said of an exploration that set-aside data reached; it can end only as a stop |
 | **hand-over** | what an exploration writes so that the study tool can start a confirming study from its lead |
 | **recheck** | running a logged look again, in a copy, to see that it gives the same output |

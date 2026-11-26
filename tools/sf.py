@@ -3910,6 +3910,30 @@ def selftest() -> int:
                   and "PASS  the method refuses an input that carries what was put in" in own.stdout
                   and "FAIL" not in own.stdout)
 
+    def parses(words: list) -> bool:
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                build_parser().parse_args(words)
+        except SystemExit:
+            return False
+        return True
+
+    check("an option is taken only when it is spelled out: `--b` is not `--by` and `--stud` is not `--study`, so a check that "
+          "reads a command before it runs sees the options the tool will",
+          parses(["note", "--study", "s", "--by", "agent:x", "--kind", "missing", "--about", "a", "--text", "b"])
+          and not parses(["note", "--study", "s", "--b", "human:someone", "--kind", "missing", "--about", "a", "--text", "b"])
+          and not parses(["note", "--study", "s", "--b=human:someone", "--kind", "missing", "--about", "a", "--text", "b"])
+          and not parses(["status", "--stud", "s"]) and not parses(["lock", "--study", "s", "--by", "human:x", "--evid", URL]))
+    kept = os.environ.pop("SF_INSIDE_A_LOOK", None)
+    try:
+        outside = started_from_a_look() is None and not _refuses(refuse_inside_a_look)
+        os.environ["SF_INSIDE_A_LOOK"] = "EXPLORATION-T"
+        check("a command started from inside a look is refused, and one started outside a look is not",
+              outside and "inside a look" in _refusal(refuse_inside_a_look))
+    finally:
+        os.environ.pop("SF_INSIDE_A_LOOK", None)
+        if kept is not None:
+            os.environ["SF_INSIDE_A_LOOK"] = kept
     for name, ok in results:
         print(("PASS  " if ok else "FAIL  ") + name)
     good = all(ok for _, ok in results)
@@ -3917,12 +3941,56 @@ def selftest() -> int:
     return 0 if good else 1
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def started_from_a_look() -> str | None:
+    """What says this process was started from inside a look, or None. A look runs a script on working data and
+    nothing else: a script that shells out to a tool of this package would act under any name it liked, a
+    review of its own lead included. Two signs are read. The exploring tool marks the environment of every
+    look it runs (SF_INSIDE_A_LOOK), which a script can take off. It cannot take off its ancestry: every process
+    above this one is read, and one that is `explore.py look` or `explore.py recheck` is the look."""
+    if os.environ.get("SF_INSIDE_A_LOOK"):
+        return "the environment says so (SF_INSIDE_A_LOOK)"
+    pid = os.getppid()
+    for _ in range(64):
+        if pid <= 1:
+            return None
+        try:
+            words = [w.decode(errors="replace") for w in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")]
+            parent = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            try:  # no /proc here (not Linux): ask ps, which splits a command at its spaces
+                out = subprocess.run(["ps", "-o", "ppid=,args=", "-p", str(pid)], capture_output=True, text=True,
+                                     stdin=subprocess.DEVNULL).stdout.split()
+                parent, words = int(out[0]), out[1:]
+            except (OSError, ValueError, IndexError):
+                return None
+        # the tool itself, running: an interpreter, its own flags, then explore.py and the command. The launcher that
+        # started it (`uv run tools/explore.py look ...`) carries the same words and is not the tool
+        base = lambda w: w.replace("\\", "/").rpartition("/")[2]  # noqa: E731
+        if words and base(words[0]).lower().startswith("python"):
+            i = 1
+            while i < len(words) and words[i].startswith("-"):
+                i += 1
+            if i + 1 < len(words) and base(words[i]) == "explore.py" and words[i + 1] in ("look", "recheck"):
+                return f"process {pid} above this one is `explore.py {words[i + 1]}`"
+        pid = parent
+    return None
+
+
+def refuse_inside_a_look() -> None:
+    why = started_from_a_look()
+    if why:
+        raise Refused(f"this command was started from inside a look ({why}). A look runs a script on working data; it does "
+                      "not call the tools of this package. Each tool is called by a role, under its own name, outside any look")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Every command and every option, spelled out. No abbreviation is taken (`--b` is not `--by`): a check that
+    reads a command before it runs must see the same options the tool will."""
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def add(name, fn, *args):
-        p = sub.add_parser(name)
+        p = sub.add_parser(name, allow_abbrev=False)
         p.add_argument("--study", required=True, help="the study directory")
         for names, kw in args:
             p.add_argument(*names, **kw)
@@ -3961,10 +4029,15 @@ def main() -> int:
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),
         (["--problem"], {"required": True}), (["--change"], {"required": True}), (["--rationale"], {"required": True}),
         (["--predicted"], {"required": True}), (["--observed"], {"default": None}), (["--model"], {"default": None}))
-    sub.add_parser("selftest")
-    a = ap.parse_args()
+    sub.add_parser("selftest", allow_abbrev=False)
+    return ap
+
+
+def main() -> int:
+    a = build_parser().parse_args()
     try:
         refuse_dirty_environment()  # every command, the selftest included
+        refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
         a.fn(Study(a.study), a)

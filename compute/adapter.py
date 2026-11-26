@@ -1798,11 +1798,11 @@ def main() -> int:
     sys.modules.setdefault("adapter", sys.modules[__name__])
     if sys.argv[1:2] == ["supervise"]:  # the local place's own supervisor: started by submit, not a command for people
         return supervise(Path(sys.argv[2]), int(sys.argv[3]))
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
     ref = dict(default="LocalPlace", metavar="REF", help="a class in this file, module:Class or path/to/file.py:Class")
     for name in ("submit", "status", "collect", "cancel"):
-        p = sub.add_parser(name)
+        p = sub.add_parser(name, allow_abbrev=False)
         p.add_argument("--root", type=Path, required=True, help="the directory the place keeps its own records in")
         p.add_argument("--place", **ref)
         if name == "submit":
@@ -1813,7 +1813,7 @@ def main() -> int:
             p.add_argument("--job", required=True)
         if name == "collect":
             p.add_argument("--into", type=Path, required=True)
-    c = sub.add_parser("conformance")
+    c = sub.add_parser("conformance", allow_abbrev=False)
     c.add_argument("--place", **ref)
     c.add_argument("--self-check", action="store_true",
                    help="test the test: every deliberately wrong place must fail, the honest ones must pass")

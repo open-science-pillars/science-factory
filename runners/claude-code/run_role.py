@@ -31,6 +31,7 @@ is not started.
 """
 import argparse
 import datetime as dt
+import fnmatch
 import json
 import os
 import re
@@ -51,6 +52,19 @@ def never_seen(role: str, root: Path) -> list:
     return [m.strip() for m in re.findall(r"""^\s*-\s*["']?path:([^"'\n]+)""", head, re.M)]
 
 
+def names_place(posix: str, pat: str) -> bool:
+    """Does a path lie at, or below, a place a pattern names? Matched piece by piece against every run of folders in
+    the path, in any case: the same reading the per-call check makes (allow.py), kept here so this script needs
+    nothing beside it."""
+    parts = [q for q in posix.casefold().split("/") if q]
+    for want in {pat.casefold(), pat.casefold().removesuffix("/*")}:
+        pieces = [q for q in want.split("/") if q]
+        for start in range(0, len(parts) - len(pieces) + 1):
+            if all(fnmatch.fnmatchcase(parts[start + k], pieces[k]) for k in range(len(pieces))):
+                return True
+    return False
+
+
 def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> int:
     if not (root / ".claude" / "agents" / f"{role}.md").is_file():
         print(f"there is no rendered role .claude/agents/{role}.md; run runners/claude-code/render.py", file=sys.stderr)
@@ -60,12 +74,12 @@ def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> i
               f"`{record.parent.name}/`: each role's account has its own place, so that one role's account never sits where "
               "another role writes", file=sys.stderr)
         return 2
-    for pat in never_seen(role, root):
-        folder = pat.rstrip("*").rstrip("/")
-        if folder and folder in task.replace("\\", "/"):
-            print(f"the task names `{folder}`, which the {role} role must never see (assistants/{role}.md, must_never_see). "
-                  "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
-            return 2
+    for word in re.findall(r"""[^\s'"`<>()\[\]{},;]+""", task.replace("\\", "/")):
+        for pat in never_seen(role, root):
+            if "/" in word and names_place(word.rstrip(".:"), pat):
+                print(f"the task names `{word}`, which the {role} role must never see (assistants/{role}.md, must_never_see: {pat}). "
+                      "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
+                return 2
     record.parent.mkdir(parents=True, exist_ok=True)
     Path(f"{record}.task.md").write_text(task)
     started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -105,7 +119,7 @@ def selftest() -> int:
                         "echo '{\"result\": \"two holes found\", \"modelUsage\": {\"claude-test-1\": {}}, \"num_turns\": 3, \"is_error\": false}'\n")
         fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
         (tmp / "assistants").mkdir()
-        (tmp / "assistants" / "review.md").write_text('---\nname: review\nmust_never_see:\n  - "held-out data"\n  - "path:record/analysis/*"\n---\n\nbody\n')
+        (tmp / "assistants" / "review.md").write_text('---\nname: review\nmust_never_see:\n  - "held-out data"\n  - "path:record/analysis/*"\n  - "path:record/*analysis*"\n---\n\nbody\n')
         code = run("review", "Check EXPLORATION-1.", tmp / "record" / "review" / "03", str(fake), tmp)
         meta = json.loads((tmp / "record" / "review" / "03.run.json").read_text())
         results.append(("a role runs and its answer is kept, in the role's own place", code == 0 and (tmp / "record/review/03.answer.md").read_text().strip() == "two holes found"))
@@ -117,6 +131,13 @@ def selftest() -> int:
         results.append(("a task that hands the review role the author's account is refused, and nothing is started",
                         run("review", "Check EXPLORATION-1. The author's notes are in examples/w/record/analysis/01.answer.md.", tmp / "record" / "review" / "06", str(fake), tmp) == 2
                         and not (tmp / "seen-task.txt").exists() and not (tmp / "record/review/06.task.md").exists()))
+        results.append(("a task that names the author's account where the kept example keeps it, as a flat file in record/, is refused too",
+                        run("review", "Check EXPLORATION-1; see examples/baton-rouge/record/02-analysis.answer.md.", tmp / "record" / "review" / "07", str(fake), tmp) == 2
+                        and run("review", "Read `examples/w/Record/04-Analysis-second.answer.md`", tmp / "record" / "review" / "07", str(fake), tmp) == 2
+                        and not (tmp / "seen-task.txt").exists() and not (tmp / "record/review/07.task.md").exists()))
+        results.append(("a review task that names the work, and the reviewer's own earlier account, is started",
+                        run("review", "Check examples/w/explorations/E1 again; your earlier review is examples/w/record/review/02.answer.md.",
+                            tmp / "record" / "review" / "08", str(fake), tmp) == 0))
         results.append(("the role is started from its role file, in print mode", (tmp / "seen-args.txt").read_text().split()[:3] == ["-p", "--agent", "review"]))
         results.append(("the model that ran the role is recorded", meta["models"] == ["claude-test-1"] and meta["role"] == "review"))
         results.append(("a role with no rendered file is refused", run("auditing", "x", tmp / "record" / "auditing" / "04", str(fake), tmp) == 2))
@@ -135,7 +156,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--role")
     ap.add_argument("--task-file", type=Path)
     ap.add_argument("--record", type=Path)

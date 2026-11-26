@@ -33,6 +33,11 @@ jobs:
         run: uv run compute/adapter.py conformance
       - name: The conformance test fails every deliberately wrong place
         run: uv run compute/adapter.py conformance --self-check
+      # The self-tests below include every attack an independent reviewer made on these tools (the review register,
+      # docs/reviews/ASSISTANTS-AND-EXPLORING.md, section 4). The exploring tool's tests of the kernel fence run with
+      # it where the runner's kernel has Landlock, and all of them also run with it switched off. The knowledge
+      # helpers' self-test checks that factory/checkers.yaml parses and names the organization's checker; the job
+      # below runs that checker, which the helpers refuse to do unless its checksum is the pinned one.
       - name: The exploring tool, the knowledge helpers and the checks
         run: |
           uv run tools/explore.py selftest

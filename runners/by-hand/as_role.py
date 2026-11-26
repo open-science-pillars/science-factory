@@ -59,11 +59,20 @@ def selftest() -> int:
         ("a role may write in its own place and not in another's",
          ask("--role", "review", "--write", "examples/w/record/review/02.answer.md") == 0 and ask("--role", "review", "--write", "examples/w/record/analysis/02.answer.md") == 2),
         ("a command the role file does not allow is not run", ask("--role", "review", "--", "uv", "run", "tools/explore.py", "look", "--exploration", "x") == 2),
-        ("every answer is kept in the record, refusals included", len(record.read_text().splitlines()) == 5 and '"allowed": false' in record.read_text()),
+        ("a command with a shortened option is not run: `--b` is not `--by`",
+         ask("--role", "analysis", "--", "uv", "run", "tools/explore.py", "note", "--exploration", "x", "--b", "human:someone", "--kind", "missing", "--about", "a", "--text", "b") == 2),
+        ("a command is checked and run as its words, with no shell: one that only a shell could make into two is refused as one",
+         ask("--role", "review", "--", "uv", "run", "tools/explore.py", "status", "--exploration", "x#x;", "uv", "run", "tools/explore.py", "review") == 2
+         and ask("--role", "review", "--", "bash", "-c", "uv run tools/explore.py status --exploration x") == 2),
+        ("a command the role file allows is run, and its own answer comes back (here the tool's refusal of a folder with no exploration in it)",
+         ask("--role", "review", "--", "uv", "run", "tools/explore.py", "check-log", "--exploration", str(tmp / "none")) == 2
+         and '"exit_code": 2' in record.read_text().splitlines()[-1] and '"allowed": true' in record.read_text().splitlines()[-1]),
+        ("every answer is kept in the record, refusals included", len(record.read_text().splitlines()) == 9 and '"allowed": false' in record.read_text()),
         ("asking leaves no bytecode folder beside the decision it loads", not (ROOT / "runners" / "claude-code" / "__pycache__").exists()),
     ]
     record.unlink()
-    tmp.rmdir()
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
     for n in failed:
         print("FAIL:", n)
@@ -74,7 +83,7 @@ def selftest() -> int:
 def main() -> int:
     if sys.argv[1:] == ["--selftest"]:
         return selftest()
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--role", required=True)
     ap.add_argument("--record", type=Path, required=True)
     ap.add_argument("--write", default=None, help="a path: ask whether the role may write it, and record the answer")
@@ -93,9 +102,9 @@ def main() -> int:
         line.update(read=a.read, allowed=why is None, blocked_because=why)
         code = 0 if why is None else 2
     else:
-        command = shlex.join(argv)
-        why = decide(a.role, {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(ROOT)})
-        line.update(command=command, allowed=why is None, blocked_because=why)
+        # the command is checked as the words it is and run as those words, with no shell between: nothing reads it a second way
+        why = decide(a.role, {"tool_name": "Run", "tool_input": {"argv": argv}, "cwd": str(ROOT)})
+        line.update(command=shlex.join(argv), argv=argv, allowed=why is None, blocked_because=why)
         code = 2
         if why is None:
             done = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL)

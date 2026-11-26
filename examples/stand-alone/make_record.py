@@ -40,7 +40,7 @@ def make(year: int) -> dict:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--year", type=int, required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()

@@ -211,7 +211,7 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("file", type=Path, nargs="?")
     ap.add_argument("--rows", default=None, help="the key (dotted for a nested one) under which the list of rows sits; default: the first list of rows in the file")
     ap.add_argument("--x")
