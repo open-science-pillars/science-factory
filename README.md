@@ -93,7 +93,7 @@ What each prints, and how long it took here:
 3. `status` prints `"stage": "lock"` and `"who": "people"`: the exhibit is waiting for a person. That is what it prints when the hydrology checkout is at the commit above. On any other commit it prints `"stage": "test"` with a `why` that names the file that differs, which is the study tool doing its job: the code that would read the data is not the code that was tried.
 4. The conformance test ends with `conformance (local): PASS (34 of 34)`, in about six seconds.
 
-Without the hydrology checkout only the first and the last run; the second ends in a Python error and the third reports `"stage": "test"`.
+Without the hydrology checkout only the first and the last run; the second ends in a refusal that names the missing checkout, and the third reports `"stage": "test"`.
 
 To re-derive the known-answer test evidence in the practice run (about a minute; the comparison is byte for byte on the same platform):
 
