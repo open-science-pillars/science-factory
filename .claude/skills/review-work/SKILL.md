@@ -47,7 +47,7 @@ Ask of an exploration's lead:
 - **Words.** Does it call observations "unflagged" when their flag has a value, or an interval anything but a confidence interval with its model named? Would a scientist in the field misread a word?
 - **Does it call itself a lead** throughout?
 
-Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives.
+Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives; and when `sf.py status` gives the lock a standing other than `verified`, the finding's first line says so.
 
 Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --wiki <w>` passes; each statement is in its source; one case's numbers are not stated as general; nothing reads as signed; a disagreement with a signed page is declared as `contradicts`.
 

@@ -158,12 +158,12 @@ POST_OPENING = {
     "transcript-after-opening": "what an agent was asked and answered after an opening",
 }
 CANNOT_CHECK = (
-    "who really merged a lock or signed: names are typed, and the repository's own rules say who merged",
+    "who really merged a lock or signed: a clone cannot show it, so an act is `verified` only on the platform's answer to `sf.py verify-acts`",
     "which model really answered: a model is declared by the definition and by whoever calls the tools, never proven",
     "whether a person or an agent read a finding and then changed a prompt by hand: the firewall covers scorers, judges and what feeds a proposal",
     "whether an agent can reach the acceptance set by another road: `must_never_see` is instruction, and a harness's per-call check when a platform calls it",
     "whether the files a harness rendered are up to date: run that harness's own check (factory/harnesses/claude-code/render.py --check)",
-    "whether the protected branch an act names is protected, who may approve there, and whether the workflow that records a merge is installed: the repository's settings on the platform say that (factory/harnesses/github/README.md is the checklist)",
+    "whether the protected branch an act names is protected, who may approve there, and whether the workflow that records a merge is installed: the repository's settings on the platform say that (factory/harnesses/github/README.md is the checklist), and `sf.py verify-acts` asks the platform about one act at a time",
 )
 
 
