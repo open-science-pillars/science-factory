@@ -30,7 +30,7 @@ uv run tools/explore.py start --exploration <x> --id <ID> --by <you> \
   --working "<what will be explored, in words>" --working-window <START:END>
 ```
 
-- `--subject`: the keys are yours (for example `reach_id=...,gauge=...`). A later plan's `pair` must carry the same keys and values; they are matched through case and spacing and through nothing else, so write them the way the plan will.
+- `--subject`: the keys are yours (for example `site=...,sensor=...`). A later plan's `pair` must carry the same keys and values; they are matched through case and spacing and through nothing else, so write them the way the plan will.
 - If the knowledge gives no boundary, set aside the widest honest window and say so in `--why`. A set-aside is never narrowed afterwards.
 - When the working window stops before the set-aside begins, the tool names the stretch that is in neither. Nothing protects it. Leave it alone unless the request needs it, and say in the lead what you did.
 

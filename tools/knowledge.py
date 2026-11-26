@@ -46,14 +46,13 @@ person signs.
 A wiki page is working memory, and may be a draft. What counts as signed
 is decided by the page's own signature lines, which only a person adds:
 either a `verified` event by a person in the page's front matter (the
-Open Science Pillars knowledge format), or a line in the page of the form
+Open Knowledge Format), or a line in the page of the form
 `Signed-by: human:<id>, <date>`. Nothing in this package writes either,
 and a draft that arrives with one is refused. A page's status is its
 front matter `status`, or a line `Status: <word>`, or nothing.
 
 Which part of this is whose. The wiki's form is OpenWiki's, which is
-the Open Knowledge Format v0.2 that the Open Science Pillars bundles also
-use: a directory (`openwiki/` in a repository) of Markdown pages, each
+the Open Knowledge Format v0.2, a form other knowledge bases share: a directory (`openwiki/` in a repository) of Markdown pages, each
 with front matter carrying a non-empty `type` and, where present,
 `generated`, `sources`, `verified`, `status` and `stale_after`; `index.md`
 and `log.md` reserved; `quickstart.md` to start from; `INSTRUCTIONS.md`
@@ -407,7 +406,7 @@ def run_checker(checker: Path, queue: Path, pins: Path = CHECKERS) -> tuple:
     try:
         code_bytes = Path(checker).read_bytes()
     except OSError:
-        raise Refused(f"the organization's checker is not at {checker} (it is tools/check_okf_v02.py in nasa-daac-knowledge)")
+        raise Refused(f"the organization's checker is not at {checker} (name the file of the checker your knowledge format has; factory/checkers.yaml lists the ones this factory will run)")
     sha = hashlib.sha256(code_bytes).hexdigest()
     pinned = pinned_checkers(pins)
     if sha not in pinned:
@@ -832,7 +831,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("about", allow_abbrev=False)
     p.add_argument("--question", required=True)
     p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, type=Path,
-                   help="a wiki: a directory of Markdown pages (an Open Science Pillars knowledge bundle is one); repeatable")
+                   help="a wiki: a directory of Markdown pages (any directory of pages in the Open Knowledge Format is one); repeatable")
     p.add_argument("--drafts", action="append", default=None, type=Path, help="a queue of drafted pages; repeatable")
     p.add_argument("--tag", action="append", default=None, help="a tag to search by as well; repeatable")
     p.add_argument("--limit", type=int, default=12)
@@ -841,7 +840,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check-drafts", allow_abbrev=False)
     p.add_argument("--queue", required=True)
     p.add_argument("--wiki", "--bundle", dest="bundle", action="append", required=True, help="the wiki the drafts would join; repeatable")
-    p.add_argument("--checker", default=None, help="the organization's checker for its knowledge format (tools/check_okf_v02.py in nasa-daac-knowledge); run only when its checksum is pinned in factory/checkers.yaml")
+    p.add_argument("--checker", default=None, help="the organization's checker for its knowledge format, a program of yours or of whoever keeps the format; run only when its checksum is pinned in factory/checkers.yaml")
     p.set_defaults(fn=cmd_check_drafts)
     p = sub.add_parser("selftest", allow_abbrev=False)
     p.add_argument("--checker", default=None)

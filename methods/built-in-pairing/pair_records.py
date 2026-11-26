@@ -8,15 +8,15 @@ and the blind test of the system run with nothing beside the repository.
 
 The gain method (methods/gain/) does not pair the two records itself. It
 hands the screened input to a pairing script, named on its command line as
-the executor, and estimates the gain from the pairs that come back. For the
-first real study that script belongs to the hydrology capability, and the
-checks that use it need that capability checked out beside this
-repository. This file stands in the same place for studies that touch no
-real record: a system trial, whose data is a synthetic record with a known
-answer, made by methods/gain/test_cases.py.
+the executor, and estimates the gain from the pairs that come back. A
+study of a real record names the pairing script its own discipline keeps.
+This file stands in the same place for studies that touch no real record:
+a system trial, whose data is a synthetic record with a known answer, made
+by methods/gain/test_cases.py.
 
-NOT A SANCTIONED COMPUTATION of any capability. It is small on purpose, it
-was written here, and nothing about a real record should rest on it.
+It is not the checked computation of any discipline. It is small on
+purpose, it was written here, and nothing about a real record should rest
+on it.
 
 What it does, in order:
   1. For each pass of the first record, take the reading of the second
@@ -30,8 +30,9 @@ What it does, in order:
      show that the first of those cannot see a gain; the gain method is
      what estimates one.
 
-It reads the input tree in the shape test_cases.py writes, which is the
-shape the hydrology script reads: `satellite.rows` (each with `time`,
+It reads the input tree in the shape test_cases.py writes. The keys keep
+the names of the method's first use, a satellite record of river height
+against a river gauge, and are names only: `satellite.rows` (each with `time`,
 `wse_m`, `wse_u_m`) and `gauge.readings_by_pass` (for each pass, readings
 with `t`, `stage_ft`, `approval`), with `gauge.gauge_datum_altitude_ft`.
 It writes the keys the gain method reads from a pairing receipt. It is
@@ -40,7 +41,7 @@ random number and no network in it.
 
 Usage:
   pair_records.py --inputs TREE.json [--tolerance-minutes 15] --out receipt.json
-  pair_records.py --selftest [--compare-with PATH/load_swot_confrontation.py]
+  pair_records.py --selftest [--compare-with PATH/another_pairing_script.py]
 """
 import sys
 
@@ -136,7 +137,7 @@ def receipt_for(tree: dict, tolerance_minutes: int, source: Path | None = None) 
     spread = statistics.stdev(second)
     reported = [p["satellite_u_m"] for p in pairs if p["satellite_u_m"] is not None]
     out = {
-        "computation": "pairing of two records (this repository's own; not a sanctioned computation of any capability)",
+        "computation": "pairing of two records (this repository's own; not the checked computation of any discipline)",
         "pair": tree["pair"], "window": tree["window"], "collection_named": tree["satellite"]["collection_named"],
         "matching": {"tolerance_minutes": tolerance_minutes, "passes_offered": len(tree["satellite"]["rows"]),
                      "pairs": len(pairs), "unmatched": left_out, "max_offset_s": max(p["offset_s"] for p in pairs)},

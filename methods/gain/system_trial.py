@@ -61,7 +61,7 @@ Usage:
   system_trial.py working-data --executor PATH --case CASE.json --out RECEIPT.json
   system_trial.py seal --out DATA.json --answer ANSWER.json [--rehearsal | --harness]
   system_trial.py verdict --study STUDY_DIR --by human:<id> [--anchor SEQ:HASH ...]
-  system_trial.py blind-test --template studies/STUDY-0000 --n 200 [--seed 7] [--cases 2000] --out blind-test.json
+  system_trial.py blind-test --template examples/stand-alone/system-trial --n 200 [--seed 7] [--cases 2000] --out blind-test.json
 """
 import sys
 
@@ -315,22 +315,22 @@ def cmd_blind_test(a) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("seal")
+    s = sub.add_parser("seal", allow_abbrev=False)
     s.add_argument("--out", type=Path, required=True, help="the data: what the locked analysis is given")
     s.add_argument("--answer", type=Path, required=True, help="what was put in: a file the analysis is never passed")
     s.add_argument("--rehearsal", action="store_true", help="a published case (seed 1, a gain of 1.00), for the rehearsal")
     s.add_argument("--harness", action="store_true", help=f"take the seed and the gain from {HOOK}; the blind test harness only")
-    v = sub.add_parser("verdict")
+    v = sub.add_parser("verdict", allow_abbrev=False)
     v.add_argument("--study", type=Path, required=True)
     v.add_argument("--by", required=True, help="who reveals the answer: human:<id> or agent:<id>")
     v.add_argument("--anchor", action="append", default=None, help="SEQ:HASH, a log fingerprint posted outside the workspace; repeatable")
-    d = sub.add_parser("working-data")
+    d = sub.add_parser("working-data", allow_abbrev=False)
     d.add_argument("--executor", type=Path, required=True)
     d.add_argument("--case", type=Path, required=True)
     d.add_argument("--out", type=Path, required=True)
-    b = sub.add_parser("blind-test")
+    b = sub.add_parser("blind-test", allow_abbrev=False)
     b.add_argument("--template", type=Path, required=True)
     b.add_argument("--n", type=int, default=200)
     b.add_argument("--seed", type=int, default=7)

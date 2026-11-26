@@ -3,13 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyyaml"]
 # ///
-"""known_answer_tests: the known-answer tests for a satellite-versus-gauge
-gain claim.
+"""known_answer_tests: the known-answer tests for a claim about the gain
+of one record against another.
 
 Runs synthetic test cases with the truth put in by hand (test_cases.py)
-through the plan's handling and the SANCTIONED confrontation executor,
-unmodified and end to end (confront.py), then through the candidate gain
-estimate (gain.py), and measures what real data can never show: how often
+through the plan's handling and the pairing step the plan names
+(--executor), unmodified and end to end (confront.py), then through the
+gain estimate (gain.py), and measures what real data can never show: how often
 the interval covers the value put in, and how often the plan's decision
 rule gives the right answer in cases where the idea is true, where it is
 false, and right at the difference that matters, with and without trouble
@@ -20,7 +20,7 @@ is not a rate.
 
 Three groups of test case, and what each is for:
   required        the hard cases the claim must survive (a kind case, a
-                  drifting satellite, gross errors, flagged low-stage
+                  drifting first record, gross errors, flagged low-stage
                   faults, autocorrelated error), each at the true gain and
                   right at the difference that matters on both sides; cases
                   where the idea is far from true; and a processing change,
@@ -35,10 +35,10 @@ Three groups of test case, and what each is for:
                   opening can and cannot tell apart.
 
 With --sampling the test cases are built on the real pass times, quality
-flags and gauge record of a window, so the power reported is power for the
+flags and second record of a window, so the power reported is power for the
 experiment that will run. Those are observation metadata on the condition
 the study's plan states: the screen, the pairing and the model are fixed,
-so none of them can move the gain without the satellite elevations.
+so none of them can move the gain without the first record's values.
 
 The method is never given the answer, and it does not run in the process
 that holds it. Each test case is made as two parts (test_cases.py), the
@@ -73,7 +73,7 @@ rule it exercised, so the lock can refuse evidence that was produced for
 some other rule.
 
 Usage:
-  known_answer_tests.py --executor PATH/load_swot_confrontation.py
+  known_answer_tests.py --executor PATH/pair_records.py
       [--plan analysis-plan.yaml --rule ID] [--sampling TREE.json]
       [--cases 2000] [--seed 20261125] [--difference-that-matters 0.05]
       [--jobs N] --out known-answers.json
@@ -574,12 +574,12 @@ def selftest(executor: Path | None) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--executor", type=Path)
     ap.add_argument("--selftest", action="store_true", help="this file's own checks; with --executor, one more")
     ap.add_argument("--plan", type=Path, help="read the rule to exercise from this analysis plan")
     ap.add_argument("--rule", help="rule id (default: the primary rule)")
-    ap.add_argument("--sampling", type=Path, help="build the test cases on the pass times and gauge record of this tree")
+    ap.add_argument("--sampling", type=Path, help="build the test cases on the pass times and second record of this tree")
     ap.add_argument("--passes", type=int, help="passes per synthetic test case (default: the generator's)")
     ap.add_argument("--cases", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=20261125)
@@ -594,7 +594,7 @@ def main() -> int:
     if a.selftest:
         return selftest(a.executor)
     if not a.executor:
-        ap.error("--executor is required: the sanctioned executor the method wraps")
+        ap.error("--executor is required: the pairing step the method wraps (methods/built-in-pairing/pair_records.py is this repository's own)")
     if not a.executor.is_file():
         print(f"known-answer tests: refused. The executor {a.executor} is not there; it ships with the capability it belongs "
               "to, so check that capability out where the plan's roots point. Nothing was run", file=sys.stderr)

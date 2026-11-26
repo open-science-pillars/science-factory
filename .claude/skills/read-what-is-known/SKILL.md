@@ -7,7 +7,7 @@ description: "Before any work on a question: find the knowledge that bears on it
 
 Work starts from what is already known, pitfalls included. This skill is the procedure for that. It carries no facts about any dataset: every fact is read from the knowledge at the time, so a page added or corrected yesterday is found today.
 
-The knowledge base is a wiki in the Open Knowledge Format v0.2: a directory of Markdown pages, each with a small front matter block (`type`, and where present `generated`, `sources`, `verified`, `status`, `stale_after`), an `index.md`, a `log.md` and a `quickstart.md` to start from. In this repository it is `openwiki/`. An Open Science Pillars knowledge bundle has the same form and is read the same way, by naming its directory.
+The knowledge base is a wiki in the Open Knowledge Format v0.2: a directory of Markdown pages, each with a small front matter block (`type`, and where present `generated`, `sources`, `verified`, `status`, `stale_after`), an `index.md`, a `log.md` and a `quickstart.md` to start from. In this repository it is `openwiki/`. Any other knowledge base kept in that form is read the same way, by naming its directory.
 
 There are two ways to read it, and they give the same pages:
 

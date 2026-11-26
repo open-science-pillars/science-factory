@@ -41,7 +41,7 @@
 
 study: STUDY-0002                 # required: this study's id
 study_kind: confirmatory          # optional: confirmatory (the default), or system_trial for a blind test case
-                                  #   made at its own opening (see studies/STUDY-0000)
+                                  #   made at its own opening (see examples/stand-alone/system-trial)
 question: "Is monthly mean sea level at the harbor tide gauge rising faster than 2 mm per year?"   # required; ends in a question mark
 claim_class: trend                # for people: the organization's claim class
 quantity_estimated: >             # required: what is estimated and how its interval is made
