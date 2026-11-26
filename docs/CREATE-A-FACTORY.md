@@ -8,6 +8,8 @@ Status, plainly. The files and the tool described here exist and are tested. The
 
 ## A factory, as files
 
+![The layout of the repository: tools (the programs you run), factory (this factory as files), methods (the method scripts), compute (where a job runs), studies (two drafts and the practice runs), assistants, skills and runners (the roles, their skills and what starts a role), openwiki (the knowledge base), examples, and docs.](diagrams/repository-layout.svg)
+
 | File | What it is | Read by |
 |---|---|---|
 | `procedure.yaml` | the factory as code: stages, who does each, the check that ends each, the scorecard | the study tool (stages and scorecard); people (the rest) |

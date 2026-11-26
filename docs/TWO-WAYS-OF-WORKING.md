@@ -73,6 +73,8 @@ Formal locking of this kind is still rare in Earth science. Validation against i
 
 ## The wall between them
 
+![The two ways of working with the wall between them. Exploring, on the left: read what is known, set data aside before any look, look as often as wanted with every look logged, record choices, write up a lead that is reviewed. Confirming, on the right: plan, test on known answers, the lock by a person, open the held-out data once, review, the steward's signature. Only two things cross the wall: a lead, handed over to start a plan, and the data that was set aside, which becomes the held-out data.](diagrams/two-ways-of-working.svg)
+
 Data that was used to explore cannot be used to confirm what the exploring found. That is the whole wall, and everything else follows from it:
 
 - Working data and held-out data are named in the plan, and only the access gate fetches the held-out data.

@@ -18,6 +18,8 @@ A science factory is an assisted study pipeline in which the plan is written dow
 | `examples/` | `stand-alone/`, the two loops end to end on a synthetic record, and the plan of the system trial that runs from this repository alone; `baton-rouge/`, a demo on real data, kept as records |
 | `docs/` | the design, the build plan, the word list, the two ways of working, how to define a factory of your own, proposals, reviews |
 
+![The layout of the repository: tools (the programs you run), factory (this factory as files), methods (the method scripts), compute (where a job runs), studies (two drafts and the practice runs), assistants, skills and runners (the roles, their skills and what starts a role), openwiki (the knowledge base), examples, and docs.](docs/diagrams/repository-layout.svg)
+
 ## See it work
 
 With `git` and `uv` (https://docs.astral.sh/uv/) and nothing else, from a bare clone:
@@ -35,6 +37,8 @@ The first ends with `selftest: PASS (179 of 179)` in about half a minute: the st
 
 A scientist works in two ways. **Exploring** is most of the work: looking at data to find out what is there, trying, looking again, revising. **Confirming** is testing one claim, stated in advance, on data nobody has opened. This package builds both. The confirming way came first and is most of what follows. The exploring way now has a tool of its own (`tools/explore.py`), the assistants are defined as files, and what is learned goes back to a knowledge base through a queue of drafts. Separate assistants have been run from those files once, on real data, and a working hydrologist has reviewed the result; `docs/TWO-WAYS-OF-WORKING.md` describes the two ways and the wall between them, and "The assistants and the two loops" below says what is built, what a tool enforces, what is still only instruction, and what is still owed.
 
+![The two ways of working with the wall between them. Exploring, on the left: read what is known, set data aside before any look, look as often as wanted with every look logged, record choices, write up a lead that is reviewed. Confirming, on the right: plan, test on known answers, the lock by a person, open the held-out data once, review, the steward's signature. Only two things cross the wall: a lead, handed over to start a plan, and the data that was set aside, which becomes the held-out data.](docs/diagrams/two-ways-of-working.svg)
+
 ## What it is
 
 You ask a question in your own words. With an assistant you write an **analysis plan**: what will be estimated, on which data, and what result would count for or against your idea. Some data is **held out**: by rule, nobody opens it yet. Before it is opened, the method has to pass **known-answer tests**: synthetic data built on your real sampling, with the truth put in by hand, including cases where your idea is false and cases right at the smallest difference you care about. It is the synthetic test you already run, aimed at the decision and not only at the estimate. Then a person, the steward (the person who holds a knowledge bundle and signs it), **locks** the plan and the code together. The tool opens the held-out data once and runs the locked analysis on it; it will not do so for an assistant that ran the tests. A separate **review assistant**, which did none of the study, reads the result, and the steward signs the finding or does not. Every step is written to a **study log**; once the log is committed and its fingerprints are posted outside the workspace, any later edit to it can be detected. What was learned about the data along the way goes back into the shared knowledge.
@@ -50,6 +54,8 @@ That paragraph is the design. What holds each sentence today (the tool, a contro
 | 3. Test on known answers | The plan check, the known-answer tests, the working data (anything already looked at) and the rehearsals, repeated freely. Every attempt the tool runs is logged. |
 | 4. Open the held-out data once | The access gate, a step of the tool, fetches the held-out data and runs the locked analysis, once. |
 | 5. Review, sign and learn | The finding is written from run receipts and attached. A review assistant that did none of the study checks it. The steward signs the finding or records the decision not to. Notes go into the shared knowledge, and what should change goes into the procedure. |
+
+![The confirming loop. A scientist's request passes down through five stages inside the study log (1 Ask, 2 Plan, 3 Test on known answers, 4 Open the held-out data once, 5 Review, sign and learn) and ends in a finding or a recorded no. Two acts by people are marked: the lock, between Test and Open, and the steward's signature, after Review. Beside the stages: the procedure, read at Ask and changed after Review; shared knowledge, read at Plan and fed by notes; and where the computing runs, which the stages do not call yet.](docs/diagrams/confirming-loop.svg)
 
 A **run receipt** is the record a run writes, with its code and inputs by checksum and every number it produced, so anyone can re-check the result without trusting whoever ran it. After this it is called a receipt.
 
@@ -68,6 +74,7 @@ Two acts belong to people: **the lock**, between Test and Open, and **the stewar
 | `docs/TWO-WAYS-OF-WORKING.md` | how scientists work: exploring, which is most of it, and confirming; what the factory does for each and why they are kept apart |
 | `docs/CREATE-A-FACTORY.md` | how to define a factory of your own as files: a quickstart, the procedure file key by key, and how it compares with a software factory |
 | `docs/proposals/watching-studies.md` | proposed, not built: studies that keep watching as data arrives, and choices that expire |
+| `docs/diagrams/` | the pictures used on this page and in the documents, as plain SVG files kept by hand, in one style throughout |
 | `docs/roadmap-initiative.yaml` | the plan as one initiative and ten deliverables, in the organization's roadmap form |
 | `docs/reviews/README.md` | a note on reading the reviews now that the layout has changed: they name files by the paths of the day they were written |
 | `docs/reviews/ASSISTANTS-AND-EXPLORING.md` | the review register for the assistants and the two loops: the builder's self-review, a working hydrologist's review, what separate assistants found in the role files and tools, and the independent attack that is still owed |
@@ -77,6 +84,8 @@ Two acts belong to people: **the lock**, between Test and Open, and **the stewar
 Added on 2026-11-26, and revised the same day after separate assistants were run from the role files and a working hydrologist reviewed the result. Before it, the package was a rulebook and a referee with no players.
 
 **The AI side, in four layers, each resting on the one below.** The referee: `tools/sf.py` and its checks, with no language model. Roles as files: `assistants/`, one Markdown file for each of the coordinating, analysis, review and curating assistants, in a form no agent platform owns. The knowledge: a wiki of Markdown pages, read before work and drafted for after it; a person signs. A runner: `runners/claude-code/` starts a role with its tools as a Claude Code subagent, and `runners/by-hand/` checks one command at a time. Two rules run through all four: an assistant never decides whether a step counts, a tool does; and nothing a role needs lives only in a platform's settings.
+
+![The assistant side in four layers, each resting on the one below: 1 the referee (tools/sf.py and its checks, no language model), 2 roles as files (assistants/), 3 the knowledge (a wiki read before work and drafted for after it, signed by a person), 4 a runner that starts a role with its tools. Two rules run through all four: a tool, never an assistant, decides whether a step counts, and nothing a role needs lives only in a platform's settings.](docs/diagrams/assistant-layers.svg)
 
 **Two loops.** The exploring loop: read what is known, set data aside, look as often as wanted, record choices, write up a lead, have it reviewed, revise, end. The knowledge loop: before work, list the pages that bear on the question and say who signed each; after work, turn notes into drafted pages in a queue for the steward, where the next question finds them marked as drafts. Neither loop signs anything.
 

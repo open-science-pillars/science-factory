@@ -10,32 +10,7 @@ You ask a question in your own words. With an assistant you write an **analysis 
 
 That paragraph is the design; the rest says, for each sentence, what holds it. Under each stage, **Held today** lists only what the study tool holds, and its self-test checks, or what a named control outside the tool holds. Everything else is listed as convention or as designed.
 
-```mermaid
-flowchart TB
-  S(["Scientist: a request in their own words"]) --> A
-  subgraph LOG["Study log: every stage, later edits detectable once committed and posted"]
-    A["1 Ask: four questions back"]
-    P["2 Plan: the analysis plan"]
-    T["3 Test: known-answer tests, working data, rehearsal"]
-    L{{"The lock: a person locks plan and code together"}}
-    O["4 Open the held-out data once, via the access gate"]
-    R["5 Review, sign and learn"]
-    G{{"The steward's signature"}}
-    A --> P --> T
-    T -- "repeat freely" --> T
-    T --> L --> O --> R --> G
-  end
-  G --> F(["Finding, or a recorded no"])
-  K[("Shared knowledge")]
-  PROC[("The procedure")]
-  RUN[["Where it runs: local today, cluster, cloud and MAAP designed"]]
-  R -. notes .-> K
-  K -.-> P
-  R -. "what to change" .-> PROC
-  PROC -.-> A
-  T -. "jobs (planned)" .-> RUN
-  O -. "jobs (planned)" .-> RUN
-```
+![The confirming loop. A scientist's request passes down through five stages inside the study log (1 Ask, 2 Plan, 3 Test on known answers, 4 Open the held-out data once, 5 Review, sign and learn) and ends in a finding or a recorded no. Two acts by people are marked: the lock, between Test and Open, and the steward's signature, after Review. Beside the stages: the procedure, read at Ask and changed after Review; shared knowledge, read at Plan and fed by notes; and where the computing runs, which the stages do not call yet.](diagrams/confirming-loop.svg)
 
 The picture leaves three things to the text: the review assistant did none of the study, notes come from every stage and not only the last, and a change to the procedure is a reviewed proposal with a prediction attached.
 
@@ -142,26 +117,7 @@ The practice runs show the sensor earning its place on real OSP code, three time
 
 **Parts.** At *the lock* a person, the steward, approves the plan and the code by checksum after reading the known-answer, working-data and rehearsal evidence. The tool prints what the lock binds: the plan, every bound file, each rule and criterion with its measured rate, the request, the procedure, and the openings already on record. The design has the scientist approve too; the tool takes one person's name. Judgment calls live here: the difference that matters, the window, the independence statement. The *access gate* is a step of the tool and the only path the procedure gives to held-out data. The *record of what has been opened* (`openings.jsonl`, beside the studies) lists every opening by subject and window.
 
-```mermaid
-sequenceDiagram
-  participant An as Analysis assistant
-  participant Tl as Study tool (sf.py)
-  participant Pp as Steward, a person
-  participant Co as Coordinating assistant
-  participant Dt as Held-out data
-  An->>Tl: observation metadata only
-  An->>Tl: known-answer tests, working data (repeat)
-  An->>Tl: rehearse the opening path and finding form
-  Tl-->>An: pass or fail, every attempt logged
-  Pp->>Tl: lock (plan hash, code hashes, receipts)
-  Pp->>Tl: cite the approving review, commit, merge
-  Co->>Tl: open-held-out
-  Tl->>Tl: check locked pair and openings allowed
-  Tl->>Tl: check what was opened, no data early
-  Tl->>Dt: fetch the planned window (access gate only)
-  Tl->>Tl: run locked code once, apply planned rules
-  Tl-->>Co: supported, refuted or inconclusive
-```
+![The steps from the tests to the one opening, in order, each with who acts: the analysis assistant fetches observation metadata only and runs the tests and rehearsals; the study tool logs every attempt; the steward, a person, makes the lock; the coordinating assistant asks for the opening; the study tool checks the lock and what has been opened, fetches the planned window of held-out data as the access gate, runs the locked code once, and answers supported, refuted or inconclusive.](diagrams/the-opening.svg)
 
 **In and out.** In: `sf.py status`, `sf.py check-log`. Out: `sf.py lock --by human:<id> --evidence URL`, `sf.py open-held-out`, `sf.py void-unread`.
 
@@ -181,31 +137,9 @@ sequenceDiagram
 
 **The steward's signature.** The steward's verified event on the finding, made with the organization's signing tool, is the only thing that moves a finding to stable. The log records that it happened, or that the steward declined, on which finding (its path and checksum), and where (`sf.py signature --by human:<id> --decision signed|declined --evidence URL --anchor SEQ:HASH`).
 
-**Learn**, as designed. The commands in the picture are built; the curating assistant and its schedule are not.
+**Learn**, as designed. The commands for notes are built; the curating assistant and its schedule are not.
 
-```mermaid
-flowchart LR
-  W["Any assistant, mid-task"]
-  Q[/"Open notes"/]
-  T["Traces: study logs, eval transcripts, verdicts"]
-  SRC["Sources the steward supplies"]
-  SD["Seeder"]
-  C["Curating assistant, designed: reads across studies"]
-  PR["Pull request"]
-  ST{{"Steward reviews and signs"}}
-  KB[("Signed knowledge")]
-  WM[("Working memory: unsigned")]
-  W -- "note: kind, subject, evidence" --> Q
-  W -. "draft at status draft (ingest loop)" .-> PR
-  Q --> C
-  T --> C
-  SRC --> SD --> PR
-  C -- "routes each note" --> PR
-  PR --> ST --> KB
-  KB -- "consult" --> W
-  C -. "digests, open threads" .-> WM
-  WM -.-> C
-```
+![How what is learned goes back into shared knowledge: an assistant raises a note or drafts a page; open notes and traces of past work go to the curating assistant (designed), which keeps unsigned working memory and routes each note into a pull request; sources the steward supplies go through the seeder into a pull request; the steward, a person, reviews and signs; signed knowledge is read before the next work.](diagrams/knowledge-loop.svg)
 
 A *note* is a structured record (kind: missing, wrong, stale, contradiction, method, dead-end; a subject; its words; evidence by path and checksum when a file is given) raised on the study's log by any assistant without stopping work (`sf.py note`). It sits beside the ingest loop and does not replace it: an assistant may still draft the concept at once, and the note links that draft to the work that produced it and makes it findable later. The *curating assistant* is designed as the third knowledge agent beside the seeder (sources to drafts) and the linter (bundle to diffs), under their contract: it drafts and never merges or signs. It is to do what no working assistant can: read notes, study logs and transcripts across studies, deduplicate against the bundle, and route each note where the doctrine says it goes (a new draft, an amendment, a method change, a steward review). A missing validity domain goes to the seeder with sources the steward supplies, since a domain needs authoritative sources a curating assistant does not have. A correction to a signed concept is an amendment by pull request; under the merge then sign rule the concept stays stable and owes a signature until the steward re-signs. A note about a method becomes a change to a recipe or computation with its known-answer evidence attached. The steward signs. The store stays OKF v0.2 in git. Out: `curation-list.json` from `sf.py curation-list` (open notes by subject, each with its route), pull requests, `sf.py resolve` (accepted, linked, declined).
 

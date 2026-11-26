@@ -113,59 +113,11 @@ The same system, drawn twice. Nothing in the first picture is missing from the s
 
 **Before** (21 boxes, 28 arrows):
 
-```mermaid
-flowchart LR
-  R(["Scientist: a brief in their own words"]) --> IV["Interview: four questions"]
-  IV --> I["Intake: work order"]
-  I --> F["Frame: consult knowledge, read design fields, draft registration"]
-  F --> B["Build: method, planted worlds, rehearsals"]
-  B <--> DEV[["D0 D1 D2: development tiers, iterate freely"]]
-  B --> G1{{"G1 readiness: a human freezes registration and code"}}
-  G1 --> X["Experiment: the broker opens a look"]
-  X --> CONF[["D3 D4: confirmatory tiers, one look per window"]]
-  CONF --> V["Review: independent verdict"]
-  V --> A["Assemble: finding from receipts only"]
-  A --> G2{{"G2 signature: the steward"}}
-  G2 --> P(["Signed finding, or a recorded negative result"])
-  K[("Signed knowledge: OKF bundles")] --> F
-  K --> V
-  F -. flag .-> Q[/"Flag queue"/]
-  B -. flag .-> Q
-  X -. flag .-> Q
-  V -. flag .-> Q
-  Q --> C["Curator: routes and drafts"]
-  C --> S{{"Steward signs"}}
-  S --> K
-  P --> SC["Scorers and sealed-world benchmark"]
-  SC --> IM["Improver: proposals as pull requests, with a memory"]
-  IM --> D[("Factory definition")]
-  D -.-> I
-  DEV -. jobs .-> CP[["Compute targets: local, cloud, HPC, MAAP later"]]
-  CONF -. jobs .-> CP
-```
+![The architecture as first drawn, in the earlier words, with 21 boxes and 28 arrows: a chain of thirteen boxes from the scientist's brief to scorers and a benchmark, with the signed knowledge, the factory definition and the improver on the left, and the development tiers, the compute targets, the flag queue, the curator and the steward on the right.](diagrams/architecture-before.svg)
 
-**Simplified** (12 boxes, five numbered stages, two acts by people):
+**Simplified** (13 boxes: five numbered stages, two acts by people, and the held-out data drawn once):
 
-```mermaid
-flowchart TB
-  S(["Scientist: a request in their own words"]) --> ASK
-  subgraph LOGGED["Every stage is written to the study log, later edits detectable once committed and posted"]
-    ASK["1 Ask: four questions back"] --> PLAN["2 Plan: the analysis plan"]
-    PLAN --> TEST["3 Test: known-answer tests, working data, rehearsal"]
-    TEST -- "repeat freely" --> TEST
-    TEST --> LOCK{{"The lock: a person locks plan and code together"}}
-    LOCK --> OPEN["4 Open the held-out data once, through the access gate"]
-    OPEN --> REV["5 Review, sign and learn"]
-    REV --> SIG{{"The steward's signature"}}
-  end
-  SIG --> F(["Finding, or a recorded no"])
-  REV -. notes .-> K[("Shared knowledge")]
-  K -.-> PLAN
-  REV -. "what to change" .-> PROC[("The procedure")]
-  PROC -.-> ASK
-  TEST -. "jobs (planned)" .-> RUN[["Where it runs: local today, cluster, cloud and MAAP designed"]]
-  OPEN -. "jobs (planned)" .-> RUN
-```
+![The confirming loop. A scientist's request passes down through five stages inside the study log (1 Ask, 2 Plan, 3 Test on known answers, 4 Open the held-out data once, 5 Review, sign and learn) and ends in a finding or a recorded no. Two acts by people are marked: the lock, between Test and Open, and the steward's signature, after Review. Beside the stages: the procedure, read at Ask and changed after Review; shared knowledge, read at Plan and fed by notes; and where the computing runs, which the stages do not call yet.](diagrams/confirming-loop.svg)
 
 | Boxes before | Simplified |
 |---|---|
@@ -173,7 +125,7 @@ flowchart TB
 | frame, signed knowledge consulted | 2 Plan, reading shared knowledge |
 | build, development tiers D0 to D2, rehearsals | 3 Test, repeated freely |
 | G1 readiness | the lock |
-| experiment, broker, confirmatory tiers D3 and D4 | 4 Open the held-out data once |
+| experiment, broker, confirmatory tiers D3 and D4 | 4 Open the held-out data once, and the held-out data it opens |
 | review, assemble | 5 Review, sign and learn |
 | G2 signature | the steward's signature |
 | flags, flag queue, curator, steward signs knowledge | notes into shared knowledge (the curating assistant drafts, the steward signs) |
