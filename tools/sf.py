@@ -3187,6 +3187,7 @@ def selftest() -> int:
               "{study}/form.md" in _refusal(cmd_open_held_out, study, opening()))
         shipped = [f for f in (REPO / "studies" / "STUDY-0000" / "analysis-plan.yaml",
                                REPO / "studies" / "STUDY-0001" / "analysis-plan.yaml",
+                               REPO / "examples" / "stand-alone" / "system-trial" / "analysis-plan.yaml",
                                REPO / "factory" / "templates" / "analysis-plan.yaml") if f.is_file()]
         check("every command of the plans that ship with the tool is a launcher the tool knows and a script",
               all(command_problem(argv) is None for f in shipped for _, argv in Study.commands(load_plan_text(f.read_text())))

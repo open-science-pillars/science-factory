@@ -10,12 +10,12 @@ A science factory is an assisted study pipeline in which the plan is written dow
 |---|---|
 | `tools/` | the programs a person or an assistant runs: `sf.py` (the study tool: one study, one study log, no language model in any check), `explore.py` (the exploring tool), `knowledge.py` and `wiki_server.py` (reading and drafting knowledge), `check_roles.py`, and `check_old_records.py` |
 | `factory/` | the definition of this factory, as files: `procedure.yaml` (the stages and who acts in each), `change-log.jsonl` (its own changes, each with a prediction), `templates/` (a request, a commented analysis plan, the kinds of question, the checklist for bringing a pipeline in), and `moved-files.yaml` |
-| `methods/` | the method scripts, one folder for each method: `gain/` is the gain of one record against another, with its known-answer tests and the system trial's script |
+| `methods/` | the method scripts, one folder for each: `gain/` is the gain of one record against another, with its known-answer tests and the system trial's script; `built-in-pairing/` is a small pairing step of this repository's own, so the system trial runs with nothing beside it |
 | `compute/` | the contract for where a job runs (`adapter.py`) and the table of places (`places.yaml`); one local place is built |
 | `studies/` | `STUDY-0000` (the system trial) and `STUDY-0001` (the first real study), both drafts and not started; `exhibits/` holds the practice runs, kept as records |
 | `assistants/`, `skills/`, `runners/` | the four roles as files, their five skills, and the two runners that start a role |
 | `openwiki/` | this repository's knowledge base, a wiki of Markdown pages |
-| `examples/` | `stand-alone/`, the two loops end to end on a synthetic record; `baton-rouge/`, a demo on real data, kept as records |
+| `examples/` | `stand-alone/`, the two loops end to end on a synthetic record, and the plan of the system trial that runs from this repository alone; `baton-rouge/`, a demo on real data, kept as records |
 | `docs/` | the design, the build plan, the word list, the two ways of working, how to define a factory of your own, proposals, reviews |
 
 ## See it work
@@ -24,11 +24,12 @@ With `git` and `uv` (https://docs.astral.sh/uv/) and nothing else, from a bare c
 
 ```
 uv run tools/sf.py selftest
+uv run methods/gain/system_trial.py blind-test \
+  --template examples/stand-alone/system-trial --n 20
 uv run examples/stand-alone/run.py
-uv run tools/check_old_records.py
 ```
 
-The first ends with `selftest: PASS (179 of 179)` in about half a minute: the study tool runs a study through every stage in throwaway folders and then makes every attack on itself that a tool can refuse. The second ends with `stand-alone example: PASS (29 of 29 steps)`: the exploring loop and the knowledge loop on a synthetic record whose answer is known. The third rebuilds the layout the practice runs were recorded in and asks the study tool of that day about them again; from a bare clone it can compare one answer of seven and says so, and with the hydrology capability beside it, all seven. "Try it" below has the rest, and says which checks need the hydrology capability checked out beside this repository.
+The first ends with `selftest: PASS (179 of 179)` in about half a minute: the study tool takes studies through every stage in throwaway folders and makes every attack on itself that a tool can refuse. The second takes two to three minutes and ends with `"wrong_verdicts": 0`: twenty synthetic records, each with a gain put in by hand and sealed, go through the whole confirming procedure, and each seal is opened afterwards to see whether the factory was right. The third ends with `stand-alone example: PASS (29 of 29 steps)`: the exploring loop and the knowledge loop on a synthetic record whose answer is known. None of the three needs the network after `uv` has fetched PyYAML once, and none starts a language model. "Try it" below has the rest, and says which checks need the hydrology capability checked out beside this repository.
 
 ## Two ways of working
 
@@ -147,7 +148,7 @@ This follows the OpenWiki repository's README as it was read on 2026-11-25 and r
 
 ## What is in each folder
 
-`tools/sf.py` is the study tool: one study, one study log, no language model in any check it makes. `factory/procedure.yaml` is the procedure it reads. `methods/gain/` holds the method prototypes for the first claim (`gain.py`, `confront.py`), its known-answer tests (`test_cases.py`, `known_answer_tests.py`) and `system_trial.py`, which seals a blind test case for the system trial, reveals the sealed answer afterwards and writes the verdict into the study log, and runs the blind test of the system. `studies/STUDY-0000` is the system trial and `studies/STUDY-0001` is the first real study; both are drafts and not started. `studies/exhibits/` holds what the build environment ran: the practice runs and the blind test of the system. `factory/change-log.jsonl` is the change log with predictions, the factory's record of its own changes; it holds two records. `factory/templates/` holds the request a scientist fills in (`request.md`), a commented analysis plan with every key the tool reads (`analysis-plan.yaml`), the catalog of kinds of question an analysis assistant reads (`kinds-of-question.yaml`), and the checklist for bringing an existing pipeline in (`workflow-adapter.md`). `compute/` holds the contract for where it runs (`adapter.py`: a job spec, four verbs, a run log), one local reference place, the conformance test any place must pass and a test of that test, and the table of places (`places.yaml`: local is built; a cluster scheduler, a cloud job and MAAP, NASA's Multi-Mission Algorithm and Analysis Platform, are written down and not built).
+`tools/sf.py` is the study tool: one study, one study log, no language model in any check it makes. `factory/procedure.yaml` is the procedure it reads. `methods/gain/` holds the method prototypes for the first claim (`gain.py`, `confront.py`), its known-answer tests (`test_cases.py`, `known_answer_tests.py`) and `system_trial.py`, which seals a blind test case for the system trial, reveals the sealed answer afterwards and writes the verdict into the study log, and runs the blind test of the system. `methods/built-in-pairing/pair_records.py` pairs two records by time for studies that touch no real record; it is not a computation of any capability. `studies/STUDY-0000` is the system trial and `studies/STUDY-0001` is the first real study; both are drafts and not started. `studies/exhibits/` holds what the build environment ran: the practice runs and the blind test of the system. `factory/change-log.jsonl` is the change log with predictions, the factory's record of its own changes; it holds two records. `factory/templates/` holds the request a scientist fills in (`request.md`), a commented analysis plan with every key the tool reads (`analysis-plan.yaml`), the catalog of kinds of question an analysis assistant reads (`kinds-of-question.yaml`), and the checklist for bringing an existing pipeline in (`workflow-adapter.md`). `compute/` holds the contract for where it runs (`adapter.py`: a job spec, four verbs, a run log), one local reference place, the conformance test any place must pass and a test of that test, and the table of places (`places.yaml`: local is built; a cluster scheduler, a cloud job and MAAP, NASA's Multi-Mission Algorithm and Analysis Platform, are written down and not built).
 
 ## Records made before the layout changed
 
@@ -163,13 +164,28 @@ Until 2026-11-26 the tools, the procedure, the method and the practice runs sat 
 
 **What you need.** `git`; `uv` (https://docs.astral.sh/uv/), which runs every script here and on first use downloads what a script declares (Python 3.11 or later, and PyYAML); a shell (bash or zsh). After that first download nothing below uses the network. The numbers on this page were made on Linux with Python 3.13.
 
-**With the hydrology capability beside it.** Three directories side by side in one folder, called `<root>` here:
+There are two sets of checks, and the checks workflow runs them as two jobs with the same names.
+
+**From this repository alone.** The three commands under "See it work", and these, all from the top of a bare clone:
+
+```
+uv run tools/sf.py check-plan --study examples/stand-alone/system-trial
+uv run methods/built-in-pairing/pair_records.py --selftest
+uv run compute/adapter.py conformance
+uv run tools/check_old_records.py
+```
+
+The plan check prints `plan check: the analysis plan is complete`. The pairing step's self-test ends with `selftest: PASS (5 of 5)`. The conformance test ends with `conformance (local): PASS (34 of 34)`, in about six seconds. The check of the old records ends with `check-old-records: PASS (1 of 1 answers are, byte for byte, the answers given before the move; 6 not run)`: from a bare clone it can replay one answer, and it says so. The self-tests of the exploring tool, the knowledge helpers, the role check and the runners are listed under "The assistants and the two loops"; they too run from a bare clone.
+
+What stands on its own here is the study tool, the gain method, and a system trial whose two synthetic records are paired by a step written in this repository (`examples/stand-alone/system-trial/README.md`). That trial and its blind test show that the procedure holds together and reaches right verdicts on kind cases. They are new, and no number in the documents comes from them.
+
+**With the hydrology capability beside it.** The first real study, the system trial planned for people (`studies/STUDY-0000`), the practice runs, the blind test of 200 cases and the Baton Rouge demo all use the hydrology capability's own pairing script, its knowledge, or both. Their checks need three directories side by side in one folder, called `<root>` here:
 
 | Directory | What it is | Address and commit |
 |---|---|---|
 | `<root>/science-factory` | this package | https://github.com/open-science-pillars/science-factory |
-| `<root>/hydrology` | the hydrology capability: the method under test is its sanctioned executor (the script that capability ships for comparing a satellite record with a gauge) | https://github.com/open-science-pillars/hydrology at commit `f9850d08c526139407eedf13ee3f12effbe83594` |
-| `<root>/nasa-daac-knowledge` | the provider knowledge and its tools; only the first real study (STUDY-0001) uses it, for the findings checker | https://github.com/open-science-pillars/nasa-daac-knowledge at commit `c04ae2e156ca8672c7724254a2c738bd252e9de6` |
+| `<root>/hydrology` | the hydrology capability: the method under test wraps its sanctioned executor (the script that capability ships for comparing a satellite record with a gauge) | https://github.com/open-science-pillars/hydrology at commit `f9850d08c526139407eedf13ee3f12effbe83594` |
+| `<root>/nasa-daac-knowledge` | the provider knowledge and its tools; the first real study (STUDY-0001) uses it for the findings checker, and the knowledge checks use its format checker | https://github.com/open-science-pillars/nasa-daac-knowledge at commit `c04ae2e156ca8672c7724254a2c738bd252e9de6` |
 
 Those are the addresses and commits recorded in the checkouts the practice runs used (both commits are dated 2026-09-20); the addresses were not fetched again when this page was written. To get them:
 
@@ -188,22 +204,19 @@ Then, from `<root>`:
 
 ```
 cd <root>
-uv run science-factory/tools/sf.py selftest
+uv run science-factory/tools/sf.py check-plan \
+  --study science-factory/studies/STUDY-0000
 uv run science-factory/methods/gain/system_trial.py blind-test \
   --template science-factory/studies/STUDY-0000 \
   --n 40
 uv run science-factory/tools/check_old_records.py
-uv run science-factory/compute/adapter.py conformance
 ```
 
 What each prints, and how long it took here:
 
-1. The self-test ends with `selftest: PASS (179 of 179)`, in about half a minute.
-2. The blind test of the system on 40 cases takes two to three minutes. It prints a summary of the known-answer tests, two lines for each case as it goes, and then its result, which ends with `"wrong_verdicts": 0` and `"every_run_ready_for_signature": true`.
+1. The plan check prints `plan check: the analysis plan is complete`. Without the hydrology checkout it names the script that is not there.
+2. The blind test of the system on 40 cases takes two to three minutes. It prints its result, which ends with `"wrong_verdicts": 0` and `"every_run_ready_for_signature": true`. Without the hydrology checkout it ends in a refusal that names the missing checkout.
 3. The check of the old records prints one line for each answer and ends with `check-old-records: PASS (7 of 7 answers are, byte for byte, the answers given before the move)`. One of those answers is the system trial's practice run standing at the stage `lock`, waiting for a person, as the study tool of that day reported it with the hydrology checkout at the commit above. The study tool of today reports the same record at `test`, for the reason given under "Records made before the layout changed".
-4. The conformance test ends with `conformance (local): PASS (34 of 34)`, in about six seconds.
-
-Without the hydrology checkout the first and the last run as they do with it; the second ends in a refusal that names the missing checkout, and the third compares one answer and reports six as not run.
 
 To re-derive the known-answer test evidence in the practice run (about a minute; the comparison is byte for byte on the same platform):
 
@@ -224,7 +237,7 @@ Then docs/PLAN.md, Part A.
 
 ## Status, plainly
 
-**Built and tested in the build environment.** The study tool (179 of 179 self-tests). The known-answer tests for the first claim. Both analysis plans through their plan check, known-answer tests and working data. The job contract and its local place (34 of 34 conformance checks, and a test of that test: 30 deliberately wrong places each fail it). The blind test of the system: 200 blind test cases, no wrong verdict; of the 100 cases where the idea was false none was supported (94 refuted, 6 inconclusive), and of the 100 where it was true 82 were supported and 18 inconclusive.
+**Built and tested in the build environment.** The study tool (179 of 179 self-tests). The known-answer tests for the first claim. Both analysis plans through their plan check, known-answer tests and working data. The job contract and its local place (34 of 34 conformance checks, and a test of that test: 30 deliberately wrong places each fail it). The blind test of the system, on the hydrology capability's pairing script: 200 blind test cases, no wrong verdict; of the 100 cases where the idea was false none was supported (94 refuted, 6 inconclusive), and of the 100 where it was true 82 were supported and 18 inconclusive.
 
 **What the blind test result is, and is not.** Its false cases sit at gains of 0.90 and 1.10, twice the five percent difference that matters. Every case is a kind one, with no trouble put in. The cases were chosen by the test harness (the script that drives the test), not sealed from it. Zero false supports in 100 cases still allows a true rate of up to about 3.6 percent. The evidence right at the difference that matters, and on hard cases, is carried by the known-answer tests, not by the blind test.
 
