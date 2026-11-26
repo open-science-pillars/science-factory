@@ -57,7 +57,8 @@ jobs:
       - name: The conformance test fails every deliberately wrong runner
         run: uv run compute/adapter.py conformance --self-check
       # The self-tests below include every attack an independent reviewer made on these tools (the review register,
-      # docs/reviews/ASSISTANTS-AND-EXPLORING.md, section 4). The exploring tool's tests of the kernel fence run with
+      # docs/reviews/ASSISTANTS-AND-EXPLORING.md, sections 4, 5 and 7). The last of the GitHub harness's three asks no
+      # platform: it runs the verification on answers written by hand, and its one call on this machine's loopback address. The exploring tool's tests of the kernel fence run with
       # it where the runner's kernel has Landlock, and all of them also run with it switched off. The knowledge
       # helpers' self-test checks that factory/checkers.yaml parses; the one checker pinned there belongs to another
       # repository and is run only by the optional demo (demo-with-hydrology.yml), never here.
@@ -75,6 +76,7 @@ jobs:
           uv run factory/harnesses/by-hand/as_role.py --selftest
           uv run factory/harnesses/github/verify_request.py --selftest
           uv run factory/harnesses/github/record_act.py --selftest
+          uv run factory/harnesses/github/verify_acts.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/describe_record.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
