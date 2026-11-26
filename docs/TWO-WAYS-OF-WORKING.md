@@ -4,7 +4,7 @@
 
 A scientist works in two ways, and most days in the first. **Exploring** is looking at data to find out what is there. **Confirming** is testing one claim that was stated before the data that tests it was seen. Methodologists call them hypothesis-generating and hypothesis-testing research. Both are real science. The trouble starts only when a result found the first way is reported as if it had come from the second.
 
-Status, plainly. The factory has built the confirming way: five stages, a study tool, tests. Exploring is now built too: a tool of its own, `mvp/loops/explore.py`, makes the four steps below hold without a language model, and two sections further down say what it holds and what it does not. It has been run end to end on a synthetic record, once on real data by one instance playing every role, and once on real data by separate assistants, each started from its role file, with reviews by assistants that did none of the work. A working hydrologist has reviewed the first of those runs and the tools, and started an exploration of their own from the documents. It has not yet been used by a scientist on a question of their own.
+Status, plainly. The factory has built the confirming way: five stages, a study tool, tests. Exploring is now built too: a tool of its own, `tools/explore.py`, makes the four steps below hold without a language model, and two sections further down say what it holds and what it does not. It has been run end to end on a synthetic record, once on real data by one instance playing every role, and once on real data by separate assistants, each started from its role file, with reviews by assistants that did none of the work. A working hydrologist has reviewed the first of those runs and the tools, and started an exploration of their own from the documents. It has not yet been used by a scientist on a question of their own.
 
 ## Exploring: most of the work
 
@@ -53,7 +53,7 @@ Not built, or not shown:
 - **A place where an exploring assistant has no route to set-aside data.** On one machine the fence reads commands, files and what a look leaves behind. It cannot see inside a script.
 - **Blindness to earlier answers.** Nothing keeps an analysis assistant from reading a page that already answers its question; the first assistant of the second run did, and said so.
 - **The runner under a platform.** The run by separate assistants held roles to their commands by instruction and the role file. The Claude Code runner, which is built to enforce them, has not been exercised.
-- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `mvp/procedure.yaml` still says designed and not built, and was left untouched so that the practice runs report what they reported.
+- **The exploratory kind of study inside the procedure.** Exploring is a tool beside the procedure, not a stage in it; `factory/procedure.yaml` still says designed and not built, and was left untouched so that the practice runs report what they reported.
 - **Blind analysis and watching studies**, as below.
 
 ## Confirming: when a claim is to be signed

@@ -1808,7 +1808,7 @@ def main() -> int:
         if name == "submit":
             p.add_argument("--spec", type=Path, required=True)
             p.add_argument("--token", action="append", default=[], metavar="NAME=PATH",
-                           help="a token this place expands at the start of an argument, as in kit=/path/to/mvp")
+                           help="a token this place expands at the start of an argument, as in gain=/path/to/methods/gain")
         else:
             p.add_argument("--job", required=True)
         if name == "collect":
@@ -1838,7 +1838,7 @@ def main() -> int:
         for item in getattr(a, "token", []):
             name, eq, value = item.partition("=")
             if not (eq and re.fullmatch(r"[a-z][a-z0-9_]*", name) and value):
-                raise Refused(f"--token takes NAME=PATH, as in kit=/path/to/mvp; got `{item}`")
+                raise Refused(f"--token takes NAME=PATH, as in gain=/path/to/methods/gain; got `{item}`")
             tokens[name] = str(Path(value).resolve()) if os.path.exists(value) else value
         place = cls(a.root, tokens=tokens) if tokens else cls(a.root)
         if a.cmd == "submit":

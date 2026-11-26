@@ -1,6 +1,6 @@
 # Request for STUDY-0001, as a scientist would have written it
 
-*A worked example. The analysis plan beside this file (`analysis-plan.yaml`) is what the four questions back have to produce from it. Lines marked OPEN are the steward's decisions listed in PLAN.md.*
+*A worked example. The analysis plan beside this file (`analysis-plan.yaml`) is what the four questions back have to produce from it. Lines marked OPEN are the steward's decisions listed in docs/PLAN.md.*
 
 **What I want to know.** Does SWOT see the same rise and fall at Baton Rouge as the gauge does? It looked fine in 2024; I want to know if that holds on the newer processing.
 

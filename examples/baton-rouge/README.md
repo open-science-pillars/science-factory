@@ -45,7 +45,7 @@ The second question's lead (`with-assistants/explorations/EXPLORATION-0102/lead.
 
 ## What an independent hydrologist said
 
-A working hydrologist (altimetry and gauges) read the single-instance run cold, recomputed it with their own code, and did not open `with-assistants/`. The review is recorded finding by finding in `reviews/ASSISTANTS-AND-EXPLORING.md`. Its substance:
+A working hydrologist (altimetry and gauges) read the single-instance run cold, recomputed it with their own code, and did not open `with-assistants/`. The review is recorded finding by finding in `docs/reviews/ASSISTANTS-AND-EXPLORING.md`. Its substance:
 
 - **Every central number reproduced to the digit.** "The arithmetic is honest. My objections are about what was not looked at and what the numbers are taken to mean."
 - **The gain above one is probably geometry, and nobody looked.** The file carries the product's water surface slope for every pass; no look used it. With slope in the model the gain falls to about 1.005.
@@ -75,7 +75,7 @@ What neither run did, and the hydrologist asked for: a figure of any kind, the e
 
 ## What changed in the tools because of this
 
-The six answer files in `with-assistants/record/` each end with what was unclear, wrong or in the way. Together with the hydrologist's review they led to these changes, each with a self-test (the full list is in `reviews/ASSISTANTS-AND-EXPLORING.md`):
+The six answer files in `with-assistants/record/` each end with what was unclear, wrong or in the way. Together with the hydrologist's review they led to these changes, each with a self-test (the full list is in `docs/reviews/ASSISTANTS-AND-EXPLORING.md`):
 
 - The fence reads a site the ways people write it, the bare number included.
 - The role file and the skill now say the same thing about order, in the same words, and a check fails when they differ: knowledge is read first and only knowledge, then data is set aside, then looks; an exploration ends as a lead only after its latest lead is reviewed.
@@ -90,19 +90,19 @@ Because of the fourth change, `check-log` on `EXPLORATION-0101` passes with a re
 From the repository root with the two checkouts beside it:
 
 ```
-uv run mvp/loops/explore.py check-log --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
-uv run mvp/loops/explore.py check-log --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
-uv run mvp/loops/explore.py status --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
-uv run mvp/loops/knowledge.py check-drafts --queue examples/baton-rouge/with-assistants/knowledge-queue \
+uv run tools/explore.py check-log --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
+uv run tools/explore.py check-log --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
+uv run tools/explore.py status --exploration examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
+uv run tools/knowledge.py check-drafts --queue examples/baton-rouge/with-assistants/knowledge-queue \
   --wiki ../hydrology/knowledge --checker ../nasa-daac-knowledge/tools/check_okf_v02.py
 ```
 
 The looks of this run named the data file by the full path it had on the machine that ran them, so `explore.py recheck` reproduces them only where the hydrology checkout sits at that same path; `check-log` verifies every receipt and output by checksum anywhere. For the single-instance run, whose looks used paths from the exploration directory:
 
 ```
-uv run mvp/loops/explore.py check-log --exploration examples/baton-rouge/explorations/EXPLORATION-0001
-uv run mvp/loops/explore.py recheck --exploration examples/baton-rouge/explorations/EXPLORATION-0001 --look LOOK-012
-uv run mvp/loops/explore.py check-study --exploration examples/baton-rouge/explorations/EXPLORATION-0001 \
+uv run tools/explore.py check-log --exploration examples/baton-rouge/explorations/EXPLORATION-0001
+uv run tools/explore.py recheck --exploration examples/baton-rouge/explorations/EXPLORATION-0001 --look LOOK-012
+uv run tools/explore.py check-study --exploration examples/baton-rouge/explorations/EXPLORATION-0001 \
   --study examples/baton-rouge/studies/STUDY-0002
 ```
 

@@ -185,7 +185,9 @@ HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a
 KEPT_PYTHON = ("PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED")  # the only PYTHON variables a command may run under
 IMPORTABLE = (".py", ".pyc", ".so", ".pyd")  # what Python can import from a folder: source, bytecode, extension modules
 TOOL = Path(__file__).resolve()
-PROCEDURE = TOOL.parent / "procedure.yaml"
+REPO = TOOL.parent.parent  # the repository: tools/ holds this file, factory/ the procedure, methods/ the method scripts
+PROCEDURE = REPO / "factory" / "procedure.yaml"
+MOVED = REPO / "factory" / "moved-files.yaml"  # where files stood before the layout changed, and where they stand now
 # the statuses a log check can give; the others are built where they are decided
 INVALID = "the study log or its files do not check out"
 EXPLORATORY = "exploratory study"
@@ -400,8 +402,51 @@ def load_plan_text(text: str) -> dict:
     except yaml.YAMLError as e:
         raise Refused(f"analysis-plan.yaml does not parse: {str(e).splitlines()[0]}")
     if not isinstance(plan, dict):
-        raise Refused("analysis-plan.yaml is not a mapping of keys (see templates/analysis-plan.yaml)")
+        raise Refused("analysis-plan.yaml is not a mapping of keys (see factory/templates/analysis-plan.yaml)")
     return plan
+
+
+_MOVED: dict = {}
+
+
+def moved() -> dict:
+    """The table of moved files (factory/moved-files.yaml), read once: `studies` maps where a record stands now
+    to where it stood when its log was written, and `files` maps where a file stood to where it stands now,
+    both as paths from the top of the repository. A record made before the move names its code by the old
+    paths, and its log is never rewritten, so the tool reads those names through this table. The table only
+    says where to look. What is found there is hashed like any other file and compared with the checksum the
+    log recorded, so a moved file that also changed still shows as changed, and a file that is no longer where
+    Python could import it from still shows as gone. With no table, nothing is mapped."""
+    key = str(MOVED)
+    if key not in _MOVED:
+        table = {"studies": {}, "files": {}}
+        try:
+            doc = yaml.safe_load(MOVED.read_text()) if MOVED.is_file() else {}
+        except (OSError, yaml.YAMLError):
+            doc = {}
+        doc = doc if isinstance(doc, dict) else {}
+        for now, then in (doc.get("studies") or {}).items() if isinstance(doc.get("studies"), dict) else ():
+            if isinstance(now, str) and isinstance(then, str):
+                table["studies"][now] = then
+        for then, entry in (doc.get("files") or {}).items() if isinstance(doc.get("files"), dict) else ():
+            now = entry.get("now") if isinstance(entry, dict) else entry
+            if isinstance(then, str) and isinstance(now, str):
+                table["files"][then] = now
+        _MOVED[key] = table
+    return _MOVED[key]
+
+
+def now_at(text: str) -> str:
+    """Where a file named by its old place stands now: a path inside this repository that the table of moved
+    files lists is answered with the new path, and anything else is given back as it came."""
+    files = moved()["files"]
+    if not files or not os.path.isabs(text):
+        return text
+    try:
+        rel = Path(text).relative_to(REPO).as_posix()
+    except ValueError:
+        return text
+    return str(REPO / files[rel]) if rel in files else text
 
 
 class Study:
@@ -527,11 +572,25 @@ class Study:
     def plan_sha(self) -> str:
         return sha_file(self.plan_path)
 
+    def stood(self) -> Path:
+        """The folder this study's plan was written in. It is the study directory, except for a record that
+        was moved with the repository's layout (factory/moved-files.yaml): its plan names its roots from where
+        it stood, and the plan is bound by checksum, so its roots are read from there."""
+        try:
+            then = moved()["studies"].get(self.d.relative_to(REPO).as_posix())
+        except ValueError:
+            then = None
+        return REPO / then if then else self.d
+
     def expand(self, token, plan: dict) -> str:
         roots = plan.get("roots") if isinstance(plan.get("roots"), dict) else {}
-        roots = {str(k): str((self.d / str(v)).resolve()) for k, v in roots.items()}
+        roots = {str(k): str((self.stood() / str(v)).resolve()) for k, v in roots.items()}
         try:
-            return str(token).format(study=str(self.d), python=sys.executable, **roots)
+            out = str(token).format(study=str(self.d), python=sys.executable, **roots)
+            if out.startswith("-") and "=" in out:  # --option=PATH: the path is what may have moved
+                head, _, tail = out.partition("=")
+                return head + "=" + now_at(tail)
+            return now_at(out)
         except (KeyError, IndexError, ValueError):
             known = ", ".join("{" + k + "}" for k in ["study", "python", *roots])
             raise Refused(f"`{token}` names a root the analysis plan does not define (it can use {known})")
@@ -723,7 +782,7 @@ def env_stamp(study: Study | None = None, plan: dict | None = None) -> dict:
     stamp = {"python": platform.python_version(), "platform": sys.platform, "host": platform.node() or None, "user": user}
     if study is not None:
         roots = plan.get("roots") if isinstance(plan, dict) and isinstance(plan.get("roots"), dict) else {}
-        stamp["roots"] = {str(k): repository_state((study.d / str(v)).resolve()) for k, v in roots.items()}
+        stamp["roots"] = {str(k): repository_state((study.stood() / str(v)).resolve()) for k, v in roots.items()}
         stamp["roots"]["(the study)"] = repository_state(study.d)
     return stamp
 
@@ -893,12 +952,12 @@ def check_plan(plan, study: Study | None = None) -> list:
     except (KeyError, TypeError, ValueError, AttributeError, IndexError):
         # a shape none of the checks below foresaw is still a refusal in plain words, never a Python error
         return ["the analysis plan has a value of a kind the plan check could not read; compare it, key by key, "
-                "with templates/analysis-plan.yaml"]
+                "with factory/templates/analysis-plan.yaml"]
 
 
 def _check_plan(plan, study: Study | None) -> list:
     if not isinstance(plan, dict):
-        return ["the analysis plan is a mapping of keys (see templates/analysis-plan.yaml)"]
+        return ["the analysis plan is a mapping of keys (see factory/templates/analysis-plan.yaml)"]
     p = unknown_keys("", plan, PLAN_KEYS)
     p += [f"missing `{k}`: {PLAN_NEEDS[k]}" for k in PLAN_NEEDS if not plan.get(k)]
     if p:
@@ -1509,17 +1568,17 @@ def need_person(a, what: str) -> None:
 
 
 def procedure_stamp(procedure: Path, lock: dict | None = None) -> dict:
-    """Which procedure file a command read: its path, its checksum, whether it is the one beside the study tool,
-    and whether it is the one the lock recorded."""
+    """Which procedure file a command read: its path, its checksum, whether it is this factory's own
+    (factory/procedure.yaml in the repository the study tool is in), and whether it is the one the lock recorded."""
     procedure = Path(procedure).resolve()
     sha = sha_file(procedure)
     if sha is None:
         raise Refused(f"the procedure file {procedure} does not exist")
     beside = procedure == PROCEDURE.resolve()
-    out = {"path": "procedure.yaml (beside the study tool)" if beside else str(procedure), "sha256": sha,
-           "beside_the_study_tool": beside, "remarks": []}
+    out = {"path": "factory/procedure.yaml (this factory's own)" if beside else str(procedure), "sha256": sha,
+           "this_factorys_own": beside, "remarks": []}
     if not beside:
-        out["remarks"].append("this is not the procedure file beside the study tool: what it calls done is its own claim")
+        out["remarks"].append("this is not this factory's own procedure file (factory/procedure.yaml): what it calls done is its own claim")
     locked = (lock or {}).get("data", {}).get("procedure") if lock else None
     if locked:
         out["same_as_locked"] = locked.get("sha256") == sha
@@ -2468,7 +2527,7 @@ def cmd_log_change(study: Study, a) -> None:
         raise Refused("the change log is its own .jsonl file, never the record of what has been opened")
     why = not_a_change_log(log)
     if why:
-        raise Refused(f"{log} cannot be the change log: {why}. The change log is its own file, such as mvp/change-log.jsonl")
+        raise Refused(f"{log} cannot be the change log: {why}. The change log is its own file, such as factory/change-log.jsonl")
     study.check_actor(a.by)
     procedure = Path(a.procedure)
     if sha_file(procedure) is None:
@@ -3126,10 +3185,10 @@ def selftest() -> int:
         (study.d / "form.md").write_text("another form\n")
         check("a file a rehearsal needs is locked: changed after the lock, the opening is refused",
               "{study}/form.md" in _refusal(cmd_open_held_out, study, opening()))
-        shipped = [f for f in (TOOL.parent / "studies" / "STUDY-0000" / "analysis-plan.yaml",
-                               TOOL.parent / "studies" / "STUDY-0001" / "analysis-plan.yaml",
-                               TOOL.parent / "templates" / "analysis-plan.yaml") if f.is_file()]
-        check("every command of the plans that ship beside the tool is a launcher the tool knows and a script",
+        shipped = [f for f in (REPO / "studies" / "STUDY-0000" / "analysis-plan.yaml",
+                               REPO / "studies" / "STUDY-0001" / "analysis-plan.yaml",
+                               REPO / "factory" / "templates" / "analysis-plan.yaml") if f.is_file()]
+        check("every command of the plans that ship with the tool is a launcher the tool knows and a script",
               all(command_problem(argv) is None for f in shipped for _, argv in Study.commands(load_plan_text(f.read_text())))
               and all(len(Study.commands(load_plan_text(f.read_text()))) >= 3 for f in shipped))
         check("an interpreter given to uv run by its path fails the plan check; a version is taken",
@@ -3514,7 +3573,7 @@ def selftest() -> int:
         check("the lock records the procedure's checksum, and status says so when it is given another procedure file",
               study.last("lock.recorded")["data"]["procedure"]["sha256"] == sha_file(PROCEDURE)
               and where["stage"] == "complete" and where["procedure"]["sha256"] == sha_file(doctored)
-              and not where["procedure"]["beside_the_study_tool"] and where["procedure"]["same_as_locked"] is False
+              and not where["procedure"]["this_factorys_own"] and where["procedure"]["same_as_locked"] is False
               and len(where["procedure"]["remarks"]) == 2 and stage_of(study, PROCEDURE)["procedure"]["remarks"] == [])
         cmd_scorecard(study, A(procedure=str(doctored), anchor=None))
         card = json.loads((study.d / "scorecard.json").read_text())
@@ -3630,7 +3689,7 @@ def selftest() -> int:
             os.chdir(was)
         check("code listed by bare file name is read from the study directory, so the lock finds it wherever the tool is called from",
               study.last("lock.recorded")["data"]["code"]["toy.py"] == sha_file(study.d / "toy.py"))
-        template = TOOL.parent / "templates" / "analysis-plan.yaml"
+        template = REPO / "factory" / "templates" / "analysis-plan.yaml"
         if template.is_file():
             study = Study(tmp / "n-template")
             cmd_start(study, A(id="STUDY-0002", question="Is it?", by="agent:coordinating"))
@@ -3736,8 +3795,57 @@ def selftest() -> int:
               listed["text"] == "the words of the note" and "restored" in listed
               and any("NOTE-001" in r and "keeps its words" in r for r in check_log(study)["remarks"]))
 
-        # the system trial's own pieces, when they sit beside the tool
-        kit = TOOL.parent
+        # records made before the layout changed: old names are read through the table of moved files
+        real = (REPO, MOVED)
+        try:
+            repo = tmp / "moved-repo"
+            (repo / "factory").mkdir(parents=True)
+            (repo / "methods" / "toy").mkdir(parents=True)
+            (repo / "methods" / "toy" / "helper.py").write_text("X = 1\n")
+            globals().update(REPO=repo, MOVED=repo / "factory" / "moved-files.yaml")
+            old_plan = with_plan(lambda p: p.update(roots={"kit": "../.."}, code=["toy.py", "{kit}/helper.py"]))
+            record = _fresh(repo / "studies" / "exhibits", "OLD-RECORD", plan=old_plan)
+            unmapped = record.code_hashes(record.plan())
+            check("with no table of moved files, a file a plan names by a place that no longer exists is bound as missing",
+                  "{kit}/helper.py" in unmapped and unmapped["{kit}/helper.py"] is None)
+            MOVED.write_text(yaml.safe_dump({"studies": {"studies/exhibits/OLD-RECORD": "kit/exhibits/OLD-RECORD"},
+                                             "files": {"kit/helper.py": {"now": "methods/toy/helper.py", "sha256": "not read by the tool"}}}))
+            _MOVED.clear()
+            mapped = record.code_hashes(record.plan())
+            check("a record that stood elsewhere reads its roots from where it stood, and a moved file is found where it stands now: "
+                  "the old name is bound to the checksum of the file at its new place",
+                  record.stood() == repo / "kit" / "exhibits" / "OLD-RECORD"
+                  and mapped["{kit}/helper.py"] == sha_file(repo / "methods" / "toy" / "helper.py")
+                  and record.expand("{kit}/helper.py", record.plan()) == str(repo / "methods" / "toy" / "helper.py")
+                  and record.expand("--with={kit}/helper.py", record.plan()) == "--with=" + str(repo / "methods" / "toy" / "helper.py"))
+            check("the table changes nothing else: the study's own files, a word that is no path, a path outside the repository and a "
+                  "path the table does not list are read as before",
+                  mapped["toy.py"] == unmapped["toy.py"] and record.expand("--cases", record.plan()) == "--cases"
+                  and record.expand("{study}/x.json", record.plan()) == str(record.d / "x.json")
+                  and now_at(str(tmp / "kit" / "helper.py")) == str(tmp / "kit" / "helper.py")
+                  and now_at(str(repo / "kit" / "other.py")) == str(repo / "kit" / "other.py"))
+            (repo / "methods" / "toy" / "helper.py").write_text("X = 2\n")
+            (repo / "methods" / "toy" / "added.py").write_text("Y = 1\n")
+            later = code_difference(mapped, record.code_hashes(record.plan()))
+            check("the table only says where to look: a moved file that changed shows as changed, and a file Python could now import "
+                  "beside it shows as new",
+                  "{kit}/helper.py (changed)" in later and "{kit}/added.py (new since the lock)" in later)
+            in_place = _fresh(repo / "studies", "NEW-STUDY", plan=with_plan(lambda p: p.update(roots={"toy": "../../methods/toy"},
+                                                                                             code=["toy.py", "{toy}/helper.py"])))
+            check("a study that never moved is read from where it stands",
+                  in_place.stood() == in_place.d
+                  and in_place.code_hashes(in_place.plan())["{toy}/helper.py"] == sha_file(repo / "methods" / "toy" / "helper.py"))
+        finally:
+            globals().update(REPO=real[0], MOVED=real[1])
+            _MOVED.clear()
+        shipped_table = yaml.safe_load(MOVED.read_text()) if MOVED.is_file() else None
+        if shipped_table:
+            check("the table of moved files that ships with the tool names, for every file and every record, a place that exists",
+                  all((REPO / e["now"]).is_file() for e in shipped_table["files"].values())
+                  and all((REPO / now).is_dir() for now in shipped_table["studies"]))
+
+        # the system trial's own pieces, when the gain method ships with the tool
+        kit = REPO / "methods" / "gain"
         if (kit / "system_trial.py").is_file() and (kit / "test_cases.py").is_file():
             sealed = subprocess.run([sys.executable, str(kit / "system_trial.py"), "seal", "--out", str(tmp / "seal" / "case.json"),
                                      "--answer", str(tmp / "seal" / "answer.json")], capture_output=True, text=True,
@@ -3789,7 +3897,7 @@ def selftest() -> int:
                   and two.returncode == 2 and "REFUSED" in two.stderr
                   and sum(e["kind"] == "trial.verdict" for e in study.events()) == 1)
 
-        # the known-answer tests' own check, when they sit beside the tool
+        # the known-answer tests' own check, when the gain method ships with the tool
         if (kit / "known_answer_tests.py").is_file() and (kit / "confront.py").is_file() and (kit / "test_cases.py").is_file():
             own = subprocess.run([sys.executable, str(kit / "known_answer_tests.py"), "--selftest"], capture_output=True, text=True,
                                  env=dict(os.environ), stdin=subprocess.DEVNULL)
@@ -3823,7 +3931,7 @@ def main() -> int:
     anchor = (["--anchor"], {"action": "append", "default": None,
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
-    proc = (["--procedure"], {"default": str(PROCEDURE), "help": "the procedure file (default: the one beside the study tool)"})
+    proc = (["--procedure"], {"default": str(PROCEDURE), "help": "the procedure file (default: factory/procedure.yaml, this factory's own)"})
     comment = (["--comment"], {"default": None, "help": "free text kept with the event"})
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,

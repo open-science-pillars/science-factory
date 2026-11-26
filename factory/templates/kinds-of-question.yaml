@@ -12,7 +12,7 @@ kinds:
     rule: "supported when the whole interval lies inside the difference that matters (the equivalence margin); refuted when it lies wholly outside"
     known_answer_tests: ["the true value", "values right at the difference that matters, on both sides", "a value far from true", "the hard cases of the data"]
     held_out_data: ["the next window", "sites never opened", "a new release"]
-    the_tool_today: "built for a gain between two records: the tool judges the rule, and the method, the test cases and their runner ship in mvp/ (gain.py, confront.py, test_cases.py, known_answer_tests.py). For any other equivalence the tool can judge the rule; the method, the test cases and their runner are yours to write"
+    the_tool_today: "built for a gain between two records: the tool judges the rule, and the method, the test cases and their runner ship in methods/gain/ (gain.py, confront.py, test_cases.py, known_answer_tests.py). For any other equivalence the tool can judge the rule; the method, the test cases and their runner are yours to write"
   - id: direction
     people_say: ["did it go up", "is A bigger than B"]
     quantity_estimated: "a signed difference with an interval"

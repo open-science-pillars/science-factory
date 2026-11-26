@@ -19,7 +19,7 @@ made through this runner is therefore not an independent review, and the
 record says which runner was used so that nobody reads it as one.
 
 Usage:
-  uv run runners/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run mvp/loops/explore.py status --exploration X
+  uv run runners/by-hand/as_role.py --role analysis --record DIR/commands.jsonl -- uv run tools/explore.py status --exploration X
   uv run runners/by-hand/as_role.py --role review --record DIR/commands.jsonl --write PATH   (asks only whether the role may write PATH)
   uv run runners/by-hand/as_role.py --role review --record DIR/commands.jsonl --read PATH    (asks only whether the role may read PATH)
   uv run runners/by-hand/as_role.py --selftest
@@ -58,7 +58,7 @@ def selftest() -> int:
         ("the review role may read the work itself", ask("--role", "review", "--read", "examples/w/explorations/E1/lead.md") == 0),
         ("a role may write in its own place and not in another's",
          ask("--role", "review", "--write", "examples/w/record/review/02.answer.md") == 0 and ask("--role", "review", "--write", "examples/w/record/analysis/02.answer.md") == 2),
-        ("a command the role file does not allow is not run", ask("--role", "review", "--", "uv", "run", "mvp/loops/explore.py", "look", "--exploration", "x") == 2),
+        ("a command the role file does not allow is not run", ask("--role", "review", "--", "uv", "run", "tools/explore.py", "look", "--exploration", "x") == 2),
         ("every answer is kept in the record, refusals included", len(record.read_text().splitlines()) == 5 and '"allowed": false' in record.read_text()),
         ("asking leaves no bytecode folder beside the decision it loads", not (ROOT / "runners" / "claude-code" / "__pycache__").exists()),
     ]

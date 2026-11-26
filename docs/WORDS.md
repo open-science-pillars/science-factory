@@ -78,9 +78,9 @@ These could not all be given one sense each, so each sense is named here.
 | open | **opening** the held-out data; an *open note* is one not yet resolved. For anything not yet decided the documents say "undecided"; the worked request for STUDY-0001 still marks such lines OPEN |
 | gate | the **access gate** is a step of the tool. The organization also calls a repository's required checks before a merge its gate (hence the deliverable `findings-checker-in-gate`), and the roadmap file has a field `gate:` for a decision a person takes before work starts. The documents say "required check" for the second |
 | confirmatory | in every status that begins "confirmatory study": the study tests a claim written down beforehand on data nobody had opened. Its opposite is exploratory |
-| the method builder | in the two files under `mvp/compute/`: whoever built the method, which is the analysis assistant or the person running it |
+| the method builder | in the two files under `compute/`: whoever built the method, which is the analysis assistant or the person running it |
 
-Five kinds of trial run have near names. *Known-answer tests*: the method on synthetic data with the truth put in, before the lock, repeated freely. A *rehearsal*: what the opening depends on (its fetch, the form of the finding) run once on working data, before the lock. A *practice run*: what the build environment did with a study, kept in `mvp/exhibits/`, stopping before any act by a person. The *system trial*: one whole study (STUDY-0000) on a blind test case sealed at its opening, with a person's lock and signature. The *blind test of the system*: many such cases run unattended by a harness (the script that drives it), with no person, to count wrong verdicts.
+Five kinds of trial run have near names. *Known-answer tests*: the method on synthetic data with the truth put in, before the lock, repeated freely. A *rehearsal*: what the opening depends on (its fetch, the form of the finding) run once on working data, before the lock. A *practice run*: what the build environment did with a study, kept in `studies/exhibits/`, stopping before any act by a person. The *system trial*: one whole study (STUDY-0000) on a blind test case sealed at its opening, with a person's lock and signature. The *blind test of the system*: many such cases run unattended by a harness (the script that drives it), with no person, to count wrong verdicts.
 
 ## What can be simpler without changing what it does
 
@@ -269,7 +269,7 @@ The first pass changed what the documents and the tool's messages say and left t
 
 Names that stay: `rehearsal.run`, `review.verdict`, `finding.attached`; `claim_class`, which is the organization's closed vocabulary; `sf.py`, `gain.py` and `confront.py`; the option `--anchor`, which passes a posted log fingerprint to `check-log`, `signature`, `scorecard`, `close` and `system_trial.py verdict` and kept its earlier word on the command line; and the stage names `ask`, `plan`, `test`, `lock`, `open`, `review`, `signature`, `learn`, `close`.
 
-| On the compute side (`mvp/compute/`), before | Now |
+| On the compute side (`compute/`), before | Now |
 |---|---|
 | `Target`, `LocalTarget` | `Place`, `LocalPlace` |
 | `targets:`, `rules_for_every_target:` in the YAML file | `places:`, `rules_for_every_place:` |
@@ -289,7 +289,7 @@ Names that stay: `rehearsal.run`, `review.verdict`, `finding.attached`; `claim_c
 | local place: `<root>/<job id>/` | `<root>/state/<job id>/` and `<root>/work/<job id>/` |
 | in `places.yaml`: `identity`, `status_from`, `register`, `limits`, `note`, `reads_held-out_data`, `clean_for_an_opening`, `fits_the_factory_because` | one table for every place: `basis`, `status`, `for`, `table`, `open_questions`, with `clean_interpreter` and `blinds_the_method_builder` among the table's twelve keys, and a top-level `keys` |
 
-New in the third review round, with no earlier name: the event `trial.verdict`; the scorecard check `lock-committed`; the plan keys `study_kind`, `writes` and `power_evidence.waived`; the options `start --request` and `--asked-by`, `lock --procedure`, `check-log --change-log`, `close --anchor`, `system_trial.py seal --answer` and `--harness`, `system_trial.py verdict --by`, and `adapter.py conformance --place`; the file `mvp/templates/analysis-plan.yaml`.
+New in the third review round, with no earlier name: the event `trial.verdict`; the scorecard check `lock-committed`; the plan keys `study_kind`, `writes` and `power_evidence.waived`; the options `start --request` and `--asked-by`, `lock --procedure`, `check-log --change-log`, `close --anchor`, `system_trial.py seal --answer` and `--harness`, `system_trial.py verdict --by`, and `adapter.py conformance --place`; the file `factory/templates/analysis-plan.yaml`.
 
 ## Words added with the assistants and the two loops
 
@@ -342,7 +342,7 @@ Words this package no longer uses for these things, because a field scientist re
 | unflagged, not flagged | the flag's value: "`reach_q` equal to 1" | a quality flag can have a value on every observation; in the Baton Rouge record none is at the clean value, so "unflagged" described passes the product marks |
 | sampling interval (for an interval around an estimate) | confidence interval, with the model it comes from | to a hydrologist a sampling interval is the time between samples |
 
-The method scripts under `mvp/` and the kept records of both demo runs still carry the two older words, because neither may be edited; the exploring tool refuses them in a new lead.
+The method scripts under `methods/gain/` and the kept records of both demo runs still carry the two older words, because neither may be edited; the exploring tool refuses them in a new lead.
 
 These words beside the ones a hydrologist would use, for a first reading:
 
@@ -365,8 +365,12 @@ These words beside the ones a hydrologist would use, for a first reading:
 
 Applied everywhere a reader or a user can meet a word: the front door (README.md), the design (DESIGN.md, which replaces the separate concept and architecture documents), the build plan (PLAN.md), the templates, both studies and their analysis plans, the procedure file, the method scripts, and the study tool, inside and out (commands, options, messages, statuses, the names of its self-test checks and its own code).
 
-Run again, not renamed: a study log is hash-chained to its names, and each test event carries the tool's own checksum. So the earlier practice runs were discarded, and `practice-run-STUDY-0001`, `system-trial-ready-STUDY-0000` and the blind test of the system were run from the start, the last time on the tool as it stands after the third review round. The known-answer numbers and the blind test result are the same as before. The two records in `mvp/change-log.jsonl` are new ones, written by the tool from that practice run: a prediction, and its observed outcome.
+Run again, not renamed: a study log is hash-chained to its names, and each test event carries the tool's own checksum. So the earlier practice runs were discarded, and `practice-run-STUDY-0001`, `system-trial-ready-STUDY-0000` and the blind test of the system were run from the start, the last time on the tool as it stands after the third review round. The known-answer numbers and the blind test result are the same as before. The two records in `factory/change-log.jsonl` are new ones, written by the tool from that practice run: a prediction, and its observed outcome.
 
 The first two rounds in `reviews/RED-TEAM.md` and the whole of `reviews/SCIENTISTS.md` were written in the earlier words and put into the present words later the same day; each says so at its head, and their originals are not kept in this package. The third round was written in the present words. Outside this file the earlier words survive in one place, the option `--anchor`. So the tables above matter mostly for comparing with older material.
 
 Added after the third review round, new names with no earlier form: the plan keys `passes_environment` (environment variables a step may be given, by name), `needs` (files a rehearsal requires before it runs) and `writes` (files a step writes for itself); and in the study log `env_names` (the names passed to a step) and `uv_environments` (the settings and environments `uv` would read from the study's folders, bound at the lock).
+
+## Where the files are, since 2026-11-26
+
+The file names in the tables above are the names; the folders changed once more. Everything that sat in `mvp/` moved to a folder named for what it is: `tools/`, `factory/`, `methods/`, `compute/`, `studies/`, and these documents moved to `docs/`. README.md has the layout in a table, `factory/moved-files.yaml` is the table of old and new paths the tools read, and README.md, under "Records made before the layout changed", says what that did to the records kept here.

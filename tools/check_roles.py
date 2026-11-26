@@ -6,7 +6,7 @@
 """check_roles: the role files and the procedure say the same thing.
 
 The roles are files in `assistants/`, one per role, in a form no agent
-platform owns. The procedure (mvp/procedure.yaml) has an `assistants` block
+platform owns. The procedure (factory/procedure.yaml) has an `assistants` block
 written for people. This check fails when the two disagree, so neither can
 drift from the other unnoticed. It runs no language model and it edits
 nothing.
@@ -21,7 +21,7 @@ What it checks:
   same words  each role file quotes, word for word, what the procedure says
               the role does, may not do and must be, and lists under
               `must_never_see` what the procedure says it never sees
-  may_call    every command names a tool in mvp/ and a command that tool
+  may_call    every command names a tool in tools/ and a command that tool
               has; every skill is in skills/; every role is a role
   the acts    no role may call the lock, the signature or the voiding of an
   of people   opening: those belong to people
@@ -55,31 +55,31 @@ from pathlib import Path
 import yaml
 
 KEYS = ("name", "purpose", "may_call", "must_never_see", "reads", "writes", "hands_on")
-ACTS_OF_PEOPLE = ("mvp/sf.py lock", "mvp/sf.py signature", "mvp/sf.py void-unread")
+ACTS_OF_PEOPLE = ("tools/sf.py lock", "tools/sf.py signature", "tools/sf.py void-unread")
 SAME_WORDS = {  # a role, the label that begins a paragraph of its file, and the skills that carry the same paragraph
     "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"]},
     "review": {"**Where you write.**": ["review-work"]},
     "curating": {"**When you start.**": ["draft-a-knowledge-page"]},
 }
-DOES_THE_WORK = ("mvp/loops/explore.py start", "mvp/loops/explore.py look", "mvp/loops/explore.py choice", "mvp/loops/explore.py lead", "mvp/loops/explore.py end",
-                 "mvp/loops/explore.py correct",
-                 "mvp/sf.py start", "mvp/sf.py test", "mvp/sf.py rehearse", "mvp/sf.py attach", "mvp/sf.py open-held-out")
+DOES_THE_WORK = ("tools/explore.py start", "tools/explore.py look", "tools/explore.py choice", "tools/explore.py lead", "tools/explore.py end",
+                 "tools/explore.py correct",
+                 "tools/sf.py start", "tools/sf.py test", "tools/sf.py rehearse", "tools/sf.py attach", "tools/sf.py open-held-out")
 ONLY = {  # a command and the one role that may call it
-    "mvp/loops/explore.py review": "review", "mvp/sf.py review": "review",
-    "mvp/loops/explore.py resolve": "curating", "mvp/sf.py resolve": "curating",
-    "mvp/loops/explore.py start": "analysis", "mvp/loops/explore.py look": "analysis", "mvp/loops/explore.py lead": "analysis",
-    "mvp/loops/explore.py correct": "analysis", "mvp/loops/explore.py end": "analysis",
-    "mvp/loops/explore.py hand-over": "coordinating", "mvp/sf.py open-held-out": "coordinating",
+    "tools/explore.py review": "review", "tools/sf.py review": "review",
+    "tools/explore.py resolve": "curating", "tools/sf.py resolve": "curating",
+    "tools/explore.py start": "analysis", "tools/explore.py look": "analysis", "tools/explore.py lead": "analysis",
+    "tools/explore.py correct": "analysis", "tools/explore.py end": "analysis",
+    "tools/explore.py hand-over": "coordinating", "tools/sf.py open-held-out": "coordinating",
 }
 STAGE_COMMANDS = {  # the stage of the procedure, the role named in `done_by`, the command that stage needs
-    ("ask", "coordinating"): ["mvp/sf.py start"],
-    ("plan", "analysis"): ["mvp/sf.py check-plan"],
-    ("test", "analysis"): ["mvp/sf.py test", "mvp/sf.py rehearse"],
-    ("open", "coordinating"): ["mvp/sf.py open-held-out"],
-    ("review", "analysis"): ["mvp/sf.py attach"],
-    ("review", "review"): ["mvp/sf.py review"],
-    ("learn", "curating"): ["mvp/sf.py curation-list", "mvp/sf.py resolve"],
-    ("close", "coordinating"): ["mvp/sf.py close"],
+    ("ask", "coordinating"): ["tools/sf.py start"],
+    ("plan", "analysis"): ["tools/sf.py check-plan"],
+    ("test", "analysis"): ["tools/sf.py test", "tools/sf.py rehearse"],
+    ("open", "coordinating"): ["tools/sf.py open-held-out"],
+    ("review", "analysis"): ["tools/sf.py attach"],
+    ("review", "review"): ["tools/sf.py review"],
+    ("learn", "curating"): ["tools/sf.py curation-list", "tools/sf.py resolve"],
+    ("close", "coordinating"): ["tools/sf.py close"],
 }
 
 
@@ -115,11 +115,11 @@ def commands_of(tool: Path) -> set:
 def problems(root: Path) -> list:
     p = []
     try:
-        procedure = yaml.safe_load((root / "mvp" / "procedure.yaml").read_text(encoding="utf-8"))
+        procedure = yaml.safe_load((root / "factory" / "procedure.yaml").read_text(encoding="utf-8"))
         block = procedure["assistants"]
         stages = procedure["stages"]
     except (OSError, yaml.YAMLError, KeyError, TypeError):
-        return ["mvp/procedure.yaml is missing, does not parse, or has no `assistants` block and `stages`"]
+        return ["factory/procedure.yaml is missing, does not parse, or has no `assistants` block and `stages`"]
     roles = roles_in(root)
     for name in sorted(set(block) - set(roles)):
         p.append(f"the procedure names the {name} assistant and assistants/{name}.md does not exist")
@@ -159,8 +159,8 @@ def problems(root: Path) -> list:
             else:
                 parts = c.split()
                 tool = root / parts[0] if parts else root
-                if len(parts) != 2 or not parts[0].startswith("mvp/") or not tool.is_file():
-                    p.append(f"{where}: may_call entry `{c}` is not `mvp/.../<tool>.py <command>`, `skill:<name>` or `role:<name>`")
+                if len(parts) != 2 or not parts[0].startswith("tools/") or not tool.is_file():
+                    p.append(f"{where}: may_call entry `{c}` is not `tools/<tool>.py <command>`, `skill:<name>` or `role:<name>`")
                     continue
                 if parts[0] not in tools:
                     tools[parts[0]] = commands_of(tool)
@@ -209,7 +209,7 @@ def problems(root: Path) -> list:
                     p.append(f"{where}: the procedure says this role never sees \"{squash(item)}\", and `must_never_see` does not list it")
                 if squash(item) not in text:
                     p.append(f"{where}: it does not quote what the procedure says this role never sees (\"{squash(item)}\")")
-            if "may_not" in said and "sign" in str(said["may_not"]) and "mvp/sf.py signature" in calls:
+            if "may_not" in said and "sign" in str(said["may_not"]) and "tools/sf.py signature" in calls:
                 p.append(f"{where}: the procedure says this role may not sign, and may_call holds the signature")
     for st in stages if isinstance(stages, list) else []:
         done_by = str(st.get("done_by") or "")
@@ -234,10 +234,11 @@ def selftest(root: Path) -> int:
             d = tmp / name
             for sub in ("assistants", "skills"):
                 shutil.copytree(root / sub, d / sub)
-            (d / "mvp" / "loops").mkdir(parents=True)
-            for f in list((root / "mvp").glob("*.py")) + list((root / "mvp" / "loops").glob("*.py")):
+            (d / "tools").mkdir()
+            (d / "factory").mkdir()
+            for f in (root / "tools").glob("*.py"):
                 shutil.copyfile(f, d / f.relative_to(root))
-            shutil.copyfile(root / "mvp" / "procedure.yaml", d / "mvp" / "procedure.yaml")
+            shutil.copyfile(root / "factory" / "procedure.yaml", d / "factory" / "procedure.yaml")
             return d
 
         def edit(d: Path, rel: str, old: str, new: str) -> None:
@@ -257,7 +258,7 @@ def selftest(root: Path) -> int:
         case("a role file the procedure does not name", lambda d: shutil.copyfile(d / "assistants/review.md", d / "assistants/auditing.md"),
              "a role the procedure's `assistants` block does not name")
         case("the procedure changes what a role does and the role file is not changed",
-             lambda d: edit(d, "mvp/procedure.yaml", "relays questions, keeps the study moving", "relays questions and decides what counts"),
+             lambda d: edit(d, "factory/procedure.yaml", "relays questions, keeps the study moving", "relays questions and decides what counts"),
              "does not quote what the procedure says under `does`")
         case("a role file changes its quotation of the procedure",
              lambda d: edit(d, "assistants/review.md", "and records approve or block", "and approves"), "does not quote what the procedure says under `does`")
@@ -267,26 +268,26 @@ def selftest(root: Path) -> int:
              lambda d: edit(d, "assistants/review.md", 'It must: "have done none of this study".', ""), "under `must`")
         case("the analysis role no longer lists held-out data as never seen",
              lambda d: edit(d, "assistants/analysis.md", '  - "held-out data before it is opened"\n', ""), "`must_never_see` does not list it")
-        case("a role may call the lock", lambda d: edit(d, "assistants/coordinating.md", '  - "mvp/sf.py close"', '  - "mvp/sf.py close"\n  - "mvp/sf.py lock"'),
+        case("a role may call the lock", lambda d: edit(d, "assistants/coordinating.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'),
              "an act of people")
-        case("a role may call the signature", lambda d: edit(d, "assistants/curating.md", '  - "mvp/sf.py resolve"', '  - "mvp/sf.py resolve"\n  - "mvp/sf.py signature"'),
+        case("a role may call the signature", lambda d: edit(d, "assistants/curating.md", '  - "tools/sf.py resolve"', '  - "tools/sf.py resolve"\n  - "tools/sf.py signature"'),
              "an act of people")
-        case("the review role may run a look", lambda d: edit(d, "assistants/review.md", '  - "mvp/loops/explore.py recheck"', '  - "mvp/loops/explore.py look"'),
+        case("the review role may run a look", lambda d: edit(d, "assistants/review.md", '  - "tools/explore.py recheck"', '  - "tools/explore.py look"'),
              "does the work it is there to check")
-        case("the analysis role may record a review", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/loops/explore.py lead"', '  - "mvp/loops/explore.py lead"\n  - "mvp/loops/explore.py review"'),
+        case("the analysis role may record a review", lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py review"'),
              "only the review assistant may call")
-        case("the analysis role may make the hand-over", lambda d: edit(d, "assistants/analysis.md", '  - "mvp/loops/explore.py lead"', '  - "mvp/loops/explore.py lead"\n  - "mvp/loops/explore.py hand-over"'),
+        case("the analysis role may make the hand-over", lambda d: edit(d, "assistants/analysis.md", '  - "tools/explore.py lead"', '  - "tools/explore.py lead"\n  - "tools/explore.py hand-over"'),
              "only the coordinating assistant may call")
-        case("a role names a command the tool does not have", lambda d: edit(d, "assistants/analysis.md", '"mvp/loops/explore.py choice"', '"mvp/loops/explore.py decide"'),
+        case("a role names a command the tool does not have", lambda d: edit(d, "assistants/analysis.md", '"tools/explore.py choice"', '"tools/explore.py decide"'),
              "has no command `decide`")
         case("a role names a skill that does not exist", lambda d: edit(d, "assistants/analysis.md", '"skill:explore-a-record"', '"skill:explore-everything"'),
              "SKILL.md does not exist")
         case("a role names a role that does not exist", lambda d: edit(d, "assistants/coordinating.md", '"role:review"', '"role:auditing"'), "which is not a role")
         case("a role file loses a front matter key", lambda d: edit(d, "assistants/review.md", "hands_on:", "gives:"), "front matter lacks hands_on")
         case("a stage's command is taken from the role the procedure gives it to",
-             lambda d: edit(d, "assistants/analysis.md", '  - "mvp/sf.py test"\n', ""), "may not call `mvp/sf.py test`")
+             lambda d: edit(d, "assistants/analysis.md", '  - "tools/sf.py test"\n', ""), "may not call `tools/sf.py test`")
         case("the procedure gives a stage to a role with no file",
-             lambda d: edit(d, "mvp/procedure.yaml", "    done_by: curating assistant", "    done_by: librarian assistant"), "which has no role file")
+             lambda d: edit(d, "factory/procedure.yaml", "    done_by: curating assistant", "    done_by: librarian assistant"), "which has no role file")
         case("the review role's file stops naming the author's account as a place it must never see",
              lambda d: edit(d, "assistants/review.md", '  - "path:record/analysis/*"\n', ""), "does not name the analysis assistant's own account")
         case("a role loses its own place to write its account",
@@ -307,7 +308,7 @@ def selftest(root: Path) -> int:
         case("the curating skill lets it start before the end",
              lambda d: edit(d, "skills/draft-a-knowledge-page/SKILL.md", "Start on an exploration only when", "Start on an exploration whenever notes are open, even before"),
              "do not say the same thing under **When you start.**")
-        case("the curating role may end an exploration", lambda d: edit(d, "assistants/curating.md", '  - "mvp/loops/explore.py resolve"', '  - "mvp/loops/explore.py resolve"\n  - "mvp/loops/explore.py end"'),
+        case("the curating role may end an exploration", lambda d: edit(d, "assistants/curating.md", '  - "tools/explore.py resolve"', '  - "tools/explore.py resolve"\n  - "tools/explore.py end"'),
              "only the analysis assistant may call")
         case("a purpose that is not one sentence", lambda d: edit(d, "assistants/review.md", "records what it found.\"", "records what it found. It also fixes it.\""),
              "`purpose` is one sentence")
@@ -332,7 +333,7 @@ def main() -> int:
     for q in found:
         print("check-roles:", q)
     if found:
-        print(f"check-roles: FAIL ({len(found)} disagreement(s) between assistants/ and mvp/procedure.yaml)")
+        print(f"check-roles: FAIL ({len(found)} disagreement(s) between assistants/ and factory/procedure.yaml)")
         return 1
     print(f"check-roles: PASS ({len(roles_in(root))} roles; assistants/ and the procedure's `assistants` block say the same thing)")
     return 0

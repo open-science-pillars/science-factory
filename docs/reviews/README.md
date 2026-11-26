@@ -1,0 +1,5 @@
+# Reading the reviews
+
+The three registers in this folder are records of what reviewers found and what was done about it. They were written before 2026-11-26, when the files that sat together in one folder, `mvp/`, were moved into the layout the README shows, and they name files by the paths of the day they were written. They were not edited in the move.
+
+To follow a path in them: `mvp/sf.py` is now `tools/sf.py`; `mvp/loops/explore.py`, `mvp/loops/knowledge.py` and `mvp/loops/wiki_server.py` are in `tools/`; `mvp/procedure.yaml`, `mvp/change-log.jsonl` and `mvp/templates/` are in `factory/`; `mvp/gain.py`, `mvp/confront.py`, `mvp/test_cases.py`, `mvp/known_answer_tests.py` and `mvp/system_trial.py` are in `methods/gain/`; `mvp/compute/` is `compute/`; `mvp/studies/` is `studies/` and `mvp/exhibits/` is `studies/exhibits/`; `assistants/check_roles.py` is `tools/check_roles.py`; and the documents that stood at the top of the repository (the design, the plan, the word list, the two ways of working, how to create a factory) are in `docs/`. `factory/moved-files.yaml` is the table the tools themselves read.

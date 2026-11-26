@@ -30,25 +30,29 @@ jobs:
           path: nasa-daac-knowledge
       - uses: astral-sh/setup-uv@v5
       - name: The study tool tests itself
-        run: uv run science-factory/mvp/sf.py selftest
+        run: uv run science-factory/tools/sf.py selftest
+      - name: The records made before the layout changed still say what they said, to the study tool that made them
+        run: |
+          uv run science-factory/tools/check_old_records.py
+          uv run science-factory/tools/check_old_records.py --selftest
       - name: The local place passes the compute contract
-        run: uv run science-factory/mvp/compute/adapter.py conformance
+        run: uv run science-factory/compute/adapter.py conformance
       - name: The conformance test fails every deliberately wrong place
-        run: uv run science-factory/mvp/compute/adapter.py conformance --self-check
+        run: uv run science-factory/compute/adapter.py conformance --self-check
       - name: Both analysis plans are complete
         run: |
-          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0000
-          uv run science-factory/mvp/sf.py check-plan --study science-factory/mvp/studies/STUDY-0001
+          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0000
+          uv run science-factory/tools/sf.py check-plan --study science-factory/studies/STUDY-0001
       - name: A short blind test of the system
-        run: uv run science-factory/mvp/system_trial.py blind-test --template science-factory/mvp/studies/STUDY-0000 --n 20
+        run: uv run science-factory/methods/gain/system_trial.py blind-test --template science-factory/studies/STUDY-0000 --n 20
       - name: The exploring tool tests itself
-        run: uv run science-factory/mvp/loops/explore.py selftest
+        run: uv run science-factory/tools/explore.py selftest
       - name: The knowledge helpers test themselves, with the organization's checker
-        run: uv run science-factory/mvp/loops/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
+        run: uv run science-factory/tools/knowledge.py selftest --checker nasa-daac-knowledge/tools/check_okf_v02.py
       - name: The role files and the procedure say the same thing
         run: |
-          uv run science-factory/assistants/check_roles.py
-          uv run science-factory/assistants/check_roles.py --selftest
+          uv run science-factory/tools/check_roles.py
+          uv run science-factory/tools/check_roles.py --selftest
       - name: The files rendered for Claude Code have not drifted from the role and skill files
         run: |
           uv run science-factory/runners/claude-code/render.py --check
@@ -64,14 +68,14 @@ jobs:
           uv run science-factory/skills/explore-a-record/scripts/plot_xy.py --selftest
       - name: The demo's drafted knowledge, from both runs, still passes the queue's rules and the organization's checker
         run: |
-          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
-          uv run science-factory/mvp/loops/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/with-assistants/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
+          uv run science-factory/tools/knowledge.py check-drafts --queue science-factory/examples/baton-rouge/knowledge-queue --wiki hydrology/knowledge --checker nasa-daac-knowledge/tools/check_okf_v02.py
       - name: The demo's exploration logs, from both runs, still check out on the tool as it now is
         run: |
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
-          uv run science-factory/mvp/loops/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0101
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/with-assistants/explorations/EXPLORATION-0102
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0001
+          uv run science-factory/tools/explore.py check-log --exploration science-factory/examples/baton-rouge/explorations/EXPLORATION-0002
 
   stand-alone:
     # Everything added with the assistants and the two loops runs from this repository alone.
@@ -82,11 +86,11 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: The exploring tool, the knowledge helpers and the checks, with no other repository beside them
         run: |
-          uv run mvp/loops/explore.py selftest
-          uv run mvp/loops/knowledge.py selftest
-          uv run mvp/loops/wiki_server.py --selftest
-          uv run assistants/check_roles.py
-          uv run assistants/check_roles.py --selftest
+          uv run tools/explore.py selftest
+          uv run tools/knowledge.py selftest
+          uv run tools/wiki_server.py --selftest
+          uv run tools/check_roles.py
+          uv run tools/check_roles.py --selftest
           uv run runners/claude-code/render.py --check
           uv run runners/claude-code/render.py --selftest
           uv run runners/claude-code/allow.py --selftest

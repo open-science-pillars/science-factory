@@ -85,11 +85,14 @@ sys.pycache_prefix = os.path.join(tempfile.gettempdir(), "sf-no-bytecode-" + sec
 HERE = Path(__file__).resolve().parent
 
 
+STUDY_TOOL = HERE.parent.parent / "tools" / "sf.py"  # the study tool; the files of the gain method sit in this folder
+
+
 def neighbour(name: str):
-    """Load a file of this folder by its path, so what runs is the file the lock hashed and nothing that
-    shares its name somewhere else on the import path."""
+    """Load a file of this folder by its path (the study tool by its own), so what runs is the file the lock
+    hashed and nothing that shares its name somewhere else on the import path."""
     if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+        spec = importlib.util.spec_from_file_location(name, STUDY_TOOL if name == "sf" else HERE / f"{name}.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules[name] = mod
         spec.loader.exec_module(mod)

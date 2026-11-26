@@ -51,7 +51,7 @@ def main() -> int:
         return done.stdout if answer else done.stdout + done.stderr
 
     def tool(name: str, *args, expect: int = 0, answer: bool = False) -> str:
-        return ran(["uv", "run", str(ROOT / "mvp" / ("" if name == "sf.py" else "loops") / name), *[str(x) for x in args]], expect, answer)
+        return ran(["uv", "run", str(ROOT / "tools" / name), *[str(x) for x in args]], expect, answer)
 
     def step(name: str, cond) -> None:
         steps.append((name, bool(cond)))

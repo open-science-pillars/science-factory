@@ -1,6 +1,6 @@
 # DRAFT analysis plan for study STUDY-0001. Nothing here is locked: the plan stage
 # revisits every line, and the scientist and the steward lock it together.
-# Every key here is explained in templates/analysis-plan.yaml.
+# Every key here is explained in factory/templates/analysis-plan.yaml.
 study: STUDY-0001
 question: "Over the first full year of forward processing (2025-04-28 to 2026-04-27), does SWOT's reach water surface elevation at Baton Rouge rise and fall by the same amount as the gauge stage, to within five percent?"
 claim_class: variability      # from the organization's closed claim-class vocabulary
@@ -16,15 +16,15 @@ quantity_estimated: >
   stage are reported beside it and no rule uses them.
 
 roots:                      # relative to this study directory
-  kit: ../..
-  hydrology: ../../../../hydrology
-  knowledge_tools: ../../../../nasa-daac-knowledge/tools
+  gain: ../../methods/gain
+  hydrology: ../../../hydrology
+  knowledge_tools: ../../../nasa-daac-knowledge/tools
 
 code:                       # locked by checksum, with everything Python could import from the folder of each of these
   - "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py"
-  - "{kit}/gain.py"
-  - "{kit}/confront.py"
-  - "{kit}/test_cases.py"
+  - "{gain}/gain.py"
+  - "{gain}/confront.py"
+  - "{gain}/test_cases.py"
 
 data:
   working: "Calendar 2024 (reprocessed baseline), committed fixture swot_gauge_baton_rouge_2024.json: already seen, never held out."
@@ -59,7 +59,7 @@ data:
 
 tests:
   known-answers:   # known-answer tests on the real sampling: can the method recover what was put in, and can the rule fail?
-    command: ["{python}", "{kit}/known_answer_tests.py",
+    command: ["{python}", "{gain}/known_answer_tests.py",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--plan", "{study}/analysis-plan.yaml",
               "--sampling", "{hydrology}/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
@@ -67,7 +67,7 @@ tests:
               "--out", "{study}/receipts/known-answers.json"]
     receipt: receipts/known-answers.json
   working-data:   # working data: the same code on the window already seen
-    command: ["{python}", "{kit}/confront.py",
+    command: ["{python}", "{gain}/confront.py",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--inputs", "{hydrology}/verification/fixtures/confrontation/swot_gauge_baton_rouge_2024.json",
               "--screen-reach-q", "2", "--out", "{study}/receipts/working-data.json"]
@@ -78,7 +78,7 @@ tests:
             "--reach", "74210000331", "--gauge", "07374000",
             "--start", "2025-04-28", "--end", "2026-04-27",
             "--label", "baton_rouge_fwd_y1", "--out", "{study}/data"]
-    command: ["{python}", "{kit}/confront.py",
+    command: ["{python}", "{gain}/confront.py",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--inputs", "{study}/data/swot_gauge_baton_rouge_fwd_y1.json",
               "--screen-reach-q", "2", "--require-crid", "--refusal-is-a-result",
@@ -92,7 +92,7 @@ rehearsals:   # rehearsals on working data; the lock is refused until each has p
       - ["uv", "run", "{hydrology}/verification/fixtures/fetch_confrontation_fixtures.py",
          "--reach", "74210000331", "--gauge", "07374000", "--start", "2024-01-01", "--end", "2024-12-31",
          "--label", "rehearsal_2024", "--out", "{study}/rehearsal"]
-      - ["{python}", "{kit}/confront.py",
+      - ["{python}", "{gain}/confront.py",
          "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
          "--inputs", "{study}/rehearsal/swot_gauge_rehearsal_2024.json",
          "--screen-reach-q", "2", "--require-crid", "--out", "{study}/receipts/rehearsal-opening-path.json"]

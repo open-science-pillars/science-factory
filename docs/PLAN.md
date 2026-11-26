@@ -15,13 +15,13 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 | Component | Represented by | State |
 |---|---|---|
 | A study, and starting one | `studies/STUDY-0000`, `STUDY-0001`; `sf.py start`, which binds a request by checksum when given one | drafted, not started |
-| The procedure as a file | `mvp/procedure.yaml`, read by `sf.py status` and `scorecard`; the lock records its checksum | built |
+| The procedure as a file | `factory/procedure.yaml`, read by `sf.py status` and `scorecard`; the lock records its checksum | built |
 | Assistants | four roles (coordinating, analysis, review, curating); four task prompts below, three in Part A and one in Part B | prompts for part of the work; no prompt of its own for the review or the curating assistant; nothing is scheduled |
 | Consulting shared knowledge, ending early | the plan stage's search of the bundles (a prompt, in Part B); `sf.py close` with a citation | the early exits are built and exercised in the self-test; the search is an assistant's task |
 | Analysis plan | `analysis-plan.yaml`; `templates/analysis-plan.yaml`; `sf.py check-plan` (the plan check) | both drafted; both pass the plan check, and so does the template as written |
 | The method | `gain.py`, `confront.py` as prototypes; to be landed as an attested computation in Part B | prototype |
 | Tests and the opening | `test_cases.py`, `known_answer_tests.py` (known-answer tests); working data; `sf.py rehearse`; `sf.py open-held-out`; the record of what has been opened | built; known-answer tests and working data run here for both studies; the system trial's rehearsal run here; the first real study's two rehearsals not run |
-| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 173 of 173 self-tests |
+| Study log | `sf.py`: the log, the lock, log fingerprints, the log check | built; 179 of 179 self-tests |
 | Review | `sf.py attach`, `review`; the findings checker (Part B) | built; wiring the checker is Part B |
 | Acts by people | `sf.py lock`, `void-unread`, `signature` | built; never yet used by a person. That a person made them is held by a protected branch, outside the tool |
 | Notes into shared knowledge | `sf.py note`, `curation-list`, `resolve`; the curating assistant | the three commands are built; seven real notes are on the practice run's curation list, none resolved; the curating assistant is a role, not built |
@@ -37,9 +37,9 @@ Words used below (WORDS.md has the full list): the *steward* is the person who h
 
 ## What is built, and what it measured
 
-All of this ran in the build environment against the hydrology code at the commit README.md names. No held-out data was read, neither the lock nor the steward's signature was recorded, and every study log in `mvp/exhibits/` was written by assistants. Both practice runs and the change log were made again from the start on the tool as it stands after the third review round: a study log is hash-chained to its names, and each test event carries the tool's own checksum.
+All of this ran in the build environment against the hydrology code at the commit README.md names. No held-out data was read, neither the lock nor the steward's signature was recorded, and every study log in `studies/exhibits/` was written by assistants. Both practice runs and the change log were made again from the start on the tool as it stands after the third review round: a study log is hash-chained to its names, and each test event carries the tool's own checksum.
 
-**The study tool.** `sf.py selftest` passes 173 of 173. The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
+**The study tool.** `sf.py selftest` passes 179 of 179 (173 when this was measured; six were added with the table of moved files). The scenarios include the attacks from all three review rounds that a tool can refuse: an opening before the lock; after the plan, the code, a file a command names or anything Python could import beside them changed; with bytecode planted beside a locked source; past the one opening allowed; with data or a receipt put in place early; in a git tree before the lock is in a commit; from a log cut back behind its opening. A plan with a key given twice, an unknown key, no subject, or a criterion that cannot fail. A void of an opening that had read its data. A review assistant's block overridden by someone else; a finding swapped after the review or after the signature. An opening added to the log by hand whose receipt the locked rules judge otherwise. A second study opening the same window. A system trial accepted on a verdict that is not right. What it cannot refuse, it says: the four limits in README.md. A check of the fixes found three more gaps that are still there; README.md lists them. One of them was shown by red team: a hook loaded when the interpreter starts that hides itself and rewrites what the process does. The control for that one is where the opening runs.
 
 **The blind test of the system.** Two hundred blind test cases went through the whole study tool, unattended (`exhibits/blind-test-200.json`). Of 100 cases where the idea was false, none was supported (94 refuted, 6 inconclusive). Of 100 where it was true, 82 were supported and 18 were inconclusive, none refuted. No wrong verdict. Read that with three things in mind. The false cases sit at gains of 0.90 and 1.10, twice the five percent difference that matters. Every case is a kind one, with no trouble put in. And the cases were chosen by the test harness (the script that drives the test), not sealed from it; the lock and the signature were recorded by the harness too, so this measures the study tool and the method, not people or assistants. Zero false supports in 100 still allows a true rate of up to about 3.6 percent. The evidence right at the difference that matters, and on hard cases, is in the known-answer tests (the table below), not in the blind test.
 
@@ -86,8 +86,8 @@ This is deliverable `science-factory-system-trial`, after `science-factory-study
 An assistant's session can be started with `/osp-session science-factory-system-trial` (the organization's session command, which lives in build-kit and is not part of this package), or by pasting the prompt.
 
 ```
-Follow science-factory/mvp/procedure.yaml for
-science-factory/mvp/studies/STUDY-0000, on a new
+Follow science-factory/factory/procedure.yaml for
+science-factory/studies/STUDY-0000, on a new
 branch system-trial. Use sf.py status after every
 step and do what it says is still needed.
 1. sf.py selftest must pass.
@@ -115,7 +115,7 @@ The lock is recorded and its commit is merged into
 main. On a new branch system-trial-result from the
 merged main, as the coordinating assistant: sf.py
 open-held-out --study
-science-factory/mvp/studies/STUDY-0000, once.
+science-factory/studies/STUDY-0000, once.
 Report the outcome exactly; change nothing. Post
 the log fingerprint it prints on the tracking
 issue. Commit everything except the study's
@@ -172,11 +172,11 @@ In every shell you use for the rest:
 
 ```
 cd <root>
-sf() { uv run science-factory/mvp/sf.py "$@"; }
-st() { uv run science-factory/mvp/system_trial.py "$@"; }
+sf() { uv run science-factory/tools/sf.py "$@"; }
+st() { uv run science-factory/methods/gain/system_trial.py "$@"; }
 g()  { git -C science-factory "$@"; }
-W=science-factory/mvp/studies/STUDY-0000
-C=science-factory/mvp/change-log.jsonl
+W=science-factory/studies/STUDY-0000
+C=science-factory/factory/change-log.jsonl
 D=/tmp/STUDY-0000
 mkdir -p $D
 ME=human:YOU
@@ -249,7 +249,7 @@ sf open-held-out --study $W --by agent:coordinating
 #   post the fingerprint it prints on the tracking
 #   issue, then:
 OPEN=OPENSEQ:HASH
-g add -A -- . ':(exclude)mvp/studies/*/sealed/*'
+g add -A -- . ':(exclude)studies/*/sealed/*'
 g commit -m "STUDY-0000: the opening"
 #   the analysis assistant writes $D/writeup.md,
 #   from fields of receipts/held-out.json only
@@ -260,7 +260,7 @@ sf review --study $W --by agent:review \
   --verdict approve --file $D/verdict.md
 sf check-log --study $W \
   --anchor $LOCK --anchor $OPEN --change-log $C
-g add -A -- . ':(exclude)mvp/studies/*/sealed/*'
+g add -A -- . ':(exclude)studies/*/sealed/*'
 g commit -m "STUDY-0000: the write-up and the review"
 g push -u origin system-trial-result
 #   on the host: open pull request 2, into main
@@ -339,7 +339,7 @@ A verdict of `WRONG` is a defect in the factory: raise a note for it before the 
 ```
 g switch main
 g pull
-N=science-factory/mvp/studies/STUDY-0002
+N=science-factory/studies/STUDY-0002
 mkdir $N
 cp $W/study.md $N/
 sed 's/^study: STUDY-0000/study: STUDY-0002/' \

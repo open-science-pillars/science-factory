@@ -1,7 +1,7 @@
 # Analysis plan for STUDY-0000, the system trial on a blind test case.
 # Same method and same rule as STUDY-0001, with the same quality screen; the
 # held-out record is a test case the access gate generates and seals at the
-# opening. Every key here is explained in templates/analysis-plan.yaml.
+# opening. Every key here is explained in factory/templates/analysis-plan.yaml.
 study: STUDY-0000
 study_kind: system_trial    # its held-out data is made at its own opening; it closes only as system-trial-accepted or system-trial-declined
 question: "In the blind test case, is the gain that was put in within five percent of one?"
@@ -13,15 +13,15 @@ quantity_estimated: >
   sampling interval under a lag-1 model of the residuals.
 
 roots:                      # relative to this study directory
-  kit: ../..
-  hydrology: ../../../../hydrology
+  gain: ../../methods/gain
+  hydrology: ../../../hydrology
 
 code:
   - "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py"
-  - "{kit}/gain.py"
-  - "{kit}/confront.py"
-  - "{kit}/test_cases.py"
-  - "{kit}/system_trial.py"
+  - "{gain}/gain.py"
+  - "{gain}/confront.py"
+  - "{gain}/test_cases.py"
+  - "{gain}/system_trial.py"
 
 data:
   working: "Known-answer test cases with published seeds: all already seen. No real record is read anywhere in this study."
@@ -36,14 +36,14 @@ data:
 
 tests:
   known-answers:
-    command: ["{python}", "{kit}/known_answer_tests.py",
+    command: ["{python}", "{gain}/known_answer_tests.py",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--plan", "{study}/analysis-plan.yaml",
               "--cases", "2000", "--difference-that-matters", "0.05", "--screen-reach-q", "2",
               "--out", "{study}/receipts/known-answers.json"]
     receipt: receipts/known-answers.json
   working-data:   # working data for a system trial is itself synthetic: no real record is touched
-    command: ["{python}", "{kit}/system_trial.py", "working-data",
+    command: ["{python}", "{gain}/system_trial.py", "working-data",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--case", "{study}/working-data/working_data_case.json",
               "--out", "{study}/receipts/working-data.json"]
@@ -53,9 +53,9 @@ tests:
     # The seal writes two files: the data, and the answer in a file the command below is never passed. The
     # answer file sits in this study: that the locked code never opens it is read in the code at the lock.
     # The tool does not enforce it, which is a stated limit (system_trial.py, under `seal`).
-    fetch: ["{python}", "{kit}/system_trial.py", "seal", "--out", "{study}/data/blind_test_case.json",
+    fetch: ["{python}", "{gain}/system_trial.py", "seal", "--out", "{study}/data/blind_test_case.json",
             "--answer", "{study}/sealed/blind_test_answer.json"]
-    command: ["{python}", "{kit}/confront.py",
+    command: ["{python}", "{gain}/confront.py",
               "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
               "--inputs", "{study}/data/blind_test_case.json",
               "--screen-reach-q", "2", "--refusal-is-a-result", "--out", "{study}/receipts/held-out.json"]
@@ -66,9 +66,9 @@ rehearsals:
   - id: opening-path
     why: "the sealing step and the opening's command have run once, on a test case that is not the sealed one"
     steps:
-      - ["{python}", "{kit}/system_trial.py", "seal", "--rehearsal", "--out", "{study}/rehearsal/rehearsal_case.json",
+      - ["{python}", "{gain}/system_trial.py", "seal", "--rehearsal", "--out", "{study}/rehearsal/rehearsal_case.json",
          "--answer", "{study}/rehearsal/rehearsal_answer.json"]
-      - ["{python}", "{kit}/confront.py",
+      - ["{python}", "{gain}/confront.py",
          "--executor", "{hydrology}/skills/swot-hydro/scripts/load_swot_confrontation.py",
          "--inputs", "{study}/rehearsal/rehearsal_case.json",
          "--screen-reach-q", "2", "--out", "{study}/receipts/rehearsal-opening-path.json"]

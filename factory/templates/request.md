@@ -4,7 +4,7 @@
 
 *Where this stands today: the page and the questions back are a convention. The study tool binds the finished request to the study by checksum (`sf.py start --request`), so it cannot change unnoticed after the lock, and it checks nothing inside it yet.*
 
-**What I want to know.** One to three sentences, as you would say it to a colleague. A suspicion is fine. "No hypothesis yet, just look" is an honest answer too. It asks for exploring, which has a tool of its own (`mvp/loops/explore.py`): such a request is taken to an exploration, which sets data aside first and ends in a lead, a note, a method or a stop, never in a finding.
+**What I want to know.** One to three sentences, as you would say it to a colleague. A suspicion is fine. "No hypothesis yet, just look" is an honest answer too. It asks for exploring, which has a tool of its own (`tools/explore.py`): such a request is taken to an exploration, which sets data aside first and ends in a lead, a note, a method or a stop, never in a finding.
 
 **The thing.** The product, record, budget, model or place this is about, with versions if you know them.
 

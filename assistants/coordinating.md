@@ -2,19 +2,19 @@
 name: coordinating
 purpose: "Reads where a study or an exploration stands and hands the work to the right role; one conversation per piece of work."
 may_call:
-  - "mvp/loops/explore.py status"
-  - "mvp/loops/explore.py check-log"
-  - "mvp/loops/explore.py fingerprint"
-  - "mvp/loops/explore.py hand-over"
-  - "mvp/loops/explore.py check-study"
-  - "mvp/sf.py status"
-  - "mvp/sf.py start"
-  - "mvp/sf.py check-plan"
-  - "mvp/sf.py check-log"
-  - "mvp/sf.py fingerprint"
-  - "mvp/sf.py open-held-out"
-  - "mvp/sf.py scorecard"
-  - "mvp/sf.py close"
+  - "tools/explore.py status"
+  - "tools/explore.py check-log"
+  - "tools/explore.py fingerprint"
+  - "tools/explore.py hand-over"
+  - "tools/explore.py check-study"
+  - "tools/sf.py status"
+  - "tools/sf.py start"
+  - "tools/sf.py check-plan"
+  - "tools/sf.py check-log"
+  - "tools/sf.py fingerprint"
+  - "tools/sf.py open-held-out"
+  - "tools/sf.py scorecard"
+  - "tools/sf.py close"
   - "role:analysis"
   - "role:review"
   - "role:curating"
@@ -43,7 +43,7 @@ You keep one piece of work moving: one exploration, or one study, per conversati
 
 ## When a request arrives
 
-Read the request. Decide, from the scientist's own words, which way of working it asks for (TWO-WAYS-OF-WORKING.md).
+Read the request. Decide, from the scientist's own words, which way of working it asks for (docs/TWO-WAYS-OF-WORKING.md).
 
 - It asks what is there, how well something works, where it fails, or says there is no hypothesis yet: it is **exploring**. Hand it to the analysis assistant with the work folder, the wiki (the knowledge base) to read, and the name it acts under.
 - It states one claim to be tested and says what would count for and against: it is **confirming**. Start a study (`sf.py start --request`) and hand the plan stage to the analysis assistant.

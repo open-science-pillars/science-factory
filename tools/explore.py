@@ -17,10 +17,8 @@ model. It makes five things true, whoever or whatever is exploring:
      explored, so the study tool treats it as already seen.
   2. Every look is logged: what was run, on which data by checksum, and
      what came out, in a log that is only ever added to and is chained by
-     hash like the study log (the same code: this tool imports sf.py).
-     This tool sits in mvp/loops/ and not beside sf.py, because the study
-     tool counts every Python file beside a plan's code as part of that
-     code, and a new file there would undo the practice runs.
+     hash like the study log (the same code: this tool imports sf.py,
+     which sits beside it in tools/).
      A look that names what was set aside is refused, and the refusal is
      logged.
   3. Choices are recorded with their alternatives and what they rest on,
@@ -156,7 +154,7 @@ def _load(name: str, path: Path):
     return mod
 
 
-sf = _load("sf", HERE.parent / "sf.py")  # the log chain, the record of what has been opened, the launcher rule
+sf = _load("sf", HERE / "sf.py")  # the log chain, the record of what has been opened, the launcher rule
 Refused = sf.Refused
 
 WAY = "exploring"
@@ -164,7 +162,7 @@ LEAD_STATUS = "a lead, not a finding: found by exploring, tested on nothing, and
 BANNER = ("**Exploring.** This is a lead, not a finding. It was found by looking at data, every choice in it was made "
           "after looking, and it has been tested on nothing. It cannot be signed. To become a finding it goes through "
           "a confirming study on the data that was set aside.")
-HOW = {  # the ways to hold data out that TWO-WAYS-OF-WORKING.md lists, and what each has to name
+HOW = {  # the ways to hold data out that docs/TWO-WAYS-OF-WORKING.md lists, and what each has to name
     "a later period": "window",
     "a period of contrasting conditions": "window",
     "sites never opened": "sites",
@@ -698,7 +696,7 @@ def cmd_look(x: Exploration, a) -> None:
         raise Refused(f"{script}. A look is {sf.LAUNCHERS}, then the script's own arguments")
     if not (x.d / script).is_file():
         raise Refused(f"the script `{script}` does not exist (paths are read from the exploration directory)")
-    if (x.d / script).resolve().parent in (HERE, HERE.parent) and (x.d / script).resolve().name in TOOLS:
+    if (x.d / script).resolve().parent == HERE and (x.d / script).resolve().name in TOOLS:
         raise Refused(f"`{script}` is a tool of this package, not a look: the study tool, this tool and the knowledge tool are "
                       "called by a role under its own name, never from inside a look")
     here = set_aside_present(sa)
@@ -1247,12 +1245,12 @@ def cmd_hand_over(x: Exploration, a) -> None:
                  "pitfalls_to_make_hard_cases": lead["pitfalls"]}
     (out / "analysis-plan.stub.yaml").write_text(
         f"# Exploring: a stub from {start['data']['id']}, not an analysis plan. The study tool will not read this file.\n"
-        "# The analysis assistant writes analysis-plan.yaml from mvp/templates/analysis-plan.yaml at the plan stage and takes\n"
+        "# The analysis assistant writes analysis-plan.yaml from factory/templates/analysis-plan.yaml at the plan stage and takes\n"
         "# from here the question, the quantity, the data and the choices to fix. The held-out data may only be what the\n"
         "# exploration set aside; `explore.py check-study` refuses anything else.\n"
         + yaml.safe_dump(plan_stub, sort_keys=False, allow_unicode=True, width=110))
     study_dir = os.path.relpath(x.record().parent / a.study_id, x.d)
-    command = ["uv", "run", "mvp/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
+    command = ["uv", "run", "tools/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
                "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating assistant>"]
     sha = write_json(out / "hand-over.json", {
         "kind": "hand-over", "from": start["data"]["id"], "for": "sf.py start", "study_id": a.study_id,
@@ -1265,7 +1263,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
     x.add(a.by, "handed.over", {"study_id": a.study_id, "hand_over_sha": sha,
                                 "request_sha": sf.sha_file(out / "request.md"), "study_directory_from_exploration": study_dir})
     print(f"handed over ({WAY}): hand-over/request.md, hand-over/analysis-plan.stub.yaml, hand-over/hand-over.json.\n"
-          f"Start the study with:\n  uv run mvp/sf.py start --study {study_dir} --id {a.study_id} --question \"{stub['question']}\" "
+          f"Start the study with:\n  uv run tools/sf.py start --study {study_dir} --id {a.study_id} --question \"{stub['question']}\" "
           "--request hand-over/request.md --by agent:<the coordinating assistant>\n(paths from the exploration directory)")
 
 
@@ -1682,7 +1680,7 @@ def selftest() -> int:
         ok("a link with an innocent name that points at set-aside data is refused", "set aside" in look(x, ["{python}", s1, "looks/innocent.json"]))
         link.unlink()
         ok("a look cannot run the study tool, this tool or the knowledge tool",
-           "not a look" in look(x, ["{python}", str(HERE.parent / "sf.py"), "lock", "--study", "s", "--by", "human:someone"])
+           "not a look" in look(x, ["{python}", str(HERE / "sf.py"), "lock", "--study", "s", "--by", "human:someone"])
            and "not a look" in look(x, ["uv", "run", str(HERE / "explore.py"), "review", "--exploration", str(x.d), "--by", "agent:other", "--verdict", "no-holes-found", "--file", "x"]))
         ok("another exploration of the same subject cannot explore what this one set aside",
            "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-REACH"),
