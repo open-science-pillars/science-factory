@@ -369,3 +369,24 @@ On 2026-11-26 the factory's definition became a tree of files, `factory/`, roote
 | in a change record: `procedure_sha` | `definition_sha`, `definition_version` |
 
 New, with no earlier name: the option `--model` on every command that takes `--by`; the key `model` in an event an agent writes; the tools `check_factory.py`, `scorers.py` and `benchmark.py`; the files `harness.yaml`, `scorer.md`, `suite.yaml`, `automation.md`; `judgements.jsonl` beside a run a judge scored; the folder `acceptance-cases`.
+
+## Words added when the two acts by people became pull requests
+
+Added on 2026-11-26, after the second independent attack on the tools. None of these replaces an earlier word.
+
+| Word | What it means |
+|---|---|
+| **lock request** | what a tool writes into a study when its tests have passed and somebody asks for the lock: the folder `lock-request/`, holding an evidence summary and a manifest. It records nothing as locked. An assistant may write it (`sf.py request-lock`) |
+| **signature request** | the same for the steward's signature: the folder `signature-request/`, written by `sf.py request-signature --decision signed` or `declined` |
+| **evidence summary** | the page a person reads before approving: `EVIDENCE.md` in a request. For a lock it gives the question, the plan's rules with each measured rate, what is held out and every change to it, the tests and their receipts, the code and the definition by checksum, the declared models, open notes, what the reviewer of the lead said and how many things were tried. For a signature it gives the finding, the review's verdict, and what the opening showed |
+| **manifest** | `manifest.json` in a request: every checksum the act would bind. A request matches the files exactly when its manifest does (`sf.py check-request`) |
+| **the pull request route** | how a real study makes the two acts: a person approves and merges the pull request that carries a request, on a protected branch, and a job records the merge in the study log under the actor `platform:<host>` with the people the platform recorded |
+| **practice mode** | the other way to make an act: typed at a command line with `--local-practice`. For trying the tools out, the examples and the self-tests. A study with a practice lock or signature says so in its status, on its scorecard and in its finding, and closes as `practice-ended`, never as a signed finding |
+| **protected branch** | the branch a definition names for an act, on which the platform lets nothing land without a pull request, the approvals asked for and the required check. That it is protected is the repository's setting; a tool cannot see it |
+| **the fence** | how a tool runs a script it does not trust, a look or a command of a plan (`tools/fence.py`): a scratch folder, an interpreter prepared beforehand, an environment the tool builds, and the kernel fence where the machine has one |
+| **kernel fence** | the part of the fence the operating system enforces (Landlock, on Linux 5.13 or later): the script can open and write only what it was given. A receipt says `kernel` when it was applied and tried, `scratch-only` when the machine has none |
+| **keeper** | the small process that puts the fence up, tries it, starts the script and ends whatever the script leaves running |
+| **working data, declared** | the files or folders outside an exploration that it names at its start (`start --working-data`) as the data it will look at. A look is given the exploration's own files and files in those places, and nothing else |
+| **held-out block** | what a plan holds out, taken as one thing: the window, the subject, the withheld values and where the data lands. It goes on record the first time a tool sees it, and a change to it is an event (`sf.py held-out-change`) that the lock shows |
+
+New names on disk and on the command line: the commands `sf.py request-lock`, `request-signature`, `check-request` and `held-out-change`; the options `--local-practice`, `--record-merge`, `--platform-record` on `lock` and `signature`, `--working-data` on `explore.py start` and `--read-lead` on `explore.py review`; the log events `lock.requested`, `signature.requested`, `held-out.changed`; the close outcome `practice-ended`; the file `held-out.jsonl` beside the studies; the tool `tools/fence.py`; the folder `factory/harnesses/github/`; in `factory.yaml`, the keys `route`, `harness`, `protected_branch`, `approvals` and `shows` of an act.

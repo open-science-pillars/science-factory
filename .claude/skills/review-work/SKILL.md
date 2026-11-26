@@ -56,7 +56,8 @@ Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --
 Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Put gaps in the knowledge itself, as against holes in the work, under a heading "For the steward". Then record the verdict with the tool:
 
 ```
-uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md
+uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md \
+  --read-lead <lead_json_sha256, as `explore.py status` printed it when you began>
 uv run tools/sf.py review --study <s> --by <you> --verdict block --file <s>/review/<name>.md
 ```
 

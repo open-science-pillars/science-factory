@@ -73,9 +73,11 @@ jobs:
           uv run factory/harnesses/claude-code/allow.py --selftest
           uv run factory/harnesses/claude-code/run_role.py --selftest
           uv run factory/harnesses/by-hand/as_role.py --selftest
+          uv run factory/harnesses/github/verify_request.py --selftest
+          uv run factory/harnesses/github/record_act.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/describe_record.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
-      - name: The stand-alone example, end to end (both loops, then a study taken to the lock), in a scratch folder
+      - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
         run: uv run examples/stand-alone/run.py
       - name: The example left nothing in the repository
         run: test -z "$(git status --porcelain)"
