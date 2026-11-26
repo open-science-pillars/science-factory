@@ -60,7 +60,27 @@ Usage: allow.py --role ROLE     (the tool call as JSON on standard input;
 """
 import sys
 
-sys.dont_write_bytecode = True  # the tools are loaded from tools/ to read their options; no bytecode folder is left there
+sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
 
 import argparse  # noqa: E402
 import fnmatch  # noqa: E402
@@ -68,6 +88,7 @@ import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
+import shutil  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
@@ -75,7 +96,11 @@ import yaml  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent.parent.parent  # the repository: this file is in factory/harnesses/<harness>/
 KEPT_BY_THE_TOOLS = ("*-log.jsonl", "openings.jsonl", "set-aside.json", "lead.json", "lead.md", "curation-list.json", "scorecard.json",
                      "queue.json", "hand-over.json", "judgements.jsonl")
-KEPT_FOLDERS = ("receipts", "verdicts", "leads", "hand-over", "notes", ".claude", "agents", "skills", "harnesses", "runners", "scorers", "benchmarks", "automations", "tools", "factory", "methods", "compute", ".git", ".github")
+KEPT_FOLDERS = ("receipts", "verdicts", "leads", "hand-over", "notes", "lock-request", "signature-request", ".claude", "agents", "skills",
+                "harnesses", "runners", "scorers", "benchmarks", "automations", "tools", "factory", "compute", ".git", ".github")
+KEPT_AT_THE_TOP = ("methods",)  # the factory's own methods/ at the top of the repository; a study's own methods/ folder is the analysis role's
+WIKIS = ("openwiki", "wiki")    # no role writes below a wiki, whatever a pattern would match further down
+TOO_LONG = 4000                 # characters: a command longer than this is refused unread, so the check never runs past its time
 READ_TOOLS = ("Read", "Grep", "Glob", "NotebookRead")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 WIKI_TOOLS = ("openwiki_search", "openwiki_read")  # read-only, from any server
@@ -226,6 +251,9 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
         j += 1
     declared = declared_model(fm, root)
     for name, value in values:
+        if str(value).casefold().startswith(("human:", "platform:")):
+            return (f"{name or 'the word'} `{value}` names a person or a platform: a role types its own name and other roles' names, "
+                    "never a person's. Who asked, who reviews as a person and who approved are recorded by people, where they act")
         if name == "--model" and declared and value != declared:
             return (f"`--model {value}` is not the model this role's file declares ({declared}): an agent says which model it is, "
                     "and under this harness that is the one its file asks for")
@@ -239,44 +267,200 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
 
 
 def bash_problem(command: str, role: str, fm: dict, cwd: Path, root: Path = ROOT) -> str | None:
+    if len(command) > TOO_LONG:
+        return f"the command is {len(command)} characters long; a role's command is one short line (at most {TOO_LONG} characters)"
     words, why = plain_words(command)
     return why if words is None else argv_problem(words, role, fm, cwd, root)
 
 
-def write_problem(path: str, role: str, fm: dict, cwd: Path) -> str | None:
-    p = Path(os.path.normpath(cwd / path))
-    if any(fnmatch.fnmatch(p.name, pat) for pat in KEPT_BY_THE_TOOLS) or any(part in KEPT_FOLDERS for part in p.parts[:-1]):
-        return f"`{path}` is kept by the tools or is part of the factory's own files; no role writes it by hand"
-    posix = p.as_posix()
-    for pat in fm.get("writes") or []:
-        if fnmatch.fnmatch(posix, "*/" + str(pat)):
+def places_roles_write(root: Path) -> set:
+    """Every folder name any role's `writes` pattern spells out, and the wikis. A pattern is read from the top of the
+    work: no folder above the part of a path it matches may be one of these, so `studies/*/finding-draft/*` is not a
+    way into `openwiki/studies/s/finding-draft/`, nor `explorations/*/looks/*.py` into another role's `review/` folder."""
+    out = set(WIKIS)
+    for f in (Path(root) / "factory" / "agents").glob("*/agent.md"):
+        try:
+            fm = yaml.safe_load(f.read_text().split("---", 2)[1]) or {}
+        except (OSError, IndexError, yaml.YAMLError):
+            continue
+        for pat in fm.get("writes") or []:
+            out |= {piece for piece in str(pat).split("/")[:-1] if not set(piece) & set("*?[")}
+    return out
+
+
+def matches_from_the_top(p: Path, pat: str, places: set) -> bool:
+    """Does a path match a `writes` pattern, piece by piece, with `*` never crossing a folder, and with nothing above
+    the match that is itself a place a role writes or a wiki?"""
+    parts, pieces = list(p.parts), [q for q in str(pat).split("/") if q]
+    if len(parts) < len(pieces):
+        return False
+    tail, above = parts[len(parts) - len(pieces):], parts[:len(parts) - len(pieces)]
+    return all(fnmatch.fnmatchcase(tail[k], pieces[k]) for k in range(len(pieces))) and not set(above) & places
+
+
+def study_tool(root: Path = ROOT):
+    """The study tool, loaded by its path, for the one reading of what a plan holds out."""
+    if "sf" not in sys.modules:
+        spec = importlib.util.spec_from_file_location("sf", Path(root) / "tools" / "sf.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["sf"] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules["sf"]
+
+
+def text_after(call: dict, p: Path) -> str | None:
+    """What a file would hold after a write call, or None when that cannot be worked out."""
+    given = call.get("tool_input") or {}
+    if "content" in given:
+        return str(given["content"])
+    try:
+        text = p.read_text()
+    except OSError:
+        return None
+    edits = given.get("edits") if isinstance(given.get("edits"), list) else [given]
+    for e in edits:
+        old, new = e.get("old_string"), e.get("new_string")
+        if not isinstance(old, str) or not isinstance(new, str) or old not in text:
             return None
+        text = text.replace(old, new) if e.get("replace_all") else text.replace(old, new, 1)
+    return text
+
+
+def held_out_problem(p: Path, call: dict, root: Path) -> str | None:
+    """Why a write to an analysis plan is blocked: the study's held-out block is on record, and the write would change it.
+    What is held out is the one part of a plan no role rewrites; the coordinating step records a change with its
+    reason (`sf.py held-out-change`) after a person has made it."""
+    if p.name != "analysis-plan.yaml":
+        return None
+    record = p.parent.parent / "held-out.jsonl"
+    last = None
+    try:
+        for ln in record.read_text().splitlines():
+            e = json.loads(ln)
+            if isinstance(e, dict) and e.get("dir") == p.parent.name:
+                last = e
+    except (OSError, ValueError):
+        return None
+    if last is None:
+        return None
+    text = text_after(call, p)
+    try:
+        plan = yaml.safe_load(text) if text is not None else None
+        same = isinstance(plan, dict) and study_tool(root).held_out_block(plan)["sha"] == last["sha"]
+    except (yaml.YAMLError, KeyError, TypeError, AttributeError, ValueError):
+        same = False
+    if same:
+        return None
+    return (f"`{p.name}`: this study's held-out block is on record (beside the studies, in held-out.jsonl), and this write would change it "
+            "or leave a plan that cannot be read. What is held out is not rewritten by a role: a person edits it, and the "
+            "coordinating step records the change with its reason (`sf.py held-out-change`), which the lock then shows")
+
+
+def write_problem(path: str, role: str, fm: dict, cwd: Path, call: dict | None = None, root: Path = ROOT) -> str | None:
+    p = Path(os.path.normpath(cwd / path))
+    try:
+        from_top = p.relative_to(Path(os.path.normpath(root))).parts
+    except ValueError:
+        from_top = ()
+    if (any(fnmatch.fnmatch(p.name, pat) for pat in KEPT_BY_THE_TOOLS) or any(part in KEPT_FOLDERS for part in p.parts[:-1])
+            or (from_top and from_top[0] in KEPT_AT_THE_TOP)):
+        return f"`{path}` is kept by the tools or is part of the factory's own files; no role writes it by hand"
+    places = places_roles_write(root)
+    for pat in fm.get("writes") or []:
+        if matches_from_the_top(p, str(pat), places):
+            return held_out_problem(p, call or {}, root)
     return (f"the {role} assistant may not write `{path}`. Its role file lets it write: "
-            + (", ".join(str(w) for w in fm.get("writes") or []) or "nothing"))
+            + (", ".join(str(w) for w in fm.get("writes") or []) or "nothing")
+            + " (each read from the top of the work, a `*` standing for one name and never for a run of folders)")
 
 
-def fenced_paths(p: Path) -> list:
-    """What explorations and studies beside a path say is set aside or held out, as paths."""
+def declared_in(folder: Path) -> list:
+    """What the explorations and studies directly below a folder say is set aside or held out, as paths: each
+    exploration's set-aside paths, each plan's held-out paths as the plan has them now, and every held-out path a
+    study ever declared (the record beside the studies keeps them from the first time a tool saw the plan, so an
+    edit of the plan takes nothing off the list)."""
+    out = []
+    for f in folder.glob("explorations/*/set-aside.json"):
+        try:
+            out += [Path(q) for q in json.loads(f.read_text())["set_aside"].get("paths") or []]
+        except (OSError, ValueError, KeyError, AttributeError):
+            pass
+    for f in folder.glob("studies/*/analysis-plan.yaml"):
+        try:
+            plan = yaml.safe_load(f.read_text())
+            rels = [plan["data"]["held_out"].get("path")] + [(t or {}).get("data") for t in (plan.get("tests") or {}).values()]
+            out += [f.parent / r for r in rels if isinstance(r, str) and r]
+        except (OSError, yaml.YAMLError, KeyError, TypeError, AttributeError):
+            pass
+    try:
+        for ln in (folder / "studies" / "held-out.jsonl").read_text().splitlines():
+            out += [Path(q) for q in json.loads(ln).get("paths") or []]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
+
+
+def fenced_paths(p: Path, workspace: Path | None = None) -> list:
+    """What is set aside or held out, as paths: declared by the explorations and studies above the path being
+    read, and by every exploration and study anywhere in the workspace the role works in. A path an exploration
+    declared is fenced wherever on the disk it lies."""
     out = []
     for up in list(p.parents)[:8]:
-        for f in up.glob("explorations/*/set-aside.json"):
-            try:
-                out += [Path(q) for q in json.loads(f.read_text())["set_aside"].get("paths") or []]
-            except (OSError, ValueError, KeyError, AttributeError):
-                pass
-        for f in up.glob("studies/*/analysis-plan.yaml"):
-            try:
-                plan = yaml.safe_load(f.read_text())
-                rels = [plan["data"]["held_out"].get("path")] + [(t or {}).get("data") for t in (plan.get("tests") or {}).values()]
-                out += [f.parent / r for r in rels if isinstance(r, str) and r]
-            except (OSError, yaml.YAMLError, KeyError, TypeError, AttributeError):
-                pass
+        out += declared_in(up)
+    if workspace is not None and workspace.is_dir():
+        walked = 0
+        for base, dirs, _files in os.walk(workspace):
+            dirs[:] = sorted(d for d in dirs if d not in (".git", "node_modules", ".venv", "__pycache__"))
+            walked += len(dirs)
+            if walked > TOO_BROAD or len(Path(base).relative_to(workspace).parts) > 6:
+                dirs[:] = []
+                continue
+            if "explorations" in dirs or "studies" in dirs:
+                out += declared_in(Path(base))
     return out
 
 
 def never_seen_patterns(fm: dict) -> list:
-    """The `path:<pattern>` entries of a role's `must_never_see`: places the role has no business reading, as patterns."""
-    return [str(x)[5:].strip() for x in fm.get("must_never_see") or [] if str(x).startswith("path:") and str(x)[5:].strip()]
+    """The `path:<pattern>` entries of a role's `must_never_see`: places the role has no business reading, as patterns.
+    An entry `path:!<pattern>` is an exception to the others: the role's own place inside a folder it otherwise never sees."""
+    return [str(x)[5:].strip() for x in fm.get("must_never_see") or [] if str(x).startswith("path:") and str(x)[5:].strip()
+            and not str(x)[5:].strip().startswith("!")]
+
+
+def own_places(fm: dict) -> list:
+    return [str(x)[6:].strip() for x in fm.get("must_never_see") or [] if str(x).startswith("path:!") and str(x)[6:].strip()]
+
+
+def never_sees(posix: str, fm: dict) -> str | None:
+    """The pattern that says a role must never see a path, or None: a never-see pattern names it and no exception does."""
+    if any(names_place(posix, mine) for mine in own_places(fm)):
+        return None
+    return next((pat for pat in never_seen_patterns(fm) if names_place(posix, pat)), None)
+
+
+def same_file_in_a_place_never_seen(p: Path, fm: dict, workspace: Path) -> str | None:
+    """A hard link: the file a role asks for is, on the disk, a file in a place it must never see, under another
+    name. Read by what the file is (its device and number), over the workspace, as far as TOO_BROAD entries."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    if st.st_nlink < 2 or not workspace.is_dir():
+        return None
+    walked = 0
+    for base, dirs, files in os.walk(workspace):
+        walked += len(dirs) + len(files)
+        if walked > TOO_BROAD:
+            return None
+        for name in files:
+            q = Path(base) / name
+            try:
+                other = os.stat(q)
+            except OSError:
+                continue
+            if (other.st_dev, other.st_ino) == (st.st_dev, st.st_ino) and never_sees(q.as_posix(), fm):
+                return q.as_posix()
+    return None
 
 
 def names_place(posix: str, pat: str) -> bool:
@@ -303,28 +487,35 @@ def read_problem(path: str | None, fm: dict, cwd: Path, search: bool = False, pa
     p = Path(os.path.normpath(cwd / (path or ".")))
     never = never_seen_patterns(fm)
     for shown, q in ((path, p), (path, Path(os.path.realpath(p)))):
-        for pat in never:
-            if names_place(q.as_posix(), pat):
-                return (f"`{shown}` is in a place this role must never see ({pat}; the role file's `must_never_see` says what "
-                        "it is: the account of the assistant whose work it checks, or the acceptance set of blind cases). "
-                        "Work from the files of the work itself")
+        pat = never_sees(q.as_posix(), fm)
+        if pat:
+            return (f"`{shown}` is in a place this role must never see ({pat}; the role file's `must_never_see` says what "
+                    "it is: the account of the assistant whose work it checks, or the acceptance set of blind cases). "
+                    "Work from the files of the work itself")
+    if never and not search and p.is_file():
+        twin = same_file_in_a_place_never_seen(p, fm, cwd)
+        if twin:
+            return (f"`{path}` is the same file as `{twin}`, under another name (a hard link), and that is a place this role must "
+                    "never see. Work from the files of the work itself")
     if search and never:
-        if pattern and (Path(pattern).is_absolute() or ".." in Path(pattern).parts or pattern.startswith("~")):
+        if pattern and (Path(pattern).is_absolute() or ".." in pattern or pattern.startswith("~")):
             return "a search pattern that leaves the folder it is given is not taken: name the folder in `path`"
-        if p.is_dir():  # a search over a folder that holds such a place would read it, however far down it lies
+        for top in dict.fromkeys([p, Path(os.path.realpath(p))]):  # the folder as it is named, and the folder a link leads to
+            if not top.is_dir():
+                continue
             walked = 0
-            for base, dirs, files in os.walk(p):
-                dirs[:] = [d for d in dirs if d not in (".git", "node_modules")]
+            for base, dirs, files in os.walk(top, followlinks=False):  # every folder, the ones tools usually skip included
                 walked += len(dirs) + len(files)
                 if walked > TOO_BROAD:
                     return (f"a search over `{path or '.'}` is too broad to check for the places this role must never see; "
                             "search a narrower place, such as the exploration's own folder")
                 for name in dirs + files:
-                    for pat in never:
-                        if names_place((Path(base) / name).as_posix(), pat):
-                            return (f"a search over `{path or '.'}` would read a place this role must never see ({pat}); search a "
-                                    "narrower place, such as the exploration's own folder")
-    fenced = fenced_paths(p)
+                    q = Path(base) / name
+                    pat = never_sees(q.as_posix(), fm) or (never_sees(os.path.realpath(q), fm) if q.is_symlink() else None)
+                    if pat:
+                        return (f"a search over `{path or '.'}` would read a place this role must never see ({pat}); search a "
+                                "narrower place, such as the exploration's own folder")
+    fenced = fenced_paths(p, cwd)
     if search and p.is_dir():  # what explorations and studies below the folder searched say is set aside or held out
         walked = 0
         for base, dirs, files in os.walk(p):
@@ -334,8 +525,11 @@ def read_problem(path: str | None, fm: dict, cwd: Path, search: bool = False, pa
                 return f"a search over `{path or '.'}` is too broad to check for set-aside and held-out data; search a narrower place"
             if Path(base).name in ("explorations", "studies"):
                 fenced += fenced_paths(Path(base) / "x")
+    real = Path(os.path.realpath(p))
     for q in fenced:
         q = Path(os.path.normpath(q))
+        if real == q or q in real.parents or real == Path(os.path.realpath(q)) or Path(os.path.realpath(q)) in real.parents:
+            return f"`{path}` is set aside or held out; this role has no route to it"
         if p == q or q in p.parents:
             return f"`{path}` is set aside or held out; this role has no route to it"
         if search and p in q.parents and q.exists():
@@ -357,7 +551,7 @@ def decide(role: str, call: dict, root: Path = ROOT) -> str | None:
         argv = given.get("argv")
         return argv_problem([str(w) for w in argv], role, fm, cwd, root) if isinstance(argv, list) and argv else "no command was given"
     if tool in WRITE_TOOLS:
-        return write_problem(str(given.get("file_path") or given.get("notebook_path") or ""), role, fm, cwd)
+        return write_problem(str(given.get("file_path") or given.get("notebook_path") or ""), role, fm, cwd, call, root)
     if tool in READ_TOOLS:
         return read_problem(given.get("file_path") or given.get("path"), fm, cwd, search=tool in ("Grep", "Glob"),
                             pattern=str(given.get("pattern") or "") if tool == "Glob" else None)
@@ -564,8 +758,112 @@ def selftest() -> int:
            and decide("analysis", {"tool_name": "Grep", "tool_input": {"path": str(tmp), "pattern": "rows"}, "cwd": str(tmp)}) is not None)
         ok("a search by the review role inside the exploration is allowed",
            decide("review", {"tool_name": "Grep", "tool_input": {"path": str(tmp / "run" / "explorations" / "E2"), "pattern": "gain"}, "cwd": str(tmp)}) is None)
+
+        # ================= the second independent attack (TOOL-ATTACK-2) =================
+        def call(role: str, tool: str, where: Path = tmp, **given):
+            return decide(role, {"tool_name": tool, "tool_input": given, "cwd": str(where)}, tmp)
+        for role_ in ("analysis", "review", "curating", "coordinating"):  # the roles as this repository defines them, in the scratch workspace
+            (tmp / "factory" / "agents" / role_).mkdir(parents=True, exist_ok=True)
+            (tmp / "factory" / "agents" / role_ / "agent.md").write_text((ROOT / "factory" / "agents" / role_ / "agent.md").read_text())
+        (tmp / "factory" / "factory.yaml").write_text((ROOT / "factory" / "factory.yaml").read_text())
+        (tmp / "tools").mkdir(exist_ok=True)
+        for tool_ in ("sf.py", "fence.py", "check_factory.py", "check_roles.py", "explore.py"):
+            (tmp / "tools" / tool_).write_text((ROOT / "tools" / tool_).read_text())
+        # N6: the held-out block is remembered from the record beside the studies, and the plan's own edit takes nothing off it
+        sf_ = study_tool(tmp)
+        plan_text = (tmp / "studies" / "S1" / "analysis-plan.yaml").read_text()
+        block = sf_.held_out_block(yaml.safe_load(plan_text))
+        (tmp / "studies" / "held-out.jsonl").write_text(json.dumps({"dir": "S1", "sha": block["sha"], "block": block["block"],
+                                                                     "paths": [str(tmp / "studies/S1/data/held.json")]}) + "\n")
+        moved = plan_text.replace("data/held.json", "data/other.json")
+        ok("N6: once a study's held-out block is on record, no role's write to the plan may change it: a Write of a plan that moves the "
+           "path, an Edit that moves it, and a Write that leaves a plan that cannot be read are all blocked",
+           "held-out block is on record" in str(call("analysis", "Write", file_path="studies/S1/analysis-plan.yaml", content=moved))
+           and "held-out block is on record" in str(call("analysis", "Edit", file_path="studies/S1/analysis-plan.yaml", old_string="data/held.json", new_string="data/other.json"))
+           and "held-out block is on record" in str(call("analysis", "Write", file_path="studies/S1/analysis-plan.yaml", content="data: [")))
+        ok("N6: a write to the plan that leaves the held-out block as it is on record is still the analysis role's to make",
+           call("analysis", "Write", file_path="studies/S1/analysis-plan.yaml", content=plan_text + "limitations: [one more]\n") is None
+           and call("analysis", "Edit", file_path="studies/S1/analysis-plan.yaml", old_string="tests: {}", new_string="tests: {}\nlimitations: [x]") is None)
+        (tmp / "studies" / "S1" / "analysis-plan.yaml").write_text(moved)  # as if somebody edited the plan outside the check
+        ok("N6: with the plan edited all the same, the path it first held out is still blocked for Read, for the analysis and the curating roles",
+           call("analysis", "Read", file_path="studies/S1/data/held.json") is not None and call("curating", "Read", file_path=str(tmp / "studies/S1/data/held.json")) is not None)
+        (tmp / "studies" / "S1" / "analysis-plan.yaml").write_text(plan_text)
+        far = tmp / "examples" / "b"
+        (far / "explorations" / "E9").mkdir(parents=True)
+        elsewhere = tmp.parent / (tmp.name + "-held-elsewhere")
+        elsewhere.mkdir()
+        (elsewhere / "later.json").write_text("{}")
+        (far / "explorations" / "E9" / "set-aside.json").write_text(json.dumps({"set_aside": {"paths": [str(elsewhere)]}}))
+        try:
+            ok("N6: a set-aside path an exploration declared is blocked wherever on the disk it lies, found from the workspace and not "
+               "from the file being read",
+               call("analysis", "Read", file_path=str(elsewhere / "later.json")) is not None
+               and call("analysis", "Grep", path=str(elsewhere), pattern="rows") is not None)
+        finally:
+            shutil.rmtree(elsewhere, ignore_errors=True)
+        # N8 and N11: a pattern is read from the top of the work, and `*` is one name
+        ok("N8: a role's write pattern is no way into the wiki, or into another role's folder: the three writes the attack made below "
+           "openwiki/, and the four that crossed into another role's place, are blocked",
+           all(call(r, "Write", file_path=q, content="x") is not None for r, q in (
+               ("analysis", "openwiki/studies/s/finding-draft/numbers.md"), ("curating", "openwiki/knowledge-queue/a/b.md"),
+               ("review", "openwiki/knowledge-queue-reviews/x.md"), ("analysis", "explorations/E1/review/looks/r.py"),
+               ("analysis", "explorations/E1/review/lead.yaml"), ("analysis", "record/analysis/review/x.md"),
+               ("review", "explorations/E1/looks/review/x.md"))))
+        agreed = {}
+        for role_ in ("analysis", "review", "curating"):
+            for pat in role_file(role_, tmp).get("writes") or []:
+                agreed[f"{role_}: {pat}"] = call(role_, "Write", file_path=str(pat).replace("*", "x1"), content="x") is None
+        ok("N11: the role files and the check agree: every place a role's file says it writes, the check lets it write, a study's own "
+           "methods/ folder included" + (f" (refused: {[k for k, v in agreed.items() if not v]})" if not all(agreed.values()) else ""),
+           all(agreed.values()) and len(agreed) >= 10)
+        ok("N11: the factory's own methods/ at the top of the repository is still nobody's to write",
+           call("analysis", "Write", file_path="methods/gain/gain.py", content="x") is not None)
+        # N10: the reviewer and the author's account, by other roads
+        acct = tmp / "ws" / "record" / "analysis"
+        acct.mkdir(parents=True)
+        (acct / "01.answer.md").write_text("what the author said\n")
+        (tmp / "ws" / "explorations" / "E1").mkdir(parents=True)
+        os.link(acct / "01.answer.md", tmp / "ws" / "explorations" / "E1" / "hard.md")
+        os.symlink(tmp / "ws" / "record", tmp / "ws" / "rec")
+        (tmp / "ws" / "pkg" / "node_modules" / "record" / "analysis").mkdir(parents=True)
+        (tmp / "ws" / "pkg" / "node_modules" / "record" / "analysis" / "a.md").write_text("x\n")
+        (tmp / "ws" / "record" / "02-author.answer.md").write_text("what the author said\n")
+        (tmp / "ws" / "record" / "02-anaIysis.answer.md").write_text("what the author said\n")
+        ws = tmp / "ws"
+        ok("N10: the review role may not read the author's account through a hard link, nor hand that link to a tool",
+           "hard link" in str(call("review", "Read", ws, file_path="explorations/E1/hard.md"))
+           and call("review", "Bash", ws, command=f"uv run {tmp}/tools/explore.py review --exploration explorations/E1 --by agent:review --verdict holes-found --file explorations/E1/hard.md") is not None)
+        ok("N10: a search over a folder that is a link to the accounts, or that holds them under node_modules, is blocked",
+           call("review", "Grep", ws, path="rec", pattern="gain") is not None and call("review", "Grep", ws, path="pkg", pattern="gain") is not None)
+        ok("N10: an account kept in that folder under another name, or with a look-alike letter, is blocked: the review role sees nothing "
+           "there but its own place",
+           call("review", "Read", ws, file_path="record/02-author.answer.md") is not None and call("review", "Read", ws, file_path="record/02-anaIysis.answer.md") is not None
+           and call("review", "Read", ws, file_path="record/review/02.answer.md") is None)
+        ok("N10: a search pattern with a step upward hidden in braces is not taken",
+           call("review", "Glob", ws, path="explorations", pattern="{../record,x}/*") is not None)
+        # N14: names a role does not type, and a command too long to read
+        ok("N14: a role does not type a person's name in any option: who asked a study, and who reviews, are not a role's to name as a person",
+           "names a person" in str(call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py start --study studies/S2 --id S2 --question q --by agent:coordinating --asked-by human:throwaway-placeholder"))
+           and "names a person" in str(call("coordinating", "Bash", command=f"uv run {tmp}/tools/explore.py reviewer --exploration explorations/E1 --by agent:coordinating --reviewer human:throwaway-placeholder"))
+           and call("coordinating", "Bash", command=f"uv run {tmp}/tools/explore.py reviewer --exploration explorations/E1 --by agent:coordinating --reviewer agent:review-1") is None)
+        import time as time_
+        t0 = time_.time()
+        long_refusal = call("analysis", "Bash", command=f"uv run {tmp}/tools/explore.py status --exploration " + "a" * 2_000_000)
+        ok("N14: a command of two million characters is refused at once, unread", "characters long" in str(long_refusal) and time_.time() - t0 < 2)
+        # the acts by people under the check: an agent may ask for a lock and never make one
+        ok("the coordinating role may write a lock request and a signature request and record a change to what is held out; no role "
+           "may lock, sign, type a practice lock or record a merge",
+           call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py request-lock --study studies/S1 --by agent:coordinating") is None
+           and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py request-signature --study studies/S1 --by agent:coordinating --decision signed") is None
+           and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py held-out-change --study studies/S1 --by agent:coordinating --reason moved") is None
+           and call("analysis", "Bash", command=f"uv run {tmp}/tools/sf.py request-lock --study studies/S1 --by agent:analysis") is not None
+           and all(call(r, "Bash", command=f"uv run {tmp}/tools/sf.py {act} --study studies/S1 --by {who} {how}") is not None
+                   for r in ("coordinating", "analysis", "review", "curating") for act in ("lock", "signature")
+                   for who, how in ((f"agent:{r}", "--local-practice"), ("platform:github", "--record-merge abc --platform-record r.json"))))
+        ok("no role writes a lock request or a signature request by hand",
+           all(call(r, "Write", file_path=f"studies/S1/{folder}/{name}", content="x") is not None for r in ("coordinating", "analysis", "review", "curating")
+               for folder in ("lock-request", "signature-request") for name in ("manifest.json", "EVIDENCE.md")))
     finally:
-        import shutil
         shutil.rmtree(tmp, ignore_errors=True)
     failed = [n for n, good in results if not good]
     for n in failed:

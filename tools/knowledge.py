@@ -84,6 +84,26 @@ Usage: knowledge.py about --question "..." --wiki DIR [--drafts DIR]
 import sys
 
 sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
 if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     _own = __file__.replace("\\", "/").rpartition("/")[0]
     del sys.path[0]
@@ -105,7 +125,9 @@ import yaml  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 CHECKERS = HERE.parent / "factory" / "checkers.yaml"  # the checkers check-drafts will run, each pinned by checksum
-ADDRESS = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")  # a source that is an address (https:, doi:) and not a path
+ADDRESS = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")  # a source that is written as an address and not as a path
+HTTPS = re.compile(r"https://(?=[^/]{4,253}(?:/|$))(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}(?::\d+)?(?:[/?#]\S*)?", re.I)
+DOI = re.compile(r"doi:10\.\d{4,9}/\S+", re.I)
 NOT_CONCEPTS = ("index.md", "log.md", "DIGEST.md", "README.md", "INSTRUCTIONS.md")  # reserved documents, not pages
 HEADING = re.compile(r"^#\s+(.+?)\s*$", re.M)
 SIGNED_LINE = re.compile(r"^Signed-by:\s*(human:[A-Za-z0-9_.@/-]+)(?:[,\s]+(\S+))?", re.M)
@@ -432,13 +454,27 @@ def source_problems(name: str, p: Path, queue: Path, bundles: list, sources) -> 
     rel_dir = p.parent.relative_to(queue)
     for s_ in sources if isinstance(sources, list) else []:
         res = str(s_.get("resource") or "").strip() if isinstance(s_, dict) else ""
-        if not res or ADDRESS.match(res):
+        if not res:
+            continue
+        if ADDRESS.match(res):  # an address: one of the two kinds this tool can tell from a path, and well formed
+            if not (HTTPS.fullmatch(res) or DOI.fullmatch(res)):
+                out.append(f"{name}: the source `{res}` is neither a path nor an address this tool knows: an address is "
+                           "`https://` with a host name, or `doi:10.<registrant>/<name>`. Whether an address answers is not checked")
             continue
         path = res.split("#", 1)[0]
-        bases = [p.parent, *list(queue.parents)[:8], queue] + [b / rel_dir for b in bundles]
-        if Path(path).is_absolute() or not any((b / path).exists() for b in bases):
+        # a path names a file, and stays inside the folder it is read from: the draft's own folder, a folder above the
+        # queue (a path from the top of the repository), or the wiki the page would join
+        above = [] if ".." in Path(path).parts else [(b, b) for b in list(queue.parents)[:8]]  # from a folder above the queue, no climbing
+        bases = [(p.parent, queue), *above, (queue, queue)] + [(b / rel_dir, b) for b in bundles]
+        found = False
+        for base, top in bases:
+            target = (base / path).resolve()
+            if not Path(path).is_absolute() and target.is_file() and target.is_relative_to(top.resolve()):
+                found = True
+        if not found:
             out.append(f"{name}: the source `{res}` is a path and no file is there (read from the folders above the queue, the "
-                       "draft's own folder and its place in the wiki). A source exists: give the path of the receipt, or an address")
+                       "draft's own folder and its place in the wiki; a folder is not a file, and a path that climbs out of those "
+                       "places is not read). A source exists: give the path of the receipt, or an address")
     return out
 
 
@@ -770,6 +806,21 @@ def selftest(checker: Path | None) -> int:
         draft(sources=[{"id": "look", "resource": str(tmp / "explorations/E1/receipts/LOOK-001.json"), "title": "an absolute path"}])
         ok("a source given as a path from the top of the disk is refused: it is true on one machine only",
            any("no file is there" in p for p in check_drafts(queue, [bundle], None)[0]))
+        not_sources = ("explorations", "explorations#L3", "../../etc/hostname", "explorations/E1/../../../../etc/hostname", "file:///etc/hostname",
+                       "urn:x", "C:nothing", "doi:not-a-doi", "https://", "https:///x", "http://example.org/x")
+        taken = []
+        for resource in not_sources:
+            draft(sources=[{"id": "look", "resource": resource, "title": "not a source"}])
+            if check_drafts(queue, [bundle], None)[0] == []:
+                taken.append(resource)
+        ok("N12: a folder, a folder with a line number, a path that climbs out of the places it is read from, and a word with a colon "
+           "that is neither an https address with a host name nor a doi, are not sources" + (f" (taken: {taken})" if taken else ""), not taken)
+        still = []
+        for resource in ("https://example.org/a/receipt.json", "doi:10.5194/essd-1-2-2026", "explorations/E1/receipts/LOOK-001.json#L3"):
+            draft(sources=[{"id": "look", "resource": resource, "title": "a source"}])
+            if check_drafts(queue, [bundle], None)[0] != []:
+                still.append(resource)
+        ok("N12: an https address with a host name, a doi and a file with a line number are still sources" + (f" (refused: {still})" if still else ""), not still)
         draft()
         # import never writes over a page a person signed
         wiki2 = tmp / "wiki2"
@@ -860,8 +911,9 @@ def refuse_inside_a_look() -> None:
     spec.loader.exec_module(sf)
     why = sf.started_from_a_look()
     if why:
-        raise Refused(f"this command was started from inside a look ({why}). A look runs a script on working data; it does "
-                      "not call the tools of this package")
+        raise Refused(f"this command was started from inside a look or a step of a plan ({why}). A script the tools run works on "
+                      "data; it does not call the tools of this package")
+    sf.refuse_dirty_environment()  # the same clean start as the study tool: a PYTHON variable that adds code is refused here too
 
 
 def main() -> int:

@@ -280,7 +280,8 @@ def run_prepared(sf, base: Path, cases: list, tmp: Path, factory: Path | None = 
     definition = str(Path(factory).resolve()) if factory else None
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "verdict.md").write_text("blind test harness: approve, automatically; not a review")
-    (tmp / "finding.md").write_text("blind test harness: no finding is written; this file stands where one would be attached")
+    (tmp / "finding.md").write_text("blind test harness: no finding is written; this file stands where one would be attached\n\n"
+                                    + sf.PRACTICE_WORDS + "\n")
     out = []
     stdout, model = sys.stdout, sf.Study.default_model
     sf.Study.default_model = NO_MODEL
@@ -291,10 +292,11 @@ def run_prepared(sf, base: Path, cases: list, tmp: Path, factory: Path | None = 
                 one = tmp / f"run-{i:04d}" / "STUDY-BLIND-TEST"
                 shutil.copytree(base, one)
                 study = sf.Study(one)
-                sf.cmd_lock(study, ns(by=sf.HARNESS_PERSON, evidence=URL, factory=definition))
+                # the harness types its own lock, which is practice by name: no pull request exists in a throwaway folder
+                sf.cmd_lock(study, ns(by=sf.HARNESS_PERSON, evidence=URL, factory=definition, local_practice=True))
                 os.environ[HOOK] = f"{seed}:{gain}"
                 try:
-                    sf.cmd_open_held_out(study, ns(test="held-out", by="agent:blind-test-access-gate"))
+                    sf.cmd_open_held_out(study, ns(test="held-out", by="agent:blind-test-access-gate", factory=definition, local_practice=True))
                 finally:
                     os.environ.pop(HOOK, None)
                 sf.cmd_attach(study, ns(by="agent:blind-test-harness", file=str(tmp / "finding.md")))

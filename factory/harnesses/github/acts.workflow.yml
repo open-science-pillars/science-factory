@@ -1,0 +1,96 @@
+# The two acts by people, as a GitHub workflow. A template: copy it to .github/workflows/acts.yml in the repository
+# where the studies live, with tools/ and factory/ of the science factory in that repository. README.md beside this
+# file is the checklist that goes with it. This workflow has never run on GitHub; the two scripts it calls are
+# tested as ordinary programs (their own --selftest).
+#
+# request-check: on a pull request that touches a study's lock-request/ or signature-request/, checks that the
+#   manifest matches the files, that the pull request targets the protected branch, that enough people other than
+#   its author have approved, and that nothing an approval covered changed afterwards; and shows the evidence
+#   summary on the pull request. Make it a required status check on the protected branch.
+# record: after the merge, writes the lock or the signature into the study log, citing the merge commit, the pull
+#   request and the approving reviews from the platform's record, and commits the log under the repository's name.
+name: acts by people
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  push:
+    branches: [main]            # the protected branch that factory.yaml names
+
+permissions:
+  contents: read
+
+jobs:
+  request-check:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # The scripts, the tools and the definition come from the protected branch, never from the pull request, so a
+      # pull request cannot bring its own check with it. The study comes from the pull request.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: The reviews, as the platform records them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --paginate --slurp "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" > "$RUNNER_TEMP/reviews.json"
+      - name: Check the request
+        run: >
+          uv run base/factory/harnesses/github/verify_request.py
+          --repo head --tools base/tools --factory base/factory
+          --event "$GITHUB_EVENT_PATH" --reviews "$RUNNER_TEMP/reviews.json"
+          --summary-out "$RUNNER_TEMP/summary.md"
+      - name: Show the evidence summary on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s "$RUNNER_TEMP/summary.md" || exit 0
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --edit-last --body-file "$RUNNER_TEMP/summary.md" \
+            || gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file "$RUNNER_TEMP/summary.md"
+
+  record:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # this job commits the study log; the checklist says how the branch lets it
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: The pull request this commit merged, and its reviews, as the platform records them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" > "$RUNNER_TEMP/pulls.json"
+          number=$(uv run factory/harnesses/github/record_act.py --which-pull "$RUNNER_TEMP/pulls.json" --commit "${{ github.sha }}")
+          test -n "$number" || { echo "no merged pull request for this commit: nothing to record"; exit 0; }
+          gh api "repos/${{ github.repository }}/pulls/$number" > "$RUNNER_TEMP/pull.json"
+          gh api --paginate --slurp "repos/${{ github.repository }}/pulls/$number/reviews" > "$RUNNER_TEMP/reviews.json"
+      - name: Record the act in the study log
+        run: |
+          test -s "$RUNNER_TEMP/pull.json" || exit 0
+          uv run factory/harnesses/github/record_act.py --repo . --pull "$RUNNER_TEMP/pull.json" --reviews "$RUNNER_TEMP/reviews.json" --commit "${{ github.sha }}"
+      - name: Commit the study log under the repository's name
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- '*study-log.jsonl'
+          git diff --cached --quiet && exit 0
+          git commit -m "Record the act merged in ${{ github.sha }}"
+          git push

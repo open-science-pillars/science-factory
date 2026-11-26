@@ -1,0 +1,17 @@
+{
+  "action": "opened",
+  "number": 7,
+  "pull_request": {
+    "number": 7,
+    "html_url": "https://github.example/octo-org/octo-study/pull/7",
+    "state": "open",
+    "title": "Lock request for the study",
+    "user": {"login": "octo-author", "type": "User"},
+    "head": {"ref": "HEAD_REF", "sha": "HEAD_SHA"},
+    "base": {"ref": "BASE_REF", "sha": "BASE_SHA"},
+    "merged": false,
+    "merge_commit_sha": null
+  },
+  "repository": {"full_name": "octo-org/octo-study"},
+  "sender": {"login": "octo-author", "type": "User"}
+}

@@ -1,0 +1,16 @@
+# A harness for the two acts by people. It starts no agent. It carries a lock or a signature as a pull request in
+# the repository where the study lives, and records the merge in the study log afterwards. The name of this harness
+# is the name of this folder, and factory.yaml names it under procedure.acts_by_people.
+description: "Carries the lock and the signature as pull requests on a protected branch: a required check on the request, and a job that records the merge with the people the platform recorded."
+starts: "no agent: a GitHub workflow (acts.workflow.yml) runs verify_request.py on a pull request that touches a study's request, and record_act.py after the merge"
+models: any                         # no model runs here; the two scripts call no model
+status: "built, not exercised"      # the scripts test themselves on recorded payloads and a throwaway repository; the workflow has never run on GitHub
+holds:
+  - "that the request's manifest matches the files at the head of the pull request (verify_request.py, through sf.py check-request)"
+  - "that somebody other than the pull request's author approved, as many as the definition asks (verify_request.py, from the platform's reviews)"
+  - "that no commit after an approval changed what the approval covered (verify_request.py)"
+  - "that a pull request which carries a request changes nothing in tools/, factory/ or .github/ (verify_request.py)"
+  - "that the lock or the signature in the study log cites the merge commit, the pull request and the approving reviews (record_act.py, through sf.py --record-merge)"
+by_instruction_only:
+  - "that the branch is protected, the check is required and the code owners are the right people: the repository's settings, which README.md lists as a checklist"
+  - "that the workflow file in the repository is this one, unchanged: a change to .github/ is itself a pull request the same people review"

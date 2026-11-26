@@ -31,23 +31,46 @@ Commands, by stage. Each has one name.
     test working-data     data already looked at
     rehearse              a required rehearsal of what the opening
                           depends on (its fetch, the form of the finding)
+    held-out-change       the coordinating step records that what the
+                          plan holds out has changed, and why; without
+                          it the tests and the lock refuse a plan whose
+                          held-out block is not the one on record
   Open the held-out data, once
-    lock                  people lock the plan and the code together,
-                          once the tests have passed on exactly that
-                          pair and every decision rule has met its
-                          criteria on the known-answer tests; the lock
-                          prints what it binds
+    request-lock          write the lock request into the study: an
+                          evidence summary in plain words and a manifest
+                          of checksums, once the tests have passed on
+                          exactly this plan and code and every decision
+                          rule has met its criteria. Nothing is locked
+    check-request         does a request still match the files? (the
+                          required check of the pull request)
+    lock                  the lock itself, which is a person's act. In a
+                          real study it is the merge of the pull request
+                          that carries the request, on the protected
+                          branch, recorded with --record-merge by the
+                          job that follows the merge. --local-practice
+                          records a lock typed at a command line, for
+                          trying the tools out: such a study says so
+                          everywhere and never closes as a signed finding
     open-held-out         the access gate fetches the held-out data
                           and runs the locked analysis, once; the
-                          opening is used up the moment it starts
+                          opening is used up the moment it starts. It
+                          needs a lock that is a merge on the protected
+                          branch, reachable from what is checked out,
+                          whose manifest matches the files, and a
+                          definition that has not changed since the lock
     void-unread           a person voids an opening whose fetch failed
                           and left nothing behind
   Review, sign and learn
     attach                the written finding joins the record
     review                a review assistant that did none of the study
                           records approve or block, after the finding
+    request-signature     write the signature request into the study:
+                          the finding, the review, the outcome, and
+                          what merging would sign. Nothing is signed
     signature             the steward signed, or declined, which finding,
-                          and where
+                          and where: the merge of the pull request that
+                          carries the request (--record-merge), or, for
+                          practice, typed (--local-practice)
     note                  something missing or wrong, with evidence
     curation-list         open notes, for the curating assistant
     resolve               a note is accepted, linked or declined
@@ -70,13 +93,29 @@ program: a shell, `env`, `make`, `{python} -c`, `uv run python`. This is a
 rule about what is allowed, not a list of what is not, because a script
 named inside another program's text is a script the lock never sees.
 
-What a command is given. Its environment is built, not inherited: PATH,
-HOME, USER, LOGNAME, LANG, LC_ALL, LC_CTYPE, TZ, TMPDIR, TERM, the XDG
-base directories, every UV_ variable, the certificate and proxy settings,
-three Python settings the tool makes itself, and the names its plan step
-lists under `passes_environment` (a data provider's token on a fetch).
-The names a step was given, never the values, are recorded in its event.
-git, which the tool also runs, is given the same short list.
+How a command runs. Like a look of the exploring tool, through
+tools/fence.py: in a scratch copy of the study that holds no study log, no
+notes and no verdicts; with an interpreter prepared before it starts
+(`uv run` does not run the launcher beside the script: uv builds a
+throwaway environment from the script's own inline dependencies, from
+wheels only, and a project file above the study is not used); under the
+kernel fence where the machine has one, so that it can read its copy, the
+folders of the files the lock binds and the system's folders, and write
+its copy and nothing else; and with a keeper that ends whatever it leaves
+running. What it wrote is brought back into the study afterwards; a change
+to a file the tool keeps fails the run. Every command of this tool refuses
+to run when a step of a plan, a look or a keeper is anywhere above it.
+
+What a command is given. Its environment is built, not inherited: a PATH
+of its interpreter's folder and the system's, a home, a temporary folder
+and a bytecode cache inside its scratch folder, the caller's language and
+time zone when they are plain names, three Python settings and a mark the
+tool makes itself, and the names its plan step lists under
+`passes_environment` (a data provider's token on a fetch). No UV_
+variable, certificate setting or folder of the caller's arrives. The
+names a step was given, never the values, are recorded in its event, with
+whether the kernel fence was applied and tried. git, which the tool also
+runs, is given a short list of its own.
 
 What "the code" means here. The code list in the plan; the script every
 command runs; every other existing file a test, fetch or rehearsal command
@@ -86,6 +125,30 @@ lists under `needs`; everything Python could import from the folder of one
 of those (every .py, every .pyc and extension module sitting there, and
 every package folder, all the way down), because a script imports its
 neighbours; when a command runs through `uv run`, the settings uv reads
+import sys
+
+sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
+
 from the study directory and every folder above it (pyproject.toml,
 uv.toml, uv.lock, .python-version); and this file. A .venv folder in one
 of those places, whose interpreter uv runs, is recorded by the lock (its
@@ -110,30 +173,37 @@ sealed answer: the seal writes it to a file inside the study, the tool
 passes that file to no command, and nothing in the tool stops a locked
 script from opening it. What stands against that is that the code is read
 at the lock by the people who lock it.
-Two. Names of who did what are typed, not proven. The tool checks the form
-of a name and that the lock, a void and the signature carry an https link;
-it takes any local commit as the lock being committed.
+Two. Names of who did what are typed, not proven, and on a machine where
+agents and people share one account nothing typed can be. So the two acts
+by people are not typed: a real study's lock and signature are pull
+requests merged on a protected branch, and the tool checks the merge with
+git (the commit exists, is one of the protected branch's own commits, is
+reachable from what is checked out, brought the request in, and its
+manifest matches the files). git cannot say who approved, or that the
+branch is protected: the platform's record says that, and the recording
+job copies the names into the log. A local branch with the protected
+branch's name looks the same to git alone, so an opening that matters runs
+from a fresh clone. Every other name in a log is still typed.
 Three. A log that is rewritten from its first line, cut short, or added
 to by hand with the right hashes checks out on its own. A later edit is
 detectable only against a commit or a log fingerprint posted outside the
 workspace, and before the first of those nothing protects the log.
-Four. It cannot defend itself against the Python it runs in. Commands run
-in the environment the tool builds, with no PYTHON variable of the
-caller's and the bytecode cache pointed at an empty folder, the tool drops
-its own folder from the import path before it imports anything, and it
-refuses to run while a PYTHON variable other than PYTHONDONTWRITEBYTECODE
-and PYTHONUNBUFFERED is visible. The UV_ variables and the user's own uv
-settings do reach `uv run`, and they choose its interpreter and where its
-packages come from; what is inside a virtual environment it finds is not
-hashed beyond the interpreter. But code loaded
-when Python starts can hide all of that and rewrite anything this process
-does (a red-team review did exactly that). No check inside a process
-survives a hostile process.
-The second and third are answered the way the organization already answers
-them for signatures: the lock cites an approved review and is itself
-committed on a protected branch, the log's fingerprint is posted on the
-tracking issue at the lock and after every opening, and `check-log
---anchor SEQ:HASH` refuses a log that does not contain what was posted.
+Four. It cannot defend itself against the Python it runs in. The tool
+starts itself again in a Python that reads no PYTHON variable, no user
+site, no start-up file and not its own folder, and it refuses to run while
+a PYTHON variable other than PYTHONDONTWRITEBYTECODE and PYTHONUNBUFFERED
+is visible; a script it runs cannot write the environment the tool runs
+from where the kernel fence holds. But code that a hostile environment
+loads when Python first starts has already run by then, with the caller's
+rights, and can do anything (two red-team reviews did exactly that). No
+check inside a process survives a hostile process, and on a machine with
+no kernel fence a script the tool ran can have planted such code.
+The second is answered for the two acts by where they are made: on the
+platform, as merged pull requests. The third is answered the way the
+organization already answers it for signatures: the log's fingerprint is
+posted on the tracking issue at the lock and after every opening, and
+`check-log --anchor SEQ:HASH` refuses a log that does not contain what was
+posted.
 The fourth is answered by where the opening runs: somewhere clean that is
 not the workspace where the method was built. The first is not answered by
 where the opening runs.
@@ -170,6 +240,20 @@ from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
 
+
+def _beside(name: str):
+    """Another file of this package, loaded from beside this one by its path, so that nothing can stand in for it by name."""
+    if name not in sys.modules:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parent / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[name]
+
+
+fence = _beside("fence")  # how a script the tool does not trust is run: a plan's commands here, a look in explore.py
+
 try:
     import fcntl
 except ImportError:  # not POSIX: appends are then unlocked, which is said here
@@ -179,13 +263,15 @@ except ImportError:  # not POSIX: appends are then unlocked, which is said here
 FREE_TESTS, HELD_OUT_TESTS = ("known-answers", "working-data"), ("held-out", "independent-site")
 TEST_NAMES = {"known-answers": "known-answer tests", "working-data": "working data"}
 OPS = {">=": operator.ge, "<=": operator.le, ">": operator.gt, "<": operator.lt, "==": operator.eq}
-ACTOR = re.compile(r"^(human|agent):[A-Za-z0-9_.@/-]+$")
+ACTOR = re.compile(r"(human|agent):[A-Za-z0-9_.@/-]+")  # matched whole: a name with a line break after it is not a name
+PLATFORM_ACTOR = re.compile(r"platform:[a-z][a-z0-9.-]{1,62}")  # who records an act that was a merged pull request: the host
 PLACEHOLDER_ACTORS = ("human:you", "human:name", "human:id", "agent:name", "agent:id")
 HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$")
 KEPT_PYTHON = ("PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED")  # the only PYTHON variables a command may run under
 IMPORTABLE = (".py", ".pyc", ".so", ".pyd")  # what Python can import from a folder: source, bytecode, extension modules
 TOOL = Path(__file__).resolve()
 REPO = TOOL.parent.parent  # the repository: tools/ holds this file, factory/ the definition, methods/ the method scripts
+FENCE = TOOL.parent / "fence.py"  # how every command of a plan is run; bound into every lock with this file
 FACTORY = REPO / "factory"  # this factory's definition: a folder rooted at factory.yaml (tools/check_factory.py validates it)
 # the statuses a log check can give; the others are built where they are decided
 INVALID = "the study log or its files do not check out"
@@ -202,6 +288,7 @@ NOT_PART_OF_THE_WORK = ("review.verdict", "note.raised", "note.resolved", "chang
 # Paths inside a study that no plan may name as something a step writes: the tool or people write them
 PROTECTED = ("study-log.jsonl", "analysis-plan.yaml", "scorecard.json", "curation-list.json", "request.md")
 PROTECTED_FOLDERS = ("notes", "verdicts", "finding", "request")
+ACT_FOLDERS = ("lock-request", "signature-request")  # what a person's act is asked for with; written by the tool only
 
 # The criteria every decision rule must meet on the known-answer tests before the lock. The names are fields the
 # known-answers receipt reports for the rule (under power_evidence.path), each a rate between 0 and 1.
@@ -262,7 +349,7 @@ PASSED_ON = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "T
 CERTIFICATES_AND_PROXIES = ("SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
                             "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY")
 PASSED_ON += CERTIFICATES_AND_PROXIES + tuple(n.lower() for n in CERTIFICATES_AND_PROXIES)
-SET_BY_THE_TOOL = ("PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX")
+SET_BY_THE_TOOL = ("PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX", "SF_INSIDE_A_STEP")
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # The one required criterion no rule may waive: a rule has a refutation, and this is what shows it can refute.
 NEVER_WAIVED = ("power_to_refute_when_false",)
@@ -435,6 +522,7 @@ def models_recorded(ev: list) -> dict:
 
 class Study:
     default_model = None  # a model for every agent event of this process; only the self-tests and the blind test harness set it
+    default_route = None  # `practice` in the self-tests and the blind test harness, which type their locks; never set by a command
 
     def __init__(self, d):
         self.model = None  # the model the caller declares for the events of this command (--model)
@@ -505,13 +593,18 @@ class Study:
 
     @staticmethod
     def check_actor(actor) -> None:
-        if not ACTOR.match(actor or ""):
+        if PLATFORM_ACTOR.fullmatch(actor or ""):
+            return  # only `--record-merge` takes one, and it checks the merge and the platform's record before it writes
+        if not ACTOR.fullmatch(actor or ""):
             raise Refused("the actor is human:<id> or agent:<id>")
         if actor.lower() in PLACEHOLDER_ACTORS:
             raise Refused(f"`{actor}` is the placeholder from the documents; give the actor's own id, such as human:jdoe")
 
     def append(self, actor: str, kind: str, data: dict, f=None) -> dict:
         self.check_actor(actor)
+        if PLATFORM_ACTOR.fullmatch(actor or "") and not (kind in ACTS_BY_PEOPLE and data.get("route") == "pull-request" and data.get("merge")):
+            raise Refused("an actor `platform:<host>` records one thing only: a lock or a signature that was a merged pull request "
+                          "(`--record-merge`). Everything else is written by human:<id> or agent:<id>")
         if f is None:
             with self.held() as g:
                 return self._append(g, actor, kind, data)
@@ -569,11 +662,13 @@ class Study:
     def plan_sha(self) -> str:
         return sha_file(self.plan_path)
 
-    def expand(self, token, plan: dict) -> str:
+    def expand(self, token, plan: dict, study_dir: Path | None = None) -> str:
+        """A word of a command with its roots filled in. `study_dir` stands in for the study when the command runs
+        in a scratch copy of it; a plan's other roots are always the real folders, which a command only reads."""
         roots = plan.get("roots") if isinstance(plan.get("roots"), dict) else {}
         roots = {str(k): str((self.d / str(v)).resolve()) for k, v in roots.items()}
         try:
-            return str(token).format(study=str(self.d), python=sys.executable, **roots)
+            return str(token).format(study=str(study_dir or self.d), python=sys.executable, **roots)
         except (KeyError, IndexError, ValueError):
             known = ", ".join("{" + k + "}" for k in ["study", "python", *roots])
             raise Refused(f"`{token}` names a root the analysis plan does not define (it can use {known})")
@@ -699,7 +794,8 @@ class Study:
                     if f.is_file() or (rooted and not f.exists()):
                         tokens.append(tok)
         out = {c: sha_file(self.word(c, plan)) for c in tokens}
-        out["(the study tool)"] = sha_file(TOOL)  # the code that evaluates the rules is locked with them
+        # the code that evaluates the rules is locked with them: this file, and the fence it runs every command through
+        out["(the study tool)"] = f"{sha_file(TOOL)}+fence:{sha_file(FENCE)}"
         if uses_uv(plan):
             for key, sha in self.uv_picks_up().items():
                 out.setdefault(key, sha)
@@ -1329,7 +1425,7 @@ def cmd_start(study: Study, a) -> None:
     if not str(a.question).strip().endswith("?"):
         raise Refused("the question is not a question: `--question` is one sentence ending in a question mark")
     asked_by = getattr(a, "asked_by", None)
-    if asked_by and (not ACTOR.match(asked_by) or not asked_by.startswith("human:") or asked_by.lower() in PLACEHOLDER_ACTORS):
+    if asked_by and (not ACTOR.fullmatch(asked_by) or not asked_by.startswith("human:") or asked_by.lower() in PLACEHOLDER_ACTORS):
         raise Refused("`--asked-by` names the person who asked, as human:<id>")
     data = {"id": a.id, "question": a.question}
     request = getattr(a, "request", None)
@@ -1373,6 +1469,7 @@ def cmd_check_plan(study: Study, a) -> None:
         print("plan check:", x)
     if problems:
         raise Refused(f"{len(problems)} problem(s) in the analysis plan")
+    note_held_out(study, study.plan(), study.events())  # in a started study: what is held out goes on record, or a change is refused
     print("plan check: the analysis plan is complete")
 
 
@@ -1384,25 +1481,136 @@ def passed_names(passes=()) -> list:
     return sorted(n for n in names if not n.upper().startswith(("PYTHON", "SF_")))
 
 
+def given_names(passes=()) -> list:
+    """The names of the variables a command of a plan runs under: the fixed list the tool builds for every script
+    (tools/fence.py, `minimal_environment`) and the names its plan step lists. Nothing else of the caller's arrives."""
+    built = fence.minimal_environment(Path("/"), sys.executable, mark=("SF_INSIDE_A_STEP", "1"))
+    return sorted({*built, *(k for k in passes or () if k in os.environ and not k.upper().startswith(("PYTHON", "SF_")))})
+
+
 def not_set(step: dict) -> list:
     return [n for n in step.get("passes_environment") or [] if n not in os.environ]
 
 
+NOT_COPIED = ("study-log.jsonl", "scorecard.json", "curation-list.json")  # what a command of a plan is never shown
+NOT_COPIED_FOLDERS = ("notes", "verdicts", ".git", "__pycache__")
+RUNS = []  # how each command of this process ran, newest last: what the event of its test, rehearsal or opening records
+
+
+def how_it_ran(since: int = 0) -> dict:
+    """What the log records about how the commands of one step ran: whether the kernel fence was applied and
+    tried for each, what a command could read and write, and anything it left running."""
+    runs = RUNS[since:]
+    if not runs:
+        return {"commands": 0}
+    worst = fence.KERNEL if all(r["confined"] == fence.KERNEL for r in runs) else fence.SCRATCH_ONLY
+    return {"commands": len(runs), "confined": worst, "interpreter": runs[-1].get("interpreter"),
+            "fence": runs[-1].get("fence"), "processes_ended": sum(r.get("ended", 0) for r in runs),
+            "launcher_settings": runs[-1].get("settings") or {}}
+
+
 def run_argv(study: Study, plan: dict, argv: list, passes=()) -> int:
-    """Run one command of the plan, in the study directory. Its environment is built, not inherited: the short
-    list of names every command gets, every UV_ variable, the names its plan step lists under
-    `passes_environment`, and three settings of the tool's own, with the bytecode cache pointed at a new empty
-    folder (so a .pyc planted beside a locked source is never read). No PYTHON or SF_ variable of the caller's
-    arrives, and there is no input to read."""
-    cache = tempfile.mkdtemp(prefix="sf-no-bytecode-")
-    env = {k: os.environ[k] for k in passed_names(passes)}
-    env.update(PYTHONPYCACHEPREFIX=cache, PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
+    """Run one command of the plan the way a look is run (tools/fence.py): in a scratch copy of the study, with an
+    interpreter prepared beforehand, an environment the tool builds (a fixed short list and the names the plan
+    step lists under `passes_environment`), the kernel fence where the machine has one, and nothing left running
+    afterwards. The command can read its scratch copy, the folders of the files the lock binds and the system's
+    folders; it can write its scratch copy. It is never shown the study log, the notes or the verdicts, and it
+    cannot read the tools. What it wrote is brought back into the study afterwards, except a change to a file the
+    tool keeps, which fails the run. There is no input to read."""
     try:
-        return subprocess.run([study.expand(t, plan) for t in argv], cwd=study.d, env=env, stdin=subprocess.DEVNULL).returncode
-    except OSError:
+        launcher, script = launch(argv)
+        if launcher is None:
+            return 126
+        at = [str(w) for w in argv].index(script, 1)
+        scratch = fence.make_scratch("sf-step-")
+    except (ValueError, OSError):
+        return 127
+    work = scratch / "work" / "study"
+    try:
+        shutil.copytree(study.d, work, symlinks=True,
+                        ignore=lambda folder, names: [n for n in names if (Path(folder) == study.d and (n in NOT_COPIED or n in NOT_COPIED_FOLDERS))
+                                                      or n == "__pycache__"])
+        before = {}
+        for base, dirs, files in os.walk(work):
+            for name in files + [d for d in dirs if (Path(base) / d).is_symlink()]:
+                q = Path(base) / name
+                before[q.relative_to(work).as_posix()] = os.readlink(q) if q.is_symlink() else sha_file(q)
+        try:
+            ready = fence.prepare_interpreter([str(w) for w in argv[:at]], study.word(script, plan), scratch / "private", cwd=study.d)
+        except fence.Cannot as why:
+            print(f"this command was not run: {why}", file=sys.stderr)
+            return 127
+        words = [ready["python"], *[study.expand(t, plan, study_dir=work) for t in argv[at:]]]
+        read = list(ready["read"]) + [str(scratch / "private")]
+        for key in study.code_hashes(plan):  # what the lock binds is what the command may read: a script's folder, or one file
+            if key.startswith("("):
+                continue
+            f = study.word(key, plan)
+            if f.resolve().is_relative_to(study.d):
+                continue
+            read.append(str(f.resolve().parent if f.suffix in IMPORTABLE else f.resolve()))
+        env = fence.minimal_environment(scratch, ready["python"], {k: os.environ[k] for k in passes or () if k in os.environ
+                                                                    and not k.upper().startswith(("PYTHON", "SF_"))},
+                                        mark=("SF_INSIDE_A_STEP", study.d.name))
+        never = [str(p) for p in (study.log, TOOL) if not any(Path(p).resolve().is_relative_to(Path(r).resolve()) for r in read)]
+        try:
+            ran = fence.run_fenced(words, work, env, scratch, read, [str(scratch / s) for s in ("work", "tmp", "cache", "home")],
+                                   never_read=never, never_write=[str(study.d)], inherit=True)
+        except fence.Cannot as why:
+            print(f"this command was not run: {why}", file=sys.stderr)
+            return 127
+        code = ran["code"]
+        RUNS.append({"confined": ran["confined"], "fence": ran["fence"], "ended": ran["ended"], "interpreter": ready["how"],
+                     "settings": ready["settings"]})
+        if ran["not_run"]:
+            print("this command was not run: this machine has a kernel fence and it could not be put up or did not hold ("
+                  + str(ran["fence"].get("why_not")) + ")", file=sys.stderr)
+            return code or 120
+        if ran["left_alive"]:
+            print(f"this command left {ran['left_alive']} process(es) running that could not be ended; the run is a failure", file=sys.stderr)
+            code = code or 97
+        if ran["fence"].get("tools_changed"):
+            print("this command ran without a kernel fence, and what the tools run from changed while it ran ("
+                  + ", ".join(ran["fence"]["tools_changed"][:4]) + "); the run is a failure", file=sys.stderr)
+            code = code or 98
+        kept = []
+        after = set()
+        for base, dirs, files in os.walk(work):
+            dirs.sort()
+            for name in sorted(files) + [d for d in dirs if (Path(base) / d).is_symlink()]:
+                q = Path(base) / name
+                rel = q.relative_to(work).as_posix()
+                after.add(rel)
+                now = os.readlink(q) if q.is_symlink() else sha_file(q)
+                if before.get(rel) == now:
+                    continue
+                if rel in PROTECTED or rel.split("/")[0] in PROTECTED_FOLDERS + ACT_FOLDERS:
+                    kept.append(rel)
+                    continue
+                dest = study.d / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if dest.is_symlink() or dest.is_file():
+                    dest.unlink()
+                if q.is_symlink():
+                    os.symlink(now, dest)
+                else:
+                    shutil.copyfile(q, dest)
+        for rel in sorted(set(before) - after):  # what the command removed is removed, unless the tool keeps it
+            if rel in PROTECTED or rel.split("/")[0] in PROTECTED_FOLDERS + ACT_FOLDERS:
+                kept.append(rel)
+            else:
+                with contextlib.suppress(OSError):
+                    (study.d / rel).unlink()
+        if kept:
+            print("this command changed files the tool keeps (" + ", ".join(kept[:5]) + "); they were left as they stood and the "
+                  "run is a failure", file=sys.stderr)
+            code = code or 94
+        return code
+    except OSError as failure:
+        print(f"this command was not run: {failure}", file=sys.stderr)
         return 127
     finally:
-        shutil.rmtree(cache, ignore_errors=True)
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def runnable(study: Study, plan: dict, argv: list) -> bool:
@@ -1465,18 +1673,21 @@ def cmd_test(study: Study, a) -> None:
     plan = checked_plan(study)
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
+    note_held_out(study, plan, study.events())
     spec = plan["tests"][a.what]
     if not_set(spec):
         raise Refused(f"the plan passes {', '.join(not_set(spec))} to this test (`passes_environment`) and it is not set in "
                       "the environment; set it and run again. Nothing was run")
     passes = spec.get("passes_environment") or ()
     rp = clear_outputs(study, spec)  # a pass is a receipt this run wrote, never one left behind
+    mark = len(RUNS)
     code, problem, identity = run_step(study, plan, [spec["command"]], passes)
     if code == 0 and not rp.is_file():
         code = 96  # exit 0 and no receipt is not a pass
     study.append(a.by, "test.run", {"test": a.what, "exit": code, "plan_sha": study.plan_sha(),
                                     "code": identity, "receipt_sha": sha_file(rp), "problem": problem,
-                                    "env": env_stamp(study, plan), "env_names": sorted({*passed_names(passes), *SET_BY_THE_TOOL})})
+                                    "env": env_stamp(study, plan), "env_names": given_names(passes),
+                                    "held_out_sha": held_out_block(plan)["sha"], "ran_in": how_it_ran(mark)})
     name = TEST_NAMES.get(a.what, a.what)
     print(f"{name}: {'pass' if code == 0 else 'FAIL'} (exit {code})" + (f"; {problem}" if problem else ""))
     if code != 0:
@@ -1514,11 +1725,13 @@ def cmd_rehearse(study: Study, a) -> None:
         raise Refused(f"no rehearsal `{a.id}` is in the plan")
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
+    note_held_out(study, plan, study.events())
     if not_set(reh):
         raise Refused(f"the plan passes {', '.join(not_set(reh))} to this rehearsal (`passes_environment`) and it is not set "
                       "in the environment; set it and run again. Nothing was run")
     passes = reh.get("passes_environment") or ()
     rp = clear_outputs(study, reh)
+    mark = len(RUNS)
     absent = [str(n) for n in reh.get("needs") or [] if not study.word(n, plan).is_file()]
     if absent:  # what the rehearsal needs is not there: nothing is run, and the attempt is logged as a failure
         code, problem, identity = 93, "the rehearsal needs these files and they do not exist: " + ", ".join(absent), study.code_hashes(plan)
@@ -1534,7 +1747,8 @@ def cmd_rehearse(study: Study, a) -> None:
     study.append(a.by, "rehearsal.run", {"id": a.id, "exit": code, "plan_sha": study.plan_sha(),
                                          "code": identity, "receipt_sha": sha_file(rp) if rp else None,
                                          "problem": problem, "env": env_stamp(study, plan),
-                                         "env_names": sorted({*passed_names(passes), *SET_BY_THE_TOOL})})
+                                         "env_names": given_names(passes),
+                                         "held_out_sha": held_out_block(plan)["sha"], "ran_in": how_it_ran(mark)})
     print(f"rehearsal {a.id}: {'pass' if code == 0 else 'FAIL'} (exit {code})" + (f"; {problem}" if problem else ""))
     if code != 0:
         raise Refused(f"rehearsal {a.id} did not pass")
@@ -1623,14 +1837,354 @@ def models_report(ev: list, definition: dict) -> dict:
     return out
 
 
+# ---- the held-out block, and every change to it ---------------------------------
+def held_out_block(plan: dict) -> dict:
+    """What a plan holds out, as one block with a checksum: the window, the subject, the withheld values, where the
+    data lands, and the same for each test on held-out data. This is what the per-call check and the reviewers go
+    by, so a change to it is an event of its own (`held-out-change`) and is shown at the lock."""
+    held = (plan.get("data") or {}).get("held_out") or {}
+    block = {"window": held.get("window"), "pair": held.get("pair"), "path": held.get("path"),
+             "withheld_values": held.get("withheld_values"),
+             "tests": {t: {k: spec[k] for k in ("data", "window", "pair") if isinstance(spec, dict) and spec.get(k) is not None}
+                       for t, spec in sorted((plan.get("tests") or {}).items()) if t in HELD_OUT_TESTS}}
+    text = json.dumps(block, sort_keys=True, default=str)
+    return {"block": json.loads(text), "sha": sha_text(text)}
+
+
+def held_out_paths(study: Study, block: dict) -> list:
+    rels = [block.get("path")] + [t.get("data") for t in (block.get("tests") or {}).values()]
+    return sorted({str((study.d / r).resolve()) for r in rels if isinstance(r, str) and r})
+
+
+def held_out_record(study: Study) -> Path:
+    """Beside the studies, like the record of what has been opened: every held-out block a study has declared,
+    from the first time a tool saw it. A path once declared stays on it, whatever the plan says later."""
+    return study.d.parent / "held-out.jsonl"
+
+
+def held_out_lines(study: Study) -> list:
+    out, f = [], held_out_record(study)
+    if f.is_file():
+        for ln in f.read_text().splitlines():
+            with contextlib.suppress(ValueError):
+                e = json.loads(ln)
+                if isinstance(e, dict) and e.get("dir") == study.d.name:
+                    out.append(e)
+    return out
+
+
+def _record_held_out(study: Study, block: dict, why: str) -> None:
+    line = {"dir": study.d.name, "sha": block["sha"], "block": block["block"], "paths": held_out_paths(study, block["block"]),
+            "at": now(), "why": why}
+    with held_out_record(study).open("a") as f:
+        f.write(json.dumps(line, sort_keys=True) + "\n")
+
+
+def note_held_out(study: Study, plan: dict, ev: list) -> None:
+    """Record the plan's held-out block the first time a tool sees it in a started study, and from then on refuse to
+    go on while the block differs from the one on record and no `held-out.changed` event accounts for it."""
+    if not study.log.exists():
+        return  # a template, or a folder nothing was started in: nothing is recorded beside it
+    now_, lines = held_out_block(plan), held_out_lines(study)
+    if not lines:
+        _record_held_out(study, now_, "first seen")
+    elif lines[-1]["sha"] != now_["sha"]:
+        if any(e["kind"] == "held-out.changed" and e["data"]["to_sha"] == now_["sha"] and e["data"]["from_sha"] == lines[-1]["sha"] for e in ev):
+            _record_held_out(study, now_, "changed, on the record")
+        else:
+            was, is_ = lines[-1]["block"], now_["block"]
+            what = [f"{k}: was {json.dumps(was.get(k))}, is {json.dumps(is_.get(k))}" for k in sorted(set(was) | set(is_)) if was.get(k) != is_.get(k)]
+            raise Refused("the plan's held-out block is not the one on record for this study (" + "; ".join(what)[:500] + "). What is "
+                          "held out is not changed by editing the plan alone: the coordinating step records the change, with its "
+                          "reason, by `sf.py held-out-change --study ... --by ... --reason ...`, and the lock shows every such "
+                          "change. Nothing was run")
+
+
+def held_out_history(study: Study, ev: list, plan: dict | None = None) -> list:
+    """Every state of the held-out block this study's log knows, in order, in plain words: the first one a test or a
+    rehearsal ran under, each recorded change with who recorded it and why, and any change the log shows without a
+    record of it (a test that ran under another block than the one before it)."""
+    out, last = [], None
+    for e in ev:
+        d = e["data"]
+        if e["kind"] == "held-out.changed":
+            out.append({"at_event": e["seq"], "what": "changed, on the record", "by": e["actor"], "reason": d.get("reason"),
+                        "from": d.get("from"), "to": d.get("to"), "sha": d["to_sha"]})
+            last = d["to_sha"]
+        elif e["kind"] in ("test.run", "rehearsal.run", "lock.requested") and d.get("held_out_sha"):
+            if last is None:
+                out.append({"at_event": e["seq"], "what": "first recorded in the log", "by": e["actor"], "sha": d["held_out_sha"]})
+            elif d["held_out_sha"] != last:
+                out.append({"at_event": e["seq"], "what": "CHANGED WITH NO RECORD OF THE CHANGE", "by": e["actor"], "sha": d["held_out_sha"]})
+            last = d["held_out_sha"]
+    if plan is not None:
+        now_ = held_out_block(plan)
+        if last is not None and now_["sha"] != last:
+            out.append({"at_event": None, "what": "CHANGED WITH NO RECORD OF THE CHANGE (the plan on disk)", "by": None, "sha": now_["sha"]})
+    return out
+
+
+def cmd_held_out_change(study: Study, a) -> None:
+    """The coordinating step records that what is held out has changed, and why. The plan on disk already carries
+    the new block (a person edits the plan; the per-call check refuses the analysis role that edit)."""
+    plan = checked_plan(study)
+    ev = study.events()
+    if a.by.casefold() in ran_tests(ev):
+        raise Refused(f"{a.by} ran this study's tests or rehearsals; a change to what is held out is recorded by the coordinating "
+                      "step or a person, not by whoever builds the method")
+    if not str(a.reason or "").strip():
+        raise Refused("`--reason` says why what is held out changed; the lock shows it")
+    if any(e["kind"] == "opening.started" for e in ev):
+        raise Refused("held-out data has been opened in this study; what is held out is not changed afterwards")
+    now_, lines = held_out_block(plan), held_out_lines(study)
+    if not lines:
+        _record_held_out(study, now_, "first seen")
+        print("the held-out block is now on record for this study; nothing had been recorded before, so nothing changed")
+        return
+    if lines[-1]["sha"] == now_["sha"]:
+        raise Refused("the plan's held-out block is the one on record: nothing changed")
+    study.append(a.by, "held-out.changed", {"from_sha": lines[-1]["sha"], "to_sha": now_["sha"], "from": lines[-1]["block"],
+                                            "to": now_["block"], "reason": a.reason})
+    _record_held_out(study, now_, "changed, on the record")
+    print(f"held-out block changed, on the record (was sha256 {lines[-1]['sha'][:12]}, is {now_['sha'][:12]}); the lock will show it. "
+          "Tests and rehearsals that passed under the old block still stand in the log; the lock needs them on the plan as it is now")
+
+
+# ---- the two acts by people: a request, then a merged pull request ------------------
+PRACTICE = "practice"            # the act was typed at a command line: for trying things out, the examples and the self-tests
+PULL_REQUEST = "pull-request"    # the act was a pull request approved and merged on a protected branch
+PRACTICE_WORDS = ("PRACTICE LOCK: this study was locked from a command line, not by an approved pull request. It is a practice "
+                  "run and cannot close as a signed finding.")
+ROUTES = ("in a real study the {act} is a pull request: `sf.py request-{act}` writes the request into the study, a person approves "
+          "and merges it on the protected branch, and the merge is recorded with `sf.py {act} --record-merge` (the workflow in "
+          "factory/harnesses/github does that). To try the tools out, `sf.py {act} --local-practice --by human:<id> --evidence URL` "
+          "records it from the command line; a study whose {act} was typed says so everywhere and never closes as a signed finding")
+
+
+def acts_declared(factory: Path) -> dict:
+    """The two acts as the definition declares them (factory.yaml, procedure.acts_by_people)."""
+    acts = definition_of(Path(factory))["procedure"].get("acts_by_people")
+    return acts if isinstance(acts, dict) else {}
+
+
+def route_of(event: dict | None) -> str | None:
+    """How a lock or a signature in the log was made: `practice`, `pull-request`, or None when there is none. An
+    event from before the routes had names was typed at a command line, which is what practice means."""
+    if not event:
+        return None
+    return event["data"].get("route") or PRACTICE
+
+
+def is_act_by_people(e: dict) -> bool:
+    """Is a lock, a signature or a void in the log recorded the way an act by people is? Typed: a person's name and
+    an https link. From a merge: the platform as the actor, the merge commit, and at least one person who approved."""
+    d = e["data"]
+    if d.get("route") == PULL_REQUEST:
+        merge = d.get("merge") or {}
+        return bool(PLATFORM_ACTOR.fullmatch(e["actor"]) and re.fullmatch(r"[0-9a-f]{40,64}", str(merge.get("commit")))
+                    and (merge.get("people") or {}).get("approved"))
+    return e["actor"].startswith("human:") and evidence_ok(d.get("evidence"))
+
+
+def repo_of(study: Study) -> Path | None:
+    top = git("-C", str(study.d), "rev-parse", "--show-toplevel")
+    return Path(top.stdout.strip()).resolve() if top and top.returncode == 0 and top.stdout.strip() else None
+
+
+def manifest_now(study: Study, plan: dict, ev: list, factory: Path, act: str) -> dict:
+    """What a request binds, worked out from the files as they stand: every checksum the act would bind. Two
+    manifests are the same exactly when nothing bound has changed."""
+    request = request_of(ev)
+    definition = definition_stamp(Path(factory))
+    out = {"schema": "science-factory/act-request/v1", "act": act, "study": study.d.name,
+           "plan_sha": study.plan_sha(), "code": study.code_hashes(plan),
+           "request": {"file": request["file"], "sha": sha_file(study.d / request["file"])} if request else None,
+           "definition": {k: definition[k] for k in ("sha256", "files", "version", "models", "skills")},
+           "held_out": held_out_block(plan), "uv_environments": study.uv_environments() if uses_uv(plan) else {}}
+    if act == "lock":
+        out["receipts"] = {t: sha_file(study.path(plan["tests"][t]["receipt"])) for t in FREE_TESTS}
+        out["receipts"].update({f"rehearsal:{r['id']}": sha_file(study.path(r["receipt"])) for r in plan.get("rehearsals") or [] if r.get("receipt")})
+    else:
+        att = attached_finding(ev)
+        out["finding"] = {"file": att["data"]["file"], "sha": sha_file(study.d / att["data"]["file"])} if att else None
+        out["verdicts"] = {e["data"]["file"]: sha_file(study.d / e["data"]["file"]) for e in ev if e["kind"] == "review.verdict"}
+        out["decision"] = None  # filled in by the request
+    return out
+
+
+def manifest_difference(asked: dict, now_: dict) -> list:
+    """In plain words, what differs between the manifest a request carries and the files as they stand."""
+    out = []
+    for key in sorted(set(asked) | set(now_)):
+        a_, b_ = asked.get(key), now_.get(key)
+        if a_ == b_ or key in ("log_head", "prepared", "decision"):
+            continue
+        if key == "code" and isinstance(a_, dict) and isinstance(b_, dict):
+            out += ["a bound file: " + d for d in code_difference(a_, b_)] or ["the study tool itself"]
+        elif key == "definition" and isinstance(a_, dict) and isinstance(b_, dict):
+            out.append(f"the factory's definition (the request binds version {a_.get('version')}, sha256 {str(a_.get('sha256'))[:16]}; "
+                       f"here it is version {b_.get('version')}, sha256 {str(b_.get('sha256'))[:16]})")
+        elif isinstance(a_, dict) and isinstance(b_, dict):
+            out += [f"{key}: {k}" for k in sorted(set(a_) | set(b_)) if a_.get(k) != b_.get(k)]
+        else:
+            out.append({"plan_sha": "the analysis plan"}.get(key, key))
+    return out
+
+
+def definition_change_summary(locked: dict, factory: Path) -> list:
+    """What changed in the definition since a lock, in the validator's own words when the locked tree can still be
+    found in this repository's history; otherwise what the lock's own stamp shows (a model, a skill)."""
+    root = Path(factory).resolve()
+    stamp = definition_stamp(root, {"data": {"definition": locked}})
+    lines = [r for r in stamp["remarks"] if "not the definition the lock recorded" not in r and "not this factory's own" not in r]
+    tool = definition_tool()
+    top = git("-C", str(root), "rev-parse", "--show-toplevel")
+    if top is not None and top.returncode == 0 and top.stdout.strip():
+        repo = Path(top.stdout.strip()).resolve()
+        rel = root.relative_to(repo).as_posix() if root.is_relative_to(repo) else None
+        log = git("-C", str(repo), "log", "--format=%H", "-n", "100", "--", rel) if rel else None
+        for commit in (log.stdout.split() if log is not None and log.returncode == 0 else []):
+            tmp = Path(tempfile.mkdtemp(prefix="sf-definition-"))
+            try:
+                done = subprocess.run(["git", "-C", str(repo), "archive", "--format=tar", commit, rel], capture_output=True,
+                                      env={k: os.environ[k] for k in passed_names()}, stdin=subprocess.DEVNULL)
+                if done.returncode != 0:
+                    continue
+                import io
+                import tarfile
+                with tarfile.open(fileobj=io.BytesIO(done.stdout)) as tar:
+                    tar.extractall(tmp, filter="data")
+                if tool.tree_checksum(tmp / rel)["sha256"] == locked.get("sha256"):
+                    return [str(x) for x in tool.summary(tmp / rel, root)][:40] + lines
+            except (OSError, ValueError, KeyError):
+                continue
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+    return lines + ["the locked tree was not found in this repository's history, so the validator's summary of the change could not "
+                    "be made here: run `tools/check_factory.py --summary OLD NEW` on the two trees"]
+
+
+def merge_problems(study: Study, merge: dict, request_folder: str) -> tuple:
+    """Check, with git alone and offline, the merge a lock or a signature cites: (problems, the manifest in the
+    merge commit or None). The commit exists; it lies on the named branch's own line of commits (its first parents)
+    and is reachable from HEAD; it brought the request in or changed it; and the request's manifest is in it.
+    git cannot say who approved the pull request, or that the branch is protected: the platform's record says
+    that, and the recording job copies it into the log."""
+    repo = repo_of(study)
+    if repo is None:
+        return ["the study is not in a git work tree, so the merge the act cites cannot be checked"], None
+    commit, branch = str(merge.get("commit") or ""), str(merge.get("branch") or "")
+    if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+        return ["the act cites no merge commit by its full checksum"], None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,200}", branch) or ".." in branch:
+        return ["the act names no protected branch"], None
+    g = lambda *words: git("-C", str(repo), *words)  # noqa: E731
+    ok = lambda done: done is not None and done.returncode == 0  # noqa: E731
+    if not ok(g("cat-file", "-e", commit + "^{commit}")):
+        return [f"the merge commit {commit[:12]} is not in this repository"], None
+    refs = [r for r in (f"refs/remotes/origin/{branch}", f"refs/heads/{branch}") if ok(g("rev-parse", "--verify", "--quiet", r))]
+    if not refs:
+        return [f"this clone has no branch `{branch}` (neither origin/{branch} nor a local one): fetch it"], None
+    ref = refs[0]
+    problems = []
+    line = g("rev-list", "--first-parent", ref)
+    if not ok(line) or commit not in line.stdout.split():
+        problems.append(f"the commit {commit[:12]} is not on the branch `{branch}` ({ref}): it is not one of that branch's own "
+                        "commits (its first parents), so it was not merged there")
+    if not ok(g("merge-base", "--is-ancestor", commit, "HEAD")):
+        problems.append(f"the merge commit {commit[:12]} is not reachable from what is checked out here (HEAD): check out the "
+                        f"protected branch `{branch}` at or after the merge")
+    rel = (study.d / request_folder / "manifest.json").relative_to(repo).as_posix()
+    shown = g("show", f"{commit}:{rel}")
+    if not ok(shown):
+        problems.append(f"the merge commit {commit[:12]} does not hold the request's manifest ({rel})")
+        return problems, None
+    before = g("show", f"{commit}^1:{rel}")
+    if ok(before) and before.stdout == shown.stdout:
+        problems.append(f"the commit {commit[:12]} did not bring this request in or change it: the manifest was already there, "
+                        "unchanged, in the commit before it on the branch")
+    try:
+        manifest = json.loads(shown.stdout)
+    except ValueError:
+        problems.append("the manifest in the merge commit is not JSON")
+        return problems, None
+    return problems, {"manifest": manifest, "sha": sha_text(shown.stdout), "ref": ref}
+
+
+def platform_record(path, act: str, declared: dict) -> dict:
+    """The platform's record of a merged pull request, read from the file the recording job wrote, and held to
+    what the definition declares for the act: the pull request was merged, and enough people other than its author
+    approved it. The names in it are the platform's, never typed at this tool."""
+    try:
+        rec = json.loads(Path(path).read_text())
+    except (OSError, ValueError, TypeError):
+        raise Refused("`--platform-record` names the JSON file the recording job wrote from the platform's own record of the "
+                      "merged pull request (factory/harnesses/github/record_act.py writes it); it could not be read")
+    need = int((declared.get(act) or {}).get("approvals") or 1)
+    author, approved = str(rec.get("author") or ""), [str(x.get("login") if isinstance(x, dict) else x) for x in rec.get("approved") or []]
+    others = sorted({x for x in approved if x and x.casefold() != author.casefold()})
+    if not rec.get("merged") or not re.fullmatch(r"[0-9a-f]{40,64}", str(rec.get("merge_commit") or "")):
+        raise Refused("the platform's record does not say the pull request was merged, with its merge commit")
+    if not author or len(others) < need:
+        raise Refused(f"the platform's record shows {len(others)} approving review(s) by people other than the pull request's author "
+                      f"({author or 'unknown'}); the definition asks for {need} for the {act}. An author's own approval does not count")
+    if not PLATFORM_ACTOR.fullmatch("platform:" + str(rec.get("platform") or "")):
+        raise Refused("the platform's record does not name the platform (such as github)")
+    return {"platform": rec["platform"], "pull_request": rec.get("pull_request"), "url": rec.get("url"), "merge_commit": rec["merge_commit"],
+            "branch": rec.get("base"), "merged_at": rec.get("merged_at"),
+            "people": {"author": author, "approved": others, "merged_by": rec.get("merged_by")},
+            "reviews": [x for x in rec.get("approved") or [] if isinstance(x, dict)]}
+
+
+def practice_declared(factory: Path, act: str) -> bool:
+    """Does the definition itself declare this act as practice (`route: practice`)? Then every study made under it
+    is a practice study, with no flag needed, and says so."""
+    try:
+        return (acts_declared(factory).get(act) or {}).get("route") == PRACTICE
+    except Refused:
+        return False
+
+
+def refuse_typed_act(a, act: str, factory: Path) -> None:
+    if not (getattr(a, "local_practice", False) or Study.default_route == PRACTICE or practice_declared(factory, act)):
+        raise Refused(ROUTES.format(act=act))
+
+
+def write_request(study: Study, folder: str, summary: list, manifest: dict) -> tuple:
+    out = study.d / folder
+    out.mkdir(exist_ok=True)
+    text = "\n".join(summary).rstrip() + "\n"
+    (out / "EVIDENCE.md").write_text(text)
+    manifest = {**manifest, "evidence_summary_sha": sha_text(text)}
+    body = json.dumps(manifest, indent=1, sort_keys=True, default=str) + "\n"
+    (out / "manifest.json").write_text(body)
+    return sha_text(body), sha_text(text)
+
+
+def from_the_request(study: Study, ev: list) -> dict:
+    """What a request that came from an exploration's hand-over says about the exploring and its review."""
+    req = request_of(ev)
+    try:
+        text = (study.d / req["file"]).read_text() if req else ""
+    except OSError:
+        text = ""
+    pick = lambda label: next((ln.split("**", 2)[2].strip() for ln in text.splitlines() if ln.startswith(f"**{label}.**")), None)  # noqa: E731
+    return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "text": text}
+
+
 def conds_text(conds: list) -> str:
     return " and ".join(f"{c['field']} {c['op']} {c['value']}" for c in conds)
 
 
-def cmd_lock(study: Study, a) -> None:
-    need_person(a, "the lock")
+def lock_evidence(study: Study, a) -> dict:
+    """Everything the lock checks and everything it shows, without recording anything: the tests and rehearsals
+    passed on exactly this plan and code, every rule met its criteria, and what the people locking are shown, as
+    lines. The same for a lock typed at a command line and for a request that goes into a pull request."""
     plan = checked_plan(study)
     ev = study.events()
+    note_held_out(study, plan, ev)
+    lines = []
+    say = lines.append
     code, psha = study.code_hashes(plan), study.plan_sha()
     if None in code.values():
         raise Refused("a file the plan names is missing: " + ", ".join(k for k, v in code.items() if v is None))
@@ -1689,67 +2243,231 @@ def cmd_lock(study: Study, a) -> None:
         request = {"file": request["file"], "sha": on_disk, "changed_since_the_start": on_disk != request["sha"]}
     definition = definition_stamp(Path(getattr(a, "factory", None) or FACTORY))
     after_opening = any(e["kind"] == "opening.started" for e in ev)
-    print("What this lock binds.")
-    print(f"the analysis plan: sha256 {psha}" + (" (a system trial: its held-out data is made at its own opening, and it can "
+    say("What this lock binds.")
+    say(f"the analysis plan: sha256 {psha}" + (" (a system trial: its held-out data is made at its own opening, and it can "
                                                   "close only as a system trial, never as a finding)" if is_system_trial(plan) else ""))
     started = next((e for e in ev if e["kind"] == "study.started"), None)
     if started and " ".join(str(started["data"].get("question")).split()) != " ".join(str(plan["question"]).split()):
-        print("the question, as the study was started: " + str(started["data"].get("question")))
-        print("the question, as the plan has it:       " + " ".join(str(plan["question"]).split()))
+        say("the question, as the study was started: " + str(started["data"].get("question")))
+        say("the question, as the plan has it:       " + " ".join(str(plan["question"]).split()))
     if request:
-        print(f"the request: {request['file']}, sha256 {request['sha']}"
+        say(f"the request: {request['file']}, sha256 {request['sha']}"
               + (" (CHANGED since the study started; this is the text that is bound)" if request["changed_since_the_start"] else ""))
     else:
-        print("the request: none was given when the study started, so none is bound")
-    print(f"the factory's definition: {definition['path']}, version {definition['version']}, {definition['files']} files, sha256 {definition['sha256']}")
-    print("the models its agents declare (declared, not proven): "
+        say("the request: none was given when the study started, so none is bound")
+    say(f"the factory's definition: {definition['path']}, version {definition['version']}, {definition['files']} files, sha256 {definition['sha256']}")
+    say("the models its agents declare (declared, not proven): "
           + "; ".join(f"{a} {m['model']} under {m['harness']}" for a, m in sorted(definition["models"].items())))
-    print("the skills its agents use, each by sha256: " + "; ".join(f"{s} {h[:16]}" for s, h in sorted(definition["skills"].items())))
+    say("the skills its agents use, each by sha256: " + "; ".join(f"{s} {h[:16]}" for s, h in sorted(definition["skills"].items())))
     recorded = models_recorded(ev)
-    print("the models this study's log records so far: "
+    say("the models this study's log records so far: "
           + ("; ".join(f"{a} {', '.join(m)}" for a, m in sorted(recorded.items())) or "no agent has written to it"))
     for remark in models_report(ev, definition)["remarks"]:
-        print(f"  {remark}")
+        say(f"  {remark}")
     for remark in definition["remarks"]:
-        print(f"  {remark}")
-    print(f"bound files ({len(code)}), each by sha256; a change to any of them, or anything new that Python could import "
+        say(f"  {remark}")
+    say(f"bound files ({len(code)}), each by sha256; a change to any of them, or anything new that Python could import "
           "beside them, blocks the opening:")
     for k in sorted(code):
-        print(f"  {code[k][:16]}  {k}")
-    print("commands, each with the script it runs, which is bound above:")
+        say(f"  {code[k][:16]}  {k}")
+    say("commands, each with the script it runs, which is bound above:")
     for where, argv in Study.commands(plan):
         launcher, script = launch(argv)
-        print(f"  {where}: {launcher} runs {script} (sha256 {code[script][:16]})")
+        say(f"  {where}: {launcher} runs {script} (sha256 {code[script][:16]})")
     for reh in plan.get("rehearsals") or []:
         for n in reh.get("needs") or []:
-            print(f"  rehearsals[{reh['id']}].needs: {n} (sha256 {code[str(n)][:16]})")
+            say(f"  rehearsals[{reh['id']}].needs: {n} (sha256 {code[str(n)][:16]})")
     environments = study.uv_environments() if uses_uv(plan) else {}
     for key, sha in environments.items():
-        print(f"  a virtual environment folder that `uv run` would use: {key} (its pyvenv.cfg and interpreter, sha256 {sha[:16]}; "
+        say(f"  a virtual environment folder that `uv run` would use: {key} (its pyvenv.cfg and interpreter, sha256 {sha[:16]}; "
               "what else is inside it is not bound)")
     asked = {w: s.get("passes_environment") for w, s in [(f"tests.{k}", v) for k, v in plan["tests"].items()]
              + [(f"rehearsals[{r['id']}]", r) for r in plan.get("rehearsals") or []] if s.get("passes_environment")}
-    print("environment a command is given: a short list the tool keeps, every UV_ variable"
+    say("environment a command is given: a short list the tool keeps, every UV_ variable"
           + ("".join(f"; {w} is also given {', '.join(v)}" for w, v in asked.items()) if asked else "; no step asks for more"))
-    print("decision rules, each criterion with the rate the known-answer tests measured beside it:")
+    say("decision rules, each criterion with the rate the known-answer tests measured beside it:")
     for line in shown:
-        print(line)
-    print("openings allowed: " + ", ".join(f"{t} {study.allowed(plan, t)}" for t in HELD_OUT_TESTS if t in plan["tests"]))
-    e = study.append(a.by, "lock.recorded", {"plan_sha": psha, "code": code, "receipts": bound, "evidence": a.evidence,
-                                             "after_opening": after_opening, "request": request,
-                                             "uv_environments": environments,
-                                             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
-                                             "models_recorded": recorded})
-    print("The lock: plan and code locked" + (" (AFTER an opening: this study is now exploratory)" if after_opening else ""))
+        say(line)
+    say("openings allowed: " + ", ".join(f"{t} {study.allowed(plan, t)}" for t in HELD_OUT_TESTS if t in plan["tests"]))
+    history = held_out_history(study, ev, plan)
+    say("what is held out, and every change to it this study's log knows:")
+    say("  now: " + json.dumps(held_out_block(plan)["block"], sort_keys=True))
+    for h in history:
+        say(f"  {h['what']}" + (f" at event {h['at_event']}" if h["at_event"] is not None else "") + (f" by {h['by']}" if h.get("by") else "")
+            + (f": {h['reason']}" if h.get("reason") else "") + f" (sha256 {h['sha'][:16]})")
+    if not history:
+        say("  no test or rehearsal has recorded it yet")
     on_record = record_lines(study)
     spec = plan["tests"]["held-out"]
     key, window = subject_key(plan, spec), window_for(plan, spec)
     same = [ln for ln in on_record if ln.get("key") == key and windows_overlap(ln.get("window"), window)]
-    print(f"openings already on record beside this study: {len(on_record)}, of which {len(same)} are of this subject and an "
-          "overlapping window" + ("" if not on_record else " (read them: the record matches subjects by text, a person "
-                                                         "matches them by meaning)"))
+    say(f"openings already on record beside this study: {len(on_record)}, of which {len(same)} are of this subject and an "
+        "overlapping window" + ("" if not on_record else " (read them: the record matches subjects by text, a person "
+                                                       "matches them by meaning)"))
     for ln in same + [ln for ln in on_record if ln not in same][-20:]:
-        print(("  SAME SUBJECT  " if ln in same else "  ") + json.dumps(ln, sort_keys=True))
+        say(("  SAME SUBJECT  " if ln in same else "  ") + json.dumps(ln, sort_keys=True))
+    data = {"plan_sha": psha, "code": code, "receipts": bound, "after_opening": after_opening, "request": request,
+            "uv_environments": environments,
+            "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
+            "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history}
+    return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown}
+
+
+def lock_summary(study: Study, got: dict, factory: Path) -> list:
+    """The evidence summary of a lock request, in plain words: what a person reads before approving the pull
+    request. Generated from the study as it stands; the manifest beside it holds the checksums."""
+    plan, ev, d = got["plan"], got["ev"], got["data"]
+    started = next((e for e in ev if e["kind"] == "study.started"), None)
+    runs = [e for e in ev if e["kind"] in ("test.run", "rehearsal.run")]
+    notes = stage_of(study, factory)["open_notes"]
+    came = from_the_request(study, ev)
+    reviews = [e for e in ev if e["kind"] == "review.verdict"]
+    out = [f"# Lock request: {plan['study']}", "",
+           "This is a request to lock a study's plan and code together, so that its held-out data can be opened once. Nothing is "
+           "locked by this file. The lock is a person's act: approving and merging the pull request that carries this folder, on the "
+           "protected branch. Read what follows before you approve; the checksums are in `manifest.json` beside this file, and the "
+           "required check on the pull request says whether they still match the files.", "",
+           "## The question", "", str(plan["question"]).strip(), ""]
+    if started and " ".join(str(started["data"].get("question")).split()) != " ".join(str(plan["question"]).split()):
+        out += ["As the study was started, the question read: " + str(started["data"].get("question")), ""]
+    out += ["## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
+    out += ["## What is held out, and every change to it", "", "    " + json.dumps(d["held_out"]["block"], sort_keys=True), ""]
+    out += [f"- {h['what']}" + (f", at log event {h['at_event']}" if h["at_event"] is not None else "") + (f", by {h['by']}" if h.get("by") else "")
+            + (f": {h['reason']}" if h.get("reason") else "") for h in d["held_out_history"]] or ["- nothing recorded yet"]
+    out += ["", "## The known-answer tests, working data and rehearsals", "",
+            f"{len(runs)} attempts are in the log, of which {sum(1 for e in runs if e['data']['exit'] != 0)} failed. The receipts this lock would bind:", ""]
+    out += [f"- {name}: sha256 {sha}" for name, sha in sorted(d["receipts"].items())]
+    fenced = sorted({(e["data"].get("ran_in") or {}).get("confined") or "not recorded" for e in runs})
+    out += ["", "How the plan's commands ran (the kernel fence, or a scratch folder only): " + ", ".join(fenced) + ".", "",
+            "## The code this lock would bind", "", f"{len(d['code'])} files, each by sha256:", ""]
+    out += [f"- `{k}` {v[:16] if v else 'MISSING'}" for k, v in sorted(d["code"].items())]
+    out += ["", "## The factory that made this study", "",
+            f"Definition version {d['definition']['version']}, {d['definition']['files']} files, sha256 {d['definition']['sha256']}. "
+            "If the definition changes after the lock, the opening is refused until the study is locked again.", "",
+            "Models its agents declare (declared, not proven): " + "; ".join(f"{k} {m['model']} under {m['harness']}" for k, m in sorted(d["definition"]["models"].items())) + ".",
+            "Models the log records so far: " + ("; ".join(f"{k} {', '.join(m)}" for k, m in sorted(d["models_recorded"].items())) or "no agent has written to it") + ".", "",
+            "## Open notes", ""] + ([f"- {n}" for n in notes] or ["None."])
+    out += ["", "## The exploration that led here, and what its reviewer said", ""]
+    if came["how_it_was_found"] or came["review_of_the_lead"]:
+        out += ["How many things were tried: " + str(came["how_it_was_found"] or "the request does not say."), "",
+                "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), ""]
+    else:
+        out += ["This study's request carries no hand-over from an exploration, so nothing is known here about what was tried before it.", ""]
+    out += ["Reviews recorded in this study's own log so far: " + ("; ".join(f"{e['actor']} {e['data']['verdict']}" for e in reviews) or "none (a study is reviewed after its opening)") + ".", "",
+            "## Everything the lock prints", "", "```"] + got["lines"] + ["```"]
+    return out
+
+
+def cmd_request_lock(study: Study, a) -> None:
+    """Write the lock request into the study: the evidence summary a person reads and the manifest of what the
+    lock would bind. An assistant may do this; it records nothing as locked."""
+    factory = Path(getattr(a, "factory", None) or FACTORY)
+    study.check_actor(a.by)
+    got = lock_evidence(study, a)
+    manifest = manifest_now(study, got["plan"], got["ev"], factory, "lock")
+    head = got["ev"][-1]
+    manifest.update(log_head={"seq": head["seq"], "hash": head["hash"]}, prepared={"by": a.by, "at": now()},
+                    protected_branch=(acts_declared(factory).get("lock") or {}).get("protected_branch"),
+                    after_opening=got["data"]["after_opening"])
+    msha, ssha = write_request(study, "lock-request", lock_summary(study, got, factory), manifest)
+    study.append(a.by, "lock.requested", {"manifest_sha": msha, "summary_sha": ssha, "plan_sha": manifest["plan_sha"],
+                                          "held_out_sha": manifest["held_out"]["sha"]})
+    print(f"lock request written: {study.d.name}/lock-request/EVIDENCE.md and manifest.json (manifest sha256 {msha[:16]}). Nothing is "
+          "locked. Commit the study, open a pull request against the protected branch, and have it approved and merged by the "
+          "people the definition names; the merge is the lock")
+
+
+def cmd_check_request(study: Study, a) -> None:
+    """Does the request in the study still match the files it was made from? The pull request's required check."""
+    if a.act not in ("lock", "signature"):
+        raise Refused("`--act` is lock or signature")
+    problems = request_problems(study, a.act, Path(getattr(a, "factory", None) or FACTORY))
+    if problems:
+        raise Refused(f"the {a.act} request does not match the files as they stand: " + "; ".join(problems[:8])
+                      + f". Prepare it again (`sf.py request-{a.act}`), and have it approved as it then stands")
+    print(f"{a.act} request: the manifest matches the files as they stand")
+
+
+def cmd_lock(study: Study, a) -> None:
+    factory = Path(getattr(a, "factory", None) or FACTORY)
+    if getattr(a, "record_merge", None):
+        record_merged_act(study, a, "lock", factory)
+        return
+    need_person(a, "the lock")
+    refuse_typed_act(a, "lock", factory)
+    got = lock_evidence(study, a)
+    for line in got["lines"]:
+        print(line)
+    print("THIS IS A PRACTICE LOCK, typed at a command line: no pull request, no approval the platform recorded. The study says so "
+          "in its status, on its scorecard and in its finding, and it cannot close as a signed finding")
+    e = study.append(a.by, "lock.recorded", {**got["data"], "evidence": a.evidence, "route": PRACTICE})
+    print("The lock: plan and code locked (practice)" + (" (AFTER an opening: this study is now exploratory)" if got["data"]["after_opening"] else ""))
+    print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
+
+
+def request_problems(study: Study, act: str, factory: Path) -> list:
+    """Why a request in the study no longer matches the files it was made from, in plain words; empty when it does."""
+    folder = f"{act}-request"
+    try:
+        asked = json.loads((study.d / folder / "manifest.json").read_text())
+        text = (study.d / folder / "EVIDENCE.md").read_text()
+    except (OSError, ValueError):
+        return [f"the study holds no readable {folder}/manifest.json and EVIDENCE.md: run `sf.py request-{act}`"]
+    if asked.get("evidence_summary_sha") != sha_text(text):
+        return ["the evidence summary (EVIDENCE.md) is not the one the manifest names: it was edited after the request was prepared"]
+    plan = checked_plan(study)
+    here = manifest_now(study, plan, study.events(), factory, act)
+    return manifest_difference({k: v for k, v in asked.items() if k in here}, here)
+
+
+def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
+    """Record a lock or a signature whose act was a pull request merged on the protected branch. Run by the job
+    that follows the merge (factory/harnesses/github), under the platform's name; the people are the platform's
+    record, read from a file that job wrote, and nothing typed here names a person."""
+    if not PLATFORM_ACTOR.fullmatch(str(a.by)):
+        raise Refused(f"a merged {act} is recorded under the platform's name (`--by platform:github`), by the job that follows the merge; "
+                      "the people who approved are read from the platform's record, not typed")
+    declared = acts_declared(factory)
+    rec = platform_record(a.platform_record, act, declared)
+    if rec["merge_commit"] != a.record_merge:
+        raise Refused("`--record-merge` names another commit than the platform's record of the merged pull request")
+    branch = (declared.get(act) or {}).get("protected_branch")
+    if rec["branch"] != branch:
+        raise Refused(f"the pull request was merged into `{rec['branch']}`; the definition names `{branch}` as the protected branch for the {act}")
+    folder = f"{act}-request"
+    problems, found = merge_problems(study, {"commit": rec["merge_commit"], "branch": branch}, folder)
+    if problems:
+        raise Refused(f"the merge does not check out, so no {act} is recorded: " + "; ".join(problems))
+    manifest = found["manifest"]
+    stale = [str(r.get("login")) for r in rec["reviews"] if r.get("commit_id") and r.get("manifest_sha_at_review") not in (None, found["sha"])]
+    if stale:
+        raise Refused("the request changed after the approval of " + ", ".join(stale) + ": an approval covers the request as it stood "
+                      "when it was given")
+    differs = request_problems(study, act, factory)
+    if differs:
+        raise Refused(f"the files here are not the ones the merged request binds, so no {act} is recorded: " + "; ".join(differs[:8]))
+    ev = study.events()
+    merge = {"commit": rec["merge_commit"], "branch": branch, "ref_checked": found["ref"], "pull_request": rec["pull_request"],
+             "url": rec["url"], "platform": rec["platform"], "merged_at": rec["merged_at"], "people": rec["people"],
+             "manifest_sha": found["sha"], "approvals_asked": int((declared.get(act) or {}).get("approvals") or 1)}
+    if act == "lock":
+        got = lock_evidence(study, a)
+        e = study.append(a.by, "lock.recorded", {**got["data"], "evidence": rec["url"], "route": PULL_REQUEST, "merge": merge})
+        print(f"The lock: recorded from the merge {rec['merge_commit'][:12]} of pull request {rec['pull_request']} on `{branch}`, approved by "
+              + ", ".join(rec["people"]["approved"]) + " (the platform's record)")
+    else:
+        rep = check_log(study, getattr(a, "anchor", None) or manifest.get("anchors"))
+        att = attached_finding(ev)
+        decision = manifest.get("decision")
+        if decision not in ("signed", "declined"):
+            raise Refused("the merged signature request names no decision (signed or declined)")
+        if decision == "signed" and (rep["status"] != READY or not att):
+            raise Refused(f"only a study whose log check says it is ready is recorded as signed (this one is: {rep['status']})")
+        e = study.append(a.by, "signature.recorded", {"decision": decision, "evidence": rec["url"], "route": PULL_REQUEST, "merge": merge,
+                                                      "status_at_decision": rep["status"], "comment": getattr(a, "comment", None),
+                                                      "finding": {"file": att["data"]["file"], "sha": att["data"]["sha"]} if att else None})
+        print(f"the steward's signature: {decision}, recorded from the merge {rec['merge_commit'][:12]} of pull request {rec['pull_request']} "
+              f"on `{branch}`, approved by " + ", ".join(rec["people"]["approved"]) + " (the platform's record)")
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
 
 
@@ -1785,7 +2503,7 @@ def judge(plan: dict, receipt_path: Path, data_path: Path, exit_code) -> tuple:
     return outcomes, (str(declined)[:300] if declined else None)
 
 
-def start_opening(study: Study, plan: dict, test: str, by: str, f) -> tuple:
+def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None, practice_ok: bool = False) -> tuple:
     """Everything that decides whether an opening may start, and the start itself, done while the study log is
     held: two openings asked for at the same moment cannot both pass the allowance."""
     spec = plan["tests"][test]
@@ -1796,6 +2514,27 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f) -> tuple:
     lock = locks[-1]
     if study.plan_sha() != lock["data"]["plan_sha"]:
         raise Refused("the analysis plan changed after the lock")
+    locked_definition = lock["data"].get("definition") or {}
+    here = definition_tool().tree_checksum(Path(factory or FACTORY).resolve())
+    if locked_definition.get("sha256") and locked_definition["sha256"] != here["sha256"]:
+        raise Refused("the factory's definition changed after the lock (the lock binds the tree's checksum "
+                      f"{locked_definition['sha256'][:16]}, version {locked_definition.get('version')}; the tree here is {here['sha256'][:16]}). "
+                      "What changed: " + " | ".join(definition_change_summary(locked_definition, Path(factory or FACTORY)))[:1500]
+                      + ". Nothing was opened and the opening is not used up. The remedy is a new lock on the definition as it is now")
+    if route_of(lock) == PULL_REQUEST:
+        problems, found = merge_problems(study, lock["data"].get("merge") or {}, "lock-request")
+        if not problems and found["sha"] != (lock["data"].get("merge") or {}).get("manifest_sha"):
+            problems.append("the manifest in the merge commit is not the one the lock recorded")
+        if not problems:
+            problems += ["what the merged request binds is not what is here: " + d for d in request_problems(study, "lock", Path(factory or FACTORY))]
+        if problems:
+            raise Refused("the lock's merge does not check out: " + "; ".join(problems[:6]) + ". Nothing was opened and the opening "
+                          "is not used up")
+    elif not (Study.default_route == PRACTICE or practice_ok or practice_declared(Path(factory or FACTORY), "lock")):
+        raise Refused("this study's lock was typed at a command line (a practice lock), and a real study's held-out data is opened only "
+                      "after a lock that was a pull request merged on the protected branch. " + ROUTES.format(act="lock")
+                      + ". To open the held-out data of a practice study, say so: `open-held-out --local-practice`. Nothing was "
+                      "opened and the opening is not used up")
     code = study.code_hashes(plan)
     if code != lock["data"]["code"]:
         diff = code_difference(lock["data"]["code"], code) or ["the study tool itself (run the opening with the tool that was locked)"]
@@ -1843,6 +2582,7 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f) -> tuple:
     before = study.listing()
     started_ev = study._append(f, by, "opening.started", {
         "test": test, "n": n, "plan_sha": study.plan_sha(), "code": code, "env": env_stamp(study, plan),
+        "lock_route": route_of(lock), "definition_sha": here["sha256"],
         "lock_committed": bool(in_git), "earlier_openings_of_this_window": prior, "listing": sorted(before),
         "uv_environments": study.uv_environments() if uses_uv(plan) else {}})
     key = subject_key(plan, spec)
@@ -1867,9 +2607,11 @@ def cmd_open_held_out(study: Study, a) -> None:
     if not spec:
         raise Refused(f"{a.test} is not in the plan")
     with study.held() as f:
-        n, prior, before, data_rel = start_opening(study, plan, a.test, a.by, f)
+        n, prior, before, data_rel = start_opening(study, plan, a.test, a.by, f, getattr(a, "factory", None),
+                                                   bool(getattr(a, "local_practice", False)))
     data, rp = study.path(data_rel), study.path(spec["receipt"])
     passes = spec.get("passes_environment") or ()
+    mark = len(RUNS)
     fetch_exit = run_argv(study, plan, spec["fetch"], passes)
     after = study.listing()
     fetch_wrote = sorted(k for k, v in after.items() if before.get(k) != v)  # new or changed during the fetch
@@ -1879,7 +2621,7 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "receipt": spec["receipt"], "receipt_sha": sha_file(rp), "data": data_rel,
                                                 "data_sha": sha_file(data), "fetch_wrote": fetch_wrote,
                                                 "wrote": {w: sha_file(study.path(w)) for w in spec.get("writes") or []},
-                                                "env_names": sorted({*passed_names(passes), *SET_BY_THE_TOOL}),
+                                                "env_names": given_names(passes), "ran_in": how_it_ran(mark),
                                                 "outcomes": outcomes, "method_declined": declined})
     print(f"held-out data opened ({a.test}, opening {n}); outcomes {outcomes}" + (f" (the method declined: {declined})" if declined else ""))
     if prior:
@@ -2027,6 +2769,9 @@ def cmd_attach(study: Study, a) -> None:
     f = Path(a.file).resolve()
     if not f.is_file():
         raise Refused("the finding file does not exist")
+    if route_of(study.last("lock.recorded")) == PRACTICE and PRACTICE_WORDS not in " ".join(f.read_text(errors="replace").split()):
+        raise Refused("this study's lock was typed at a command line (a practice lock), and its finding has to say so. Put this "
+                      f"sentence in the finding, word for word, and attach again: {PRACTICE_WORDS}")
     (study.d / "finding").mkdir(exist_ok=True)
     dest = study.d / "finding" / f"{len(ev):03d}-{f.name}"
     shutil.copyfile(f, dest)
@@ -2049,7 +2794,10 @@ def cmd_signature(study: Study, a) -> None:
     the steward's verified event on the finding, made with the
     organization's signing tool; this records that it happened, or that the
     steward declined, on which finding (its path and checksum), and where."""
-    need_person(a, "the steward's signature")
+    factory = Path(getattr(a, "factory", None) or FACTORY)
+    if getattr(a, "record_merge", None):
+        record_merged_act(study, a, "signature", factory)
+        return
     if a.decision not in ("signed", "declined"):
         raise Refused("the decision is signed or declined")
     ev = study.events()
@@ -2058,6 +2806,23 @@ def cmd_signature(study: Study, a) -> None:
                       "with an early exit such as `close --outcome withdrawn --cite ...`")
     rep = check_log(study, a.anchor)
     att = attached_finding(ev)
+    if getattr(a, "prepare", False):
+        study.check_actor(a.by)
+        if a.decision == "signed" and (rep["status"] != READY or not att):
+            raise Refused(f"a request to sign is prepared only for a study whose log check says it is ready (this one is: {rep['status']})")
+        plan = checked_plan(study)
+        manifest = manifest_now(study, plan, ev, factory, "signature")
+        manifest.update(decision=a.decision, log_head={"seq": ev[-1]["seq"], "hash": ev[-1]["hash"]}, prepared={"by": a.by, "at": now()},
+                        status_at_request=rep["status"], anchors=list(a.anchor or []),
+                        protected_branch=(acts_declared(factory).get("signature") or {}).get("protected_branch"))
+        msha, ssha = write_request(study, "signature-request", signature_summary(study, plan, ev, rep, att, a.decision), manifest)
+        study.append(a.by, "signature.requested", {"manifest_sha": msha, "summary_sha": ssha, "decision": a.decision})
+        print(f"signature request written: {study.d.name}/signature-request/EVIDENCE.md and manifest.json (manifest sha256 {msha[:16]}). "
+              "Nothing is signed. The steward's approval and merge of the pull request that carries it, on the protected branch, is "
+              "the signature")
+        return
+    need_person(a, "the steward's signature")
+    refuse_typed_act(a, "signature", factory)
     if a.decision == "signed":
         if rep["status"] != READY:
             raise Refused(f"only a study whose log check says it is ready is recorded as signed (this one is: {rep['status']})")
@@ -2066,10 +2831,54 @@ def cmd_signature(study: Study, a) -> None:
         if sha_file(study.d / att["data"]["file"]) != att["data"]["sha"]:
             raise Refused(f"the finding on disk ({att['data']['file']}) is not the one that was attached; the signature names "
                           "a finding by its checksum, so restore the attached text")
-    study.append(a.by, "signature.recorded", {"decision": a.decision, "evidence": a.evidence,
+    study.append(a.by, "signature.recorded", {"decision": a.decision, "evidence": a.evidence, "route": PRACTICE,
                                               "status_at_decision": rep["status"], "comment": a.comment,
                                               "finding": {"file": att["data"]["file"], "sha": att["data"]["sha"]} if att else None})
-    print(f"the steward's signature: {a.decision}" + (f" (finding {att['data']['file']}, sha256 {att['data']['sha'][:12]})" if att else ""))
+    print(f"the steward's signature: {a.decision} (practice: typed at a command line)"
+          + (f" (finding {att['data']['file']}, sha256 {att['data']['sha'][:12]})" if att else ""))
+
+
+def cmd_request_signature(study: Study, a) -> None:
+    """Write the signature request into the study: the finding, the review, the outcome under the locked rules and
+    what merging the pull request would sign. An assistant may do this; it records nothing as signed."""
+    a.prepare = True
+    cmd_signature(study, a)
+
+
+def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decision: str) -> list:
+    """The evidence summary of a signature request, in plain words: the finding, the verdict of the review, the
+    outcome the locked rules gave, and what merging the pull request would sign."""
+    lock = [e for e in ev if e["kind"] == "lock.recorded"][-1]
+    out = [f"# Signature request: {plan['study']}", "",
+           f"This is a request for the steward's decision on a finding: **{decision}**. Nothing is signed by this file. The signature "
+           "is the steward's act: approving and merging the pull request that carries this folder, on the protected branch. The "
+           "checksums are in `manifest.json` beside this file, and the required check on the pull request says whether they still "
+           "match the files.", "",
+           "## The question", "", str(plan["question"]).strip(), "",
+           "## What the opening showed", "", f"The log check says: {rep['status']}.", ""]
+    out += [f"- {t}: " + ", ".join(f"{rule} {o}" for rule, o in sorted(o_.items())) for t, o_ in sorted(rep["outcomes"].items())] or ["- no opening has a result"]
+    out += ["", "## The finding that would be signed", ""]
+    if att:
+        try:
+            body = (study.d / att["data"]["file"]).read_text()
+        except OSError:
+            body = "(the attached finding could not be read)"
+        out += [f"`{att['data']['file']}`, sha256 {att['data']['sha']}:", "", "```", *body.rstrip().splitlines(), "```"]
+    else:
+        out += ["No finding is attached."]
+    out += ["", "## The review", ""]
+    out += [f"- {who}: {verdict}" for who, verdict in sorted(rep["reviews"].items())] or ["- no review assistant that did none of the study has recorded a verdict on this finding"]
+    for e in ev:
+        if e["kind"] == "review.verdict" and att and e["seq"] > att["seq"]:
+            with contextlib.suppress(OSError):
+                out += ["", f"The verdict file of {e['actor']} (`{e['data']['file']}`):", "", "```", *(study.d / e["data"]["file"]).read_text().rstrip().splitlines(), "```"]
+    out += ["", "## The lock this rests on", "",
+            (f"A pull request merged on `{lock['data']['merge']['branch']}` (merge {lock['data']['merge']['commit'][:12]}), approved by "
+             + ", ".join(lock["data"]["merge"]["people"]["approved"]) + " by the platform's record." if route_of(lock) == PULL_REQUEST
+             else "A PRACTICE LOCK, typed at a command line. This study cannot close as a signed finding."), "",
+            "## Problems and remarks from the log check", ""]
+    out += [f"- problem: {p}" for p in rep["problems"]] + [f"- {r}" for r in rep["purity"] + rep["remarks"]] or ["None."]
+    return out
 
 
 def cmd_resolve(study: Study, a) -> None:
@@ -2088,7 +2897,8 @@ def cmd_resolve(study: Study, a) -> None:
 
 EARLY_EXITS = ("answered-by-existing-knowledge", "outside-a-signed-domain", "dead-end", "withdrawn")
 LATE_EXITS = {"finding-signed": "signed", "negative-result-signed": "signed", "system-trial-accepted": "signed",
-              "not-signed": "declined", "system-trial-declined": "declined"}
+              "not-signed": "declined", "system-trial-declined": "declined", "practice-ended": None}
+SIGNED_FINDINGS = ("finding-signed", "negative-result-signed")  # never the close of a study whose lock or signature was typed
 TRIAL_EXITS = ("system-trial-accepted", "system-trial-declined")
 
 
@@ -2101,8 +2911,8 @@ def cmd_close(study: Study, a) -> None:
             raise Refused("an early exit cites what resolved the question (--cite: the finding, domain or dead-end)")
     elif a.outcome in LATE_EXITS:
         sig = study.last("signature.recorded")
-        if not sig or sig["data"]["decision"] != LATE_EXITS[a.outcome]:
-            raise Refused(f"`{a.outcome}` needs the steward's signature recorded as {LATE_EXITS[a.outcome]}")
+        if not sig or (LATE_EXITS[a.outcome] and sig["data"]["decision"] != LATE_EXITS[a.outcome]):
+            raise Refused(f"`{a.outcome}` needs the steward's signature recorded" + (f" as {LATE_EXITS[a.outcome]}" if LATE_EXITS[a.outcome] else ""))
         try:
             trial = is_system_trial(study.plan())
         except Refused:
@@ -2110,7 +2920,23 @@ def cmd_close(study: Study, a) -> None:
         if trial is not None and trial != (a.outcome in TRIAL_EXITS):
             raise Refused(f"`{a.outcome}` does not fit this study: a system trial closes as {' or '.join(TRIAL_EXITS)}, and "
                           "only a system trial does")
-        if LATE_EXITS[a.outcome] == "signed":  # a signed outcome is recorded only on a study that still checks out
+        if a.outcome in SIGNED_FINDINGS:  # a signed finding rests on two acts by people that were merged pull requests
+            lock = study.last("lock.recorded")
+            typed = [what for what, e in (("lock", lock), ("signature", sig)) if route_of(e) != PULL_REQUEST]
+            if typed:
+                raise Refused(f"`{a.outcome}` is refused: this study's {' and '.join(typed)} was typed at a command line (practice), "
+                              "and a study closes as a signed finding only when its lock and its signature were pull requests merged "
+                              "on the protected branch. A practice study closes as `practice-ended`")
+            for what, e, folder in (("lock", lock, "lock-request"), ("signature", sig, "signature-request")):
+                problems, _found = merge_problems(study, e["data"].get("merge") or {}, folder)
+                if problems:
+                    raise Refused(f"`{a.outcome}` is refused: the {what}'s merge does not check out: " + "; ".join(problems[:4]))
+        if a.outcome == "practice-ended":
+            if not any(route_of(e) == PRACTICE for e in ev if e["kind"] in ACTS_BY_PEOPLE):
+                raise Refused("`practice-ended` closes a practice study (one whose lock or signature was typed at a command line); "
+                              "this one's were merged pull requests")
+        # a signed outcome, in practice too, is recorded only on a study that still checks out
+        if LATE_EXITS[a.outcome] == "signed" or (a.outcome == "practice-ended" and sig["data"]["decision"] == "signed"):
             rep = check_log(study, getattr(a, "anchor", None))
             if rep["status"] != SIGNED:
                 raise Refused(f"`{a.outcome}` needs a study whose log check still says it is signed; this one says: "
@@ -2217,9 +3043,33 @@ def stage_of(study: Study, factory: Path) -> dict:
                 here["why"] = {n: why[n] for n in needs if n in why}
     if closed:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
-    return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "done": done, **(here or {"stage": "complete"}),
+    return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study),
+            "done": done, **(here or {"stage": "complete"}),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
+
+
+def acts_report(study: Study) -> dict:
+    """How this study's two acts by people were made, for `status`, the scorecard and anyone reading either: by a
+    pull request merged on the protected branch, with the people the platform recorded, or typed at a command
+    line, which is practice."""
+    out = {}
+    for name, kind in (("lock", "lock.recorded"), ("signature", "signature.recorded")):
+        e = study.last(kind)
+        if not e:
+            asked = study.last(f"{name}.requested")
+            out[name] = "requested, not made: the request waits for a pull request to be approved and merged" if asked else "not made"
+        elif route_of(e) == PULL_REQUEST:
+            m = e["data"]["merge"]
+            out[name] = {"route": PULL_REQUEST, "merge_commit": m["commit"], "branch": m["branch"], "pull_request": m.get("url") or m.get("pull_request"),
+                         "approved_by": m["people"]["approved"], "author": m["people"]["author"],
+                         "note": "the people are the platform's record, copied by the recording job; git alone shows the merge, not who approved"}
+        else:
+            out[name] = {"route": PRACTICE, "typed_by": e["actor"],
+                         "note": "PRACTICE: typed at a command line, with no approval the platform recorded. This study cannot close as a signed finding"}
+    if any(isinstance(v, dict) and v["route"] == PRACTICE for v in out.values()):
+        out["practice"] = True
+    return out
 
 
 def cmd_status(study: Study, a) -> None:
@@ -2311,8 +3161,16 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
         remarks.append("not in a git work tree: only posted fingerprints guard against a rewritten study log here")
     for e in ev:
         if e["kind"] in ("lock.recorded", "signature.recorded", "opening.voided"):
-            if not e["actor"].startswith("human:") or not evidence_ok(e["data"].get("evidence")):
+            if not is_act_by_people(e):
                 problems.append(f"{e['kind']} at event {e['seq']} was not recorded by a person with evidence")
+            elif e["data"].get("route") == PULL_REQUEST:
+                bad, found = merge_problems(study, e["data"]["merge"], "lock-request" if e["kind"] == "lock.recorded" else "signature-request")
+                if not bad and found["sha"] != e["data"]["merge"].get("manifest_sha"):
+                    bad = ["the manifest in the merge commit is not the one the log recorded"]
+                problems += [f"{e['kind']} at event {e['seq']}: {b}" for b in bad]
+            elif e["kind"] != "opening.voided":
+                remarks.append(f"{e['kind']} at event {e['seq']} was typed at a command line by {e['actor']} (practice): this study "
+                               "cannot close as a signed finding")
             if e["kind"] == "opening.voided":
                 remarks.append(f"{e['data']['test']} opening {e['data']['n']} was voided by {e['actor']}: {e['data'].get('reason')}")
     start = next((e for e in ev if e["kind"] == "study.started"), None)
@@ -2484,7 +3342,7 @@ def cmd_scorecard(study: Study, a) -> None:
         planned = None  # no readable plan: the scorecard says so and does not guess
     rep = check_log(study, a.anchor)
     status = rep["status"]
-    card = {"study": study.d.name, "status": status,
+    card = {"study": study.d.name, "status": status, "acts": acts_report(study),
             "definition": definition_stamp(Path(a.factory), study.last("lock.recorded")),
             "models": models_report(ev, definition_stamp(Path(a.factory), study.last("lock.recorded"))),
             "finished": status.startswith("confirmatory study") or status == EXPLORATORY,
@@ -2496,8 +3354,8 @@ def cmd_scorecard(study: Study, a) -> None:
                               for t in HELD_OUT_TESTS if planned is None or t in planned or openings_of(ev, t)[0]},
             "openings_allowed": {t: study.allowed(None, t) for t in planned} if planned is not None else None,
             "notes_raised": sum(1 for e in ev if e["kind"] == "note.raised"),
-            "acts_by_people": sum(1 for e in ev if e["actor"].startswith("human:")),
-            "acts_by_assistants": sum(1 for e in ev if not e["actor"].startswith("human:")),
+            "acts_by_people": sum(1 for e in ev if e["actor"].startswith(("human:", "platform:"))),
+            "acts_by_assistants": sum(1 for e in ev if e["actor"].startswith("agent:")),
             "checks": run_checks(study, Path(a.factory), a.anchor)}
     (study.d / "scorecard.json").write_text(json.dumps(card, indent=1))
     print(json.dumps(card, indent=1))
@@ -2542,7 +3400,7 @@ def run_checks(study: Study, factory: Path, posted: list | None = None) -> dict:
         "no-failed-opening": opened and all("run-failed" not in c["data"]["outcomes"].values() for c in finished),
         "lock-committed-before-opening": (rep["openings_without_a_committed_lock"] == 0) if started else None,
         "review-recorded": opened and bool(rep["reviews"]),
-        "acts-recorded-by-people": all(e["actor"].startswith("human:") for e in ev if e["kind"] in ACTS_BY_PEOPLE) and (
+        "acts-recorded-by-people": all(is_act_by_people(e) for e in ev if e["kind"] in ACTS_BY_PEOPLE) and (
             True if any(e["kind"] in ACTS_BY_PEOPLE for e in ev) else None),
         "notes-on-curation-list": (raised - {e["data"]["id"] for e in ev if e["kind"] == "note.resolved"}) <= listed,
     }
@@ -2735,6 +3593,355 @@ def _refusal(fn, *args) -> str:
     return ""
 
 
+def _selftest_fence_and_acts(tmp: Path, check) -> None:
+    """The second independent attack on the tools, made here against the study tool, and the two acts by people as
+    pull requests. Every study is in a throwaway folder; the only person's name typed is the placeholder."""
+    import copy
+    import time
+    person = "human:throwaway-placeholder"
+    kernel = bool(fence.landlock())
+    have_git = bool(shutil.which("git"))
+
+    def plan_with(change) -> dict:
+        plan = copy.deepcopy(PLAN)
+        change(plan)
+        return plan
+
+    def receipt(study: Study, name: str = "working-data") -> dict:
+        return json.loads((study.d / "receipts" / f"{name}.json").read_text())
+    probe = plan_with(lambda p: p["tests"]["working-data"].update(
+        command=["{python}", "{study}/probe.py", "{study}/receipts/working-data.json"]))
+    outside = tmp / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("held out\n")
+
+    # ---- a command of a plan is fenced like a look (finding N5, and N1 to N3 as they bear on the study tool)
+    study = _fresh(tmp, "f-fenced", plan=probe)
+    (study.d / "probe.py").write_text(f'''import json, os, sys
+tried = {{}}
+def attempt(name, fn):
+    try:
+        fn()
+        tried[name] = "done"
+    except Exception as e:
+        tried[name] = type(e).__name__
+attempt("read the study log", lambda: open({str(study.log)!r}).read())
+attempt("read the study tool", lambda: open({str(TOOL)!r}).read())
+attempt("read a file outside", lambda: open({str(outside / "secret.txt")!r}).read())
+attempt("read through a certificate variable", lambda: open(os.path.join(os.environ.get("SSL_CERT_DIR", "/nonexistent"), "secret.txt")).read())
+attempt("write into the real study", lambda: open({str(study.d / "planted.txt")!r}, "w").write("x"))
+attempt("write beside the study tool", lambda: open({str(TOOL.parent / "planted-by-a-step.py")!r}, "w").write("x"))
+attempt("write into the tool's own environment", lambda: open(os.path.join({str(fence.own_environment())!r}, "planted-by-a-step.pth"), "w").write("x"))
+json.dump({{"gain": {{"ci_low": 0.96, "ci_high": 1.04}}, "tried": tried, "cwd": os.getcwd(), "names": sorted(os.environ),
+           "log_in_my_copy": os.path.exists("study-log.jsonl")}}, open(sys.argv[1], "w"))
+''')
+    kept = {k: os.environ.get(k) for k in ("SSL_CERT_DIR", "UV_KNOB", "UV_ENV_FILE")}
+    os.environ.update(SSL_CERT_DIR=str(outside), UV_KNOB="5", UV_ENV_FILE=str(outside / "secret.txt"))
+    try:
+        cmd_test(study, A(what="working-data", by="agent:analysis"))
+    finally:
+        for k, v in kept.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    got, ran_in = receipt(study), study.last("test.run")["data"]["ran_in"]
+    stray = [p for p in (study.d / "planted.txt", TOOL.parent / "planted-by-a-step.py", fence.own_environment() / "planted-by-a-step.pth") if p.exists()]
+    for p in stray:
+        p.unlink()
+    check("a command of a plan runs in a scratch copy of the study that holds no study log, under a fixed environment: no UV_ "
+          "variable and no certificate setting of the caller's arrives",
+          got["cwd"] != str(study.d) and "sf-step-" in got["cwd"] and got["log_in_my_copy"] is False
+          and not {"SSL_CERT_DIR", "UV_KNOB", "UV_ENV_FILE"} & set(got["names"]) and "SF_INSIDE_A_STEP" in got["names"])
+    if kernel:
+        check("with the kernel fence, a command of a plan cannot read the study log, the study tool, a file outside, or what a "
+              "certificate variable of the caller's names, and cannot write into the real study, beside the tools or into the "
+              "tool's own environment",
+              set(got["tried"].values()) <= {"PermissionError", "FileNotFoundError"} and got["tried"]["read the study log"] == "PermissionError"
+              and got["tried"]["write into the tool's own environment"] == "PermissionError" and not stray)
+        check("the event of a test says the kernel fence was applied and tried, with what was tried and what the command could read",
+              ran_in["confined"] == fence.KERNEL and ran_in["fence"]["applied"] is True
+              and any("kept-out.txt" in x for x in ran_in["fence"]["tried_and_kept_out"])
+              and any(x.startswith("write ") for x in ran_in["fence"]["tried_and_kept_out"]) and isinstance(ran_in["fence"]["could_read"], list))
+    else:
+        check("without a kernel fence the event of a test says so, and says why", ran_in["confined"] == fence.SCRATCH_ONLY and ran_in["fence"]["why_not"])
+
+    # a fence that does not hold is a refusal, never a quiet fall-back (N2): here the canary is put inside what may be read
+    if kernel:
+        scratch = fence.make_scratch("sf-selftest-")
+        try:
+            (scratch / "work" / "run.py").write_text(f"open({str(tmp / 'ran-unfenced')!r}, 'w').write('x')\n")
+            env = fence.minimal_environment(scratch, sys.executable)
+            leaky = fence.run_fenced([sys.executable, "run.py"], scratch / "work", env, scratch, [*fence.interpreter_places(sys.executable), str(scratch)],
+                                     [str(scratch / "work"), str(tmp)])
+            check("on a machine with a kernel fence, a fence that does not keep its own canary out is a refusal: the script is not run, "
+                  "and the report says what leaked",
+                  leaky["not_run"] and leaky["confined"] == fence.SCRATCH_ONLY and "could read" in str(leaky["fence"]["why_not"])
+                  and not (tmp / "ran-unfenced").exists())
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+    try:
+        fence.run_fenced([sys.executable, "-c", "pass"], tmp, {}, tmp, [], [str(TOOL.parent.parent)])
+        refused = ""
+    except fence.Cannot as why:
+        refused = str(why)
+    check("a script is never given a place to write that holds what the tools run from", "holds what the tool itself runs from" in refused)
+
+    # the delayed job of N5: a step leaves a process behind that waits, then calls the lock under a person's name
+    late = plan_with(lambda p: p["tests"]["working-data"].update(
+        command=["{python}", "{study}/after.py", "{study}/receipts/working-data.json"]))
+    study = _fresh(tmp, "f-delayed", plan=late)
+    marker = tmp / "the-delayed-job-ran"
+    (study.d / "after.py").write_text(f'''import json, os, subprocess, sys
+json.dump({{"gain": {{"ci_low": 0.96, "ci_high": 1.04}}}}, open(sys.argv[1], "w"))
+env = {{k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "SF_"))}}
+job = "import time, subprocess, sys; time.sleep(2); open({str(marker)!r}, 'w').write('x'); " \\
+      "subprocess.run([sys.executable, {str(TOOL)!r}, 'lock', '--study', {str(study.d)!r}, '--by', '{person}', " \\
+      "'--evidence', 'https://example.org/pull/1', '--local-practice'])"
+subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, stdin=subprocess.DEVNULL,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+''')
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    ended = study.last("test.run")["data"]["ran_in"]["processes_ended"]
+    time.sleep(3.5)
+    if sys.platform.startswith("linux"):
+        check("a job a step leaves behind to call the lock later under a person's name is ended with the step: it never runs, "
+              "and no lock is in the log",
+              not marker.exists() and not study.last("lock.recorded") and ended >= 0)
+    # a step that calls the study tool directly, with its marks taken off: refused by its ancestry, with no kernel fence at all
+    scratch = fence.make_scratch("sf-selftest-")
+    try:
+        (scratch / "work" / "call.py").write_text(
+            "import os, subprocess, sys\n"
+            "env = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'SF_'))}\n"
+            f"r = subprocess.run([sys.executable, '-X', 'utf8', {str(TOOL)!r}, 'lock', '--study', {str(study.d)!r}, '--by', '{person}', "
+            "'--evidence', 'https://example.org/pull/1', '--local-practice'], env=env, capture_output=True, text=True)\n"
+            "print(r.returncode, r.stderr)\n")
+        called = fence.run_fenced([sys.executable, "call.py"], scratch / "work", fence.minimal_environment(scratch, sys.executable), scratch,
+                                  [], [str(scratch / "work")], kernel=False)
+        check("the study tool refuses the lock, and every other command, when a step of a plan is anywhere above it, even with the "
+              "marks taken out of the environment, an interpreter option with a value in front, and no kernel fence",
+              called["out"].startswith("2 ") and "started from inside a look or a step of a plan" in called["out"]
+              and "fence.py --inside" in called["out"] and not study.last("lock.recorded") and called["confined"] == fence.SCRATCH_ONLY)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    kept_mark = os.environ.pop("SF_INSIDE_A_STEP", None)
+    try:
+        os.environ["SF_INSIDE_A_STEP"] = "S"
+        check("the mark a step's environment carries is enough on its own to refuse", "SF_INSIDE_A_STEP" in _refusal(refuse_inside_a_look))
+    finally:
+        os.environ.pop("SF_INSIDE_A_STEP", None)
+        if kept_mark is not None:
+            os.environ["SF_INSIDE_A_STEP"] = kept_mark
+    # a step that tries to change what the tool keeps, in its own copy
+    meddle = plan_with(lambda p: p["tests"]["working-data"].update(command=["{python}", "{study}/meddle.py", "{study}/receipts/working-data.json"]))
+    study = _fresh(tmp, "f-meddle", plan=meddle)
+    (study.d / "meddle.py").write_text('import json, sys\njson.dump({"gain": {"ci_low": 0.96, "ci_high": 1.04}}, open(sys.argv[1], "w"))\n'
+                                       'open("analysis-plan.yaml", "a").write("\\n# widened\\n")\nopen("study-log.jsonl", "w").write("{}")\n')
+    plan_before = study.plan_sha()
+    refusal = _refusal(cmd_test, study, A(what="working-data", by="agent:analysis"))
+    check("a step that rewrites the analysis plan or writes a study log in its scratch copy changes neither: the run fails, and the "
+          "plan and the log are as they stood",
+          "did not pass" in refusal and study.plan_sha() == plan_before and not study.chain_problems()
+          and study.last("test.run")["data"]["exit"] == 94)
+
+    # ---- N14: a name with a line break after it is not a name
+    check("an actor with a line break after the name is refused, for --by and for --asked-by",
+          _refuses(Study.check_actor, "agent:a\n") and _refuses(Study.check_actor, person + "\n")
+          and _refuses(cmd_start, Study(tmp / "f-newline"), A(id="S", question="Is it so?", by="agent:coordinating", asked_by=person + "\n")))
+
+    # ---- N6: the held-out block is on record from the first time a tool sees it, and a change to it is an event
+    study = _fresh(tmp, "h-block")
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    first = held_out_block(study.plan())
+    check("the first time a tool sees a started study's plan, its held-out block goes on record beside the studies, with the paths it holds out",
+          [ln["sha"] for ln in held_out_lines(study)] == [first["sha"]]
+          and held_out_lines(study)[0]["paths"] == [str(study.d / "data" / "held-out.json")])
+    moved = study.plan_path.read_text().replace("data/held-out.json", "data/other.json")
+    study.plan_path.write_text(moved)
+    check("after that, a plan whose held-out block differs is refused by the plan check, the tests and the request for a lock, in words that say what changed",
+          "not the one on record" in _refusal(cmd_check_plan, study, A()) and "data/other.json" in _refusal(cmd_test, study, A(what="working-data", by="agent:analysis"))
+          and "not the one on record" in _refusal(cmd_request_lock, study, A(by="agent:coordinating")))
+    check("whoever ran the tests cannot record the change; it needs a reason",
+          "ran this study's tests" in _refusal(cmd_held_out_change, study, A(by="agent:analysis", reason="x"))
+          and "--reason" in _refusal(cmd_held_out_change, study, A(by="agent:coordinating", reason=" ")))
+    cmd_held_out_change(study, A(by="agent:coordinating", reason="the provider moved the file"))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    shown = "\n".join(lock_evidence(study, A(by=person))["lines"])
+    check("the coordinating step records the change, the tests run again, and what the lock shows lists the change with who and why",
+          "changed, on the record at event" in shown and "by agent:coordinating: the provider moved the file" in shown and "data/other.json" in shown)
+    held_out_record(study).unlink()
+    study.plan_path.write_text(study.plan_path.read_text().replace("data/other.json", "data/third.json"))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    shown = "\n".join(lock_evidence(study, A(by=person))["lines"])
+    check("with the record beside the studies deleted, a later change still shows at the lock, from the log: changed with no record of the change",
+          "CHANGED WITH NO RECORD OF THE CHANGE" in shown)
+    template = tmp / "h-template"
+    template.mkdir()
+    (template / "toy.py").write_text(TOY.replace("POWER", "0.9").replace("TESTED", "None"))
+    (template / "analysis-plan.yaml").write_text(yaml.safe_dump(plan_with(lambda p: p["data"]["held_out"].update(pair="t")), sort_keys=False))
+    cmd_check_plan(Study(template), A())
+    check("the plan check of a folder nothing was started in records nothing beside it", not (tmp / "held-out.jsonl").exists() or
+          not any(json.loads(ln).get("dir") == "h-template" for ln in (tmp / "held-out.jsonl").read_text().splitlines()))
+
+    # ---- the definition is bound by the lock, and a changed definition blocks the opening
+    definition = tmp / "factory-copy"
+    shutil.copytree(FACTORY, definition)
+    study = _fresh(tmp, "d-definition")
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    cmd_lock(study, A(by=person, evidence=URL, factory=str(definition), local_practice=True))
+    agent = definition / "agents" / "review" / "agent.md"
+    was = agent.read_text()
+    model = study.last("lock.recorded")["data"]["definition"]["models"]["review"]["model"]
+    agent.write_text(was.replace(f"model: {model}", "model: some-other-model-1"))
+    refusal = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
+    check("a definition changed between the lock and the opening blocks the opening, says what changed, uses no opening up, and names the remedy",
+          "the factory's definition changed after the lock" in refusal and "the agent `review` declared" in refusal and "some-other-model-1" in refusal
+          and "a new lock" in refusal and not study.last("opening.started"))
+    (definition / "skills" / "read-what-is-known" / "SKILL.md").write_text((definition / "skills" / "read-what-is-known" / "SKILL.md").read_text() + "\nA typo fixed.\n")
+    agent.write_text(was)
+    refusal = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
+    check("a one-line change to a skill blocks it too, and is named", "definition changed after the lock" in refusal and "read-what-is-known" in refusal)
+    cmd_lock(study, A(by=person, evidence=URL, factory=str(definition), local_practice=True))
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
+    check("locked again on the definition as it is now, the study opens", study.last("opening.finished") is not None)
+
+    # ---- practice: a typed lock is practice, by name, and says so everywhere
+    route = Study.default_route
+    Study.default_route = None  # as a command line has it: nothing is practice unless it says so
+    try:
+        study = _fresh(tmp, "p-practice")
+        cmd_test(study, A(what="known-answers", by="agent:analysis"))
+        cmd_test(study, A(what="working-data", by="agent:analysis"))
+        typed = _refusal(cmd_lock, study, A(by=person, evidence=URL))
+        check("a lock typed at a command line with no word of practice is refused, and the refusal names both routes",
+              "the lock is a pull request" in typed and "request-lock" in typed and "--local-practice" in typed and not study.last("lock.recorded"))
+        cmd_lock(study, A(by=person, evidence=URL, local_practice=True))
+        status = stage_of(study, FACTORY)
+        check("a practice lock is recorded as practice, and `status` says so in plain words",
+              study.last("lock.recorded")["data"]["route"] == PRACTICE and status["acts"]["practice"] is True
+              and "PRACTICE" in status["acts"]["lock"]["note"] and "cannot close as a signed finding" in status["acts"]["lock"]["note"])
+        check("the held-out data of a practice study is not opened unless the caller says practice too",
+              "practice lock" in _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating"))
+              and not study.last("opening.started"))
+        cmd_open_held_out(study, A(test="held-out", by="agent:coordinating", local_practice=True))
+        (tmp / "bare-finding.md").write_text("SUPPORTED, from the receipts\n")
+        (tmp / "practice-finding.md").write_text("SUPPORTED, from the receipts\n\n" + PRACTICE_WORDS + "\n")
+        check("the finding of a practice study is refused until it says, word for word, that the lock was practice",
+              "has to say so" in _refusal(cmd_attach, study, A(by="agent:analysis", file=str(tmp / "bare-finding.md"))))
+        cmd_attach(study, A(by="agent:analysis", file=str(tmp / "practice-finding.md")))
+        (tmp / "ok.md").write_text("APPROVE")
+        cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "ok.md")))
+        posted = _posted(study)
+        cmd_scorecard(study, A(factory=str(FACTORY), anchor=posted))
+        card = json.loads((study.d / "scorecard.json").read_text())
+        check("the scorecard of a practice study says practice", card["acts"]["practice"] is True and card["acts"]["lock"]["route"] == PRACTICE)
+        check("a signature typed with no word of practice is refused",
+              "the signature is a pull request" in _refusal(cmd_signature, study, A(by=person, evidence=URL, decision="signed", anchor=posted, comment=None)))
+        cmd_signature(study, A(by=person, evidence=URL, decision="signed", anchor=posted, comment=None, local_practice=True))
+        check("a practice study never closes as a signed finding; it closes as the practice study it is",
+              "typed at a command line" in _refusal(cmd_close, study, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted))
+              and "typed at a command line" in _refusal(cmd_close, study, A(by="agent:coordinating", outcome="negative-result-signed", cite=None, comment=None, anchor=posted)))
+        cmd_close(study, A(by="agent:coordinating", outcome="practice-ended", cite=None, comment=None, anchor=posted))
+        check("an actor `platform:<host>` writes nothing but a merged act", "records one thing only" in _refusal(
+            cmd_note, _fresh(tmp, "p-platform"), A(kind="method", about="a", text="b", evidence=None, by="platform:github")))
+
+        # ---- the lock as a pull request, checked with git alone
+        if have_git:
+            repo = tmp / "acts-repo"
+            (repo / "studies").mkdir(parents=True)
+            g = lambda *w: git("-C", str(repo), "-c", "user.name=selftest", "-c", "user.email=s@example.invalid", "-c", "commit.gpgsign=false", *w)  # noqa: E731
+            sha = lambda ref="HEAD": g("rev-parse", ref).stdout.strip()  # noqa: E731
+            g("init", "-q", "-b", "main")
+            (repo / "README.md").write_text("throwaway\n")
+            g("add", "-A"), g("commit", "-q", "-m", "start")
+            g("checkout", "-q", "-b", "lock/R1")
+            study = _fresh(repo / "studies", "R1", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+            cmd_test(study, A(what="known-answers", by="agent:analysis"))
+            cmd_test(study, A(what="working-data", by="agent:analysis"))
+            cmd_request_lock(study, A(by="agent:coordinating"))
+            summary = (study.d / "lock-request" / "EVIDENCE.md").read_text()
+            manifest = json.loads((study.d / "lock-request" / "manifest.json").read_text())
+            check("a lock request is an evidence summary in plain words and a manifest of checksums, and records nothing as locked",
+                  all(h in summary for h in ("## The question", "## What would count for and against", "## What is held out, and every change to it",
+                                             "## The known-answer tests", "## The code this lock would bind", "## The factory that made this study",
+                                             "## Open notes", "## The exploration that led here"))
+                  and manifest["plan_sha"] == study.plan_sha() and manifest["definition"]["sha256"] == definition_tool().tree_checksum(FACTORY)["sha256"]
+                  and manifest["code"] == study.code_hashes(study.plan()) and not study.last("lock.recorded")
+                  and study.last("lock.requested")["actor"] == "agent:coordinating")
+            check("with a request and no merge, there is no lock: the opening is refused", "no lock yet" in _refusal(
+                cmd_open_held_out, study, A(test="held-out", by="agent:coordinating")))
+            check("the request checks out against the files it was made from", not request_problems(study, "lock", FACTORY))
+            g("add", "-A"), g("commit", "-q", "-m", "lock request")
+            on_branch = sha()
+            rec = tmp / "platform-record.json"
+
+            def platform(commit: str, **more) -> A:
+                rec.write_text(json.dumps({"platform": "github", "pull_request": 7, "url": "https://github.example/o/r/pull/7", "author": "octo-author",
+                                           "merged": True, "merge_commit": commit, "base": "main", "merged_by": "octo-steward",
+                                           "approved": [{"login": "octo-steward", "commit_id": on_branch}], **more}))
+                return A(by="platform:github", record_merge=commit, platform_record=str(rec), evidence=None)
+            check("no merge: a commit that is not on the protected branch is not a lock",
+                  "is not on the branch `main`" in _refusal(cmd_lock, study, platform(on_branch)) and not study.last("lock.recorded"))
+            g("checkout", "-q", "-b", "elsewhere", "main")
+            g("merge", "-q", "--no-ff", "-m", "merged somewhere else", "lock/R1")
+            wrong = sha()
+            check("wrong branch: a merge of the request into another branch is not a lock, whatever the record is told",
+                  "is not on the branch `main`" in _refusal(cmd_lock, study, platform(wrong))
+                  and "merged into `elsewhere`" in _refusal(cmd_lock, study, platform(wrong, base="elsewhere")))
+            g("checkout", "-q", "main")
+            g("merge", "-q", "--no-ff", "-m", "Merge the lock request", "lock/R1")
+            merge = sha()
+            check("a merged request is recorded only under the platform's name, never under a typed person's",
+                  "under the platform's name" in _refusal(cmd_lock, study, A(by=person, record_merge=merge, platform_record=str(rec), evidence=URL)))
+            check("a merge its author alone approved is not a lock", "An author's own approval does not count" in _refusal(
+                cmd_lock, study, platform(merge, approved=[{"login": "octo-author", "commit_id": on_branch}])))
+            (study.d / "toy.py").write_text((study.d / "toy.py").read_text() + "\n# changed after the merge\n")
+            check("manifest changed after the merge: with a bound file edited, the merge is not recorded as a lock",
+                  "not the ones the merged request binds" in _refusal(cmd_lock, study, platform(merge)))
+            g("checkout", "-q", "--", "studies/R1/toy.py")
+            cmd_lock(study, platform(merge))
+            lock = study.last("lock.recorded")
+            check("the merge is the lock: recorded under the platform's name with the merge commit, the branch and the people the record names",
+                  lock["actor"] == "platform:github" and route_of(lock) == PULL_REQUEST and lock["data"]["merge"]["commit"] == merge
+                  and lock["data"]["merge"]["people"]["approved"] == ["octo-steward"] and stage_of(study, FACTORY)["acts"]["lock"]["route"] == PULL_REQUEST)
+            check("until the recorded lock is committed, nothing is opened", "the lock is not committed" in _refusal(
+                cmd_open_held_out, study, A(test="held-out", by="agent:coordinating")))
+            g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + merge)
+            (study.d / "toy.py").write_text((study.d / "toy.py").read_text() + "\n# changed after the lock\n")
+            check("manifest changed after the lock: the opening is refused and not used up",
+                  "what the merged request binds is not what is here: a bound file: {study}/toy.py" in _refusal(
+                      cmd_open_held_out, study, A(test="held-out", by="agent:coordinating"))
+                  and not study.last("opening.started"))
+            g("checkout", "-q", "--", "studies/R1/toy.py")
+            g("checkout", "-q", "--detach", f"{merge}^1")
+            g("checkout", "-q", "main", "--", "studies")  # the files of the locked study, with a history that does not hold the merge
+            away = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating"))
+            g("checkout", "-q", "-f", "main")
+            check("a checkout whose history does not hold the merge cannot open: the merge is not reachable from HEAD",
+                  "not reachable from what is checked out here" in away and not study.last("opening.started"))
+            # a practice lock presented as a real one: a typed event that claims the pull request route
+            forged = _fresh(repo / "studies", "R2")
+            cmd_test(forged, A(what="known-answers", by="agent:analysis"))
+            cmd_test(forged, A(what="working-data", by="agent:analysis"))
+            cmd_request_lock(forged, A(by="agent:coordinating"))
+            got = lock_evidence(forged, A(by=person))
+            forged.append(person, "lock.recorded", {**got["data"], "evidence": URL, "route": PULL_REQUEST,
+                                                    "merge": {"commit": merge, "branch": "main", "people": {"approved": ["somebody"], "author": "x"}}})
+            g("add", "-A"), g("commit", "-q", "-m", "a typed lock that claims a merge")
+            check("a practice lock presented as a real one is refused at the opening and fails the log check: the merge it cites did not "
+                  "bring its request in, and it was not recorded by the platform",
+                  "the lock's merge does not check out" in _refusal(cmd_open_held_out, forged, A(test="held-out", by="agent:coordinating"))
+                  and check_log(forged)["status"] == INVALID and not forged.last("opening.started"))
+            cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
+            check("a lock that is a merge on the protected branch, reachable from HEAD, with a manifest that matches, opens the held-out data",
+                  study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == PULL_REQUEST
+                  and check_log(study)["status"] != INVALID)
+    finally:
+        Study.default_route = route
+
+
 def selftest() -> int:
     import copy
     import importlib.util
@@ -2744,6 +3951,7 @@ def selftest() -> int:
     import time
     results = []
     Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
+    Study.default_route = PRACTICE  # the self-test types its locks and signatures: practice, in throwaway folders; the pull request route is tested by name
 
     def check(name: str, ok: bool) -> None:
         results.append((name, bool(ok)))
@@ -2752,7 +3960,7 @@ def selftest() -> int:
         tmp = Path(t).resolve()
         (tmp / "v.md").write_text("APPROVE")
         (tmp / "b.md").write_text("BLOCK")
-        (tmp / "finding.md").write_text("a finding drafted from receipts")
+        (tmp / "finding.md").write_text("a finding drafted from receipts\n\n" + PRACTICE_WORDS + "\n")
         approve = lambda who: A(by=who, verdict="approve", file=str(tmp / "v.md"))  # noqa: E731
         block = lambda who: A(by=who, verdict="block", file=str(tmp / "b.md"))  # noqa: E731
         finding = lambda who="agent:analysis": A(by=who, file=str(tmp / "finding.md"))  # noqa: E731
@@ -2837,7 +4045,8 @@ def selftest() -> int:
               _refuses(cmd_signature, study, A(by="agent:analysis", evidence=URL, decision="signed", anchor=_posted(study), comment=None)))
         check("a signature recorded as signed without the posted log fingerprints is refused",
               _refuses(cmd_signature, study, A(by="human:tester", evidence=URL, decision="signed", anchor=None, comment=None)))
-        check("closing as signed before the steward's signature is refused", _refuses(cmd_close, study, close("finding-signed")))
+        check("closing as signed before the steward's signature is refused",
+              _refuses(cmd_close, study, close("finding-signed")) and _refuses(cmd_close, study, close("practice-ended")))
         cmd_review(study, block("agent:second-review"))
         cmd_review(study, approve("agent:third-review"))
         check("one review assistant's block is not cleared by another's approval",
@@ -2859,11 +4068,15 @@ def selftest() -> int:
         cmd_resolve(study, A(by="agent:curating", note="NOTE-001", disposition="linked", ref="https://example.invalid/pr/9", comment=None))
         check("a study that is not a system trial cannot close as one",
               "only a system trial does" in _refusal(cmd_close, study, close("system-trial-accepted")))
-        cmd_close(study, close("finding-signed"))
-        check("the study closes as a signed finding and takes nothing more",
+        check("a study whose lock and signature were typed at a command line cannot close as a signed finding, of either kind",
+              "typed at a command line" in _refusal(cmd_close, study, close("finding-signed"))
+              and "typed at a command line" in _refusal(cmd_close, study, close("negative-result-signed"))
+              and not any(e["kind"] == "study.closed" for e in study.events()))
+        cmd_close(study, close("practice-ended"))
+        check("the study closes, as the practice study it is, and takes nothing more",
               stage_of(study, FACTORY)["stage"] == "closed"
               and _refuses(cmd_note, study, A(kind="method", about="x", text="n", evidence=None, by="agent:x")))
-        check("and after the close the log check says so", check_log(study)["status"] == SIGNED + "; closed as finding-signed")
+        check("and after the close the log check says so", check_log(study)["status"] == SIGNED + "; closed as practice-ended")
         rep = check_log(study, change_log=tmp / "changes.jsonl")
         (tmp / "changes.jsonl").write_text((tmp / "changes.jsonl").read_text().replace('"predicted": "p"', '"predicted": "another"'))
         check("the log check, given the change log, catches a change record edited afterwards",
@@ -3378,7 +4591,7 @@ def selftest() -> int:
             del os.environ["SF_SYSTEM_TRIAL_SEAL"], os.environ["SF_ANYTHING"]
         check("a command the tool runs sees no SF_ variable and no PYTHON variable but the three the tool sets",
               json.loads((study.d / "receipts" / "working-data.json").read_text())["seen"]
-              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX"])
+              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX", "SF_INSIDE_A_STEP"])  # the last is the tool's own mark
         planted = {"EARTHDATA_TOKEN": "secret-value-123", "AWS_SECRET_ACCESS_KEY": "another-secret", "LD_LIBRARY_PATH": str(tmp / "planted-libs"),
                    "BASH_ENV": str(tmp / "planted.sh"), "UV_NO_PROGRESS": "1"}
         token_sha = hashlib.sha256(planted["EARTHDATA_TOKEN"].encode()).hexdigest()
@@ -3395,11 +4608,11 @@ def selftest() -> int:
         with_planted(cmd_test, study, A(what="working-data", by="agent:b"))
         got = json.loads((study.d / "receipts" / "working-data.json").read_text())
         recorded = study.last("test.run")["data"]["env_names"]
-        allowed = lambda n: n in PASSED_ON or n in SET_BY_THE_TOOL or n.startswith("UV_")  # noqa: E731
+        allowed = lambda n: n in given_names()  # noqa: E731  (the fixed list the tool builds: no UV_ variable is on it any longer)
         check("a command the tool runs is given a short list of variables and nothing else: a token, a secret key and a library path "
               "in the caller's environment do not arrive",
-              all(allowed(n) for n in got["names"]) and got["token_sha"] is None and "PATH" in got["names"] and "UV_NO_PROGRESS" in got["names"]
-              and not {"EARTHDATA_TOKEN", "AWS_SECRET_ACCESS_KEY", "LD_LIBRARY_PATH", "BASH_ENV"} & set(got["names"]))
+              all(allowed(n) for n in got["names"]) and got["token_sha"] is None and "PATH" in got["names"]
+              and not {"EARTHDATA_TOKEN", "AWS_SECRET_ACCESS_KEY", "LD_LIBRARY_PATH", "BASH_ENV", "UV_NO_PROGRESS"} & set(got["names"]))
         check("the event of a test records the names its command was given, and they are the names the command saw",
               set(recorded) - {"LC_CTYPE"} == set(got["names"]) - {"LC_CTYPE"} and "EARTHDATA_TOKEN" not in recorded)
         passing = with_plan(lambda p: p["tests"]["working-data"].update(
@@ -3463,7 +4676,8 @@ def selftest() -> int:
         beside = tmp / "tool-copy"
         beside.mkdir()
         shutil.copyfile(TOOL, beside / "sf.py")
-        for name in ("json", "argparse", "hashlib"):
+        shutil.copyfile(TOOL.parent / "fence.py", beside / "fence.py")  # the one file the study tool loads from beside it, by path
+        for name in ("json", "argparse", "hashlib", "ctypes", "signal"):
             (beside / f"{name}.py").write_text(f"open({str(beside / 'imported')!r}, 'a').write('{name} ')\nraise SystemExit(3)\n")
         ran = subprocess.run([sys.executable, str(beside / "sf.py"), "fingerprint", "--study", str(tmp / "nowhere")],
                              capture_output=True, text=True, env=dict(os.environ), stdin=subprocess.DEVNULL)
@@ -3747,7 +4961,7 @@ def selftest() -> int:
         cmd_signature(study, sign(study))
         (study.d / "receipts" / "held-out.json").write_text("{}")
         check("closing as signed runs the log check again: a receipt edited after the signature blocks the close",
-              "still says it is signed" in _refusal(cmd_close, study, close("finding-signed")))
+              "still says it is signed" in _refusal(cmd_close, study, close("practice-ended")))
 
         # the log is not taken at its word
         study = _fresh(tmp / "by-hand", "study")
@@ -4013,6 +5227,8 @@ def selftest() -> int:
           and not parses(["note", "--study", "s", "--b", "human:someone", "--kind", "missing", "--about", "a", "--text", "b"])
           and not parses(["note", "--study", "s", "--b=human:someone", "--kind", "missing", "--about", "a", "--text", "b"])
           and not parses(["status", "--stud", "s"]) and not parses(["lock", "--study", "s", "--by", "human:x", "--evid", URL]))
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_fence_and_acts(Path(t).resolve(), check)
     kept = os.environ.pop("SF_INSIDE_A_LOOK", None)
     try:
         outside = started_from_a_look() is None and not _refuses(refuse_inside_a_look)
@@ -4032,45 +5248,20 @@ def selftest() -> int:
 
 
 def started_from_a_look() -> str | None:
-    """What says this process was started from inside a look, or None. A look runs a script on working data and
-    nothing else: a script that shells out to a tool of this package would act under any name it liked, a
-    review of its own lead included. Two signs are read. The exploring tool marks the environment of every
-    look it runs (SF_INSIDE_A_LOOK), which a script can take off. It cannot take off its ancestry: every process
-    above this one is read, and one that is `explore.py look` or `explore.py recheck` is the look."""
-    if os.environ.get("SF_INSIDE_A_LOOK"):
-        return "the environment says so (SF_INSIDE_A_LOOK)"
-    pid = os.getppid()
-    for _ in range(64):
-        if pid <= 1:
-            return None
-        try:
-            words = [w.decode(errors="replace") for w in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")]
-            parent = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
-            try:  # no /proc here (not Linux): ask ps, which splits a command at its spaces
-                out = subprocess.run(["ps", "-o", "ppid=,args=", "-p", str(pid)], capture_output=True, text=True,
-                                     stdin=subprocess.DEVNULL).stdout.split()
-                parent, words = int(out[0]), out[1:]
-            except (OSError, ValueError, IndexError):
-                return None
-        # the tool itself, running: an interpreter, its own flags, then explore.py and the command. The launcher that
-        # started it (`uv run tools/explore.py look ...`) carries the same words and is not the tool
-        base = lambda w: w.replace("\\", "/").rpartition("/")[2]  # noqa: E731
-        if words and base(words[0]).lower().startswith("python"):
-            i = 1
-            while i < len(words) and words[i].startswith("-"):
-                i += 1
-            if i + 1 < len(words) and base(words[i]) == "explore.py" and words[i + 1] in ("look", "recheck"):
-                return f"process {pid} above this one is `explore.py {words[i + 1]}`"
-        pid = parent
-    return None
+    """What says this process was started by a script the tools ran (a look, or a command of a plan: a test, a
+    rehearsal step, a fetch, the opening's analysis), or None. Such a script runs on data and nothing else: one
+    that could call a tool of this package would act under any name it liked, a review of its own lead or a lock
+    included. The reading is in tools/fence.py (`started_under`): a mark in the environment, which a script can
+    take off, and the process's ancestry, which it cannot."""
+    return fence.started_under()
 
 
 def refuse_inside_a_look() -> None:
     why = started_from_a_look()
     if why:
-        raise Refused(f"this command was started from inside a look ({why}). A look runs a script on working data; it does "
-                      "not call the tools of this package. Each tool is called by a role, under its own name, outside any look")
+        raise Refused(f"this command was started from inside a look or a step of a plan ({why}). A script the tools run works on "
+                      "data; it does not call the tools of this package, and nothing it leaves running does either. Each tool is "
+                      "called by a role, under its own name, outside any look and any step")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -4103,12 +5294,24 @@ def build_parser() -> argparse.ArgumentParser:
     add("check-plan", cmd_check_plan)
     add("test", cmd_test, (["what"], {"help": "known-answers or working-data"}), by)
     add("rehearse", cmd_rehearse, (["--id"], {"required": True}), by)
-    add("lock", cmd_lock, by, evidence, proc)
-    add("open-held-out", cmd_open_held_out, held_out, by)
+    practice = (["--local-practice"], {"action": "store_true", "dest": "local_practice",
+                                       "help": "practice mode: record this act from the command line, with no pull request. For trying "
+                                               "the tools out; the study says so everywhere and never closes as a signed finding"})
+    record_merge = (["--record-merge"], {"default": None, "dest": "record_merge", "metavar": "COMMIT",
+                                         "help": "record this act from the merge commit of its approved pull request (run by the job that follows the merge)"})
+    platform_rec = (["--platform-record"], {"default": None, "dest": "platform_record",
+                                            "help": "the JSON file the recording job wrote from the platform's record of the pull request"})
+    add("request-lock", cmd_request_lock, by, proc)
+    add("request-signature", cmd_request_signature, by, proc, anchor, (["--decision"], {"required": True, "help": "signed or declined"}))
+    add("check-request", cmd_check_request, proc, (["--act"], {"required": True, "help": "lock or signature"}))
+    add("lock", cmd_lock, by, evidence, proc, practice, record_merge, platform_rec)
+    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice)
+    add("held-out-change", cmd_held_out_change, by, (["--reason"], {"required": True, "help": "why what is held out changed; the lock shows it"}))
     add("void-unread", cmd_void_unread, held_out, by, evidence, (["--reason"], {"required": True}))
     add("review", cmd_review, by, (["--verdict"], {"required": True}), (["--file"], {"required": True}))
     add("attach", cmd_attach, by, (["--file"], {"required": True}))
-    add("signature", cmd_signature, by, evidence, anchor, comment, (["--decision"], {"required": True}))
+    add("signature", cmd_signature, by, evidence, anchor, comment, proc, practice, record_merge, platform_rec,
+        (["--decision"], {"default": None, "help": "signed or declined; a recorded merge takes it from the merged request"}))
     add("note", cmd_note, by, (["--kind"], {"required": True}), (["--about"], {"required": True}),
         (["--text"], {"required": True}), (["--evidence"], {"default": None}))
     add("curation-list", cmd_curation_list)

@@ -78,6 +78,26 @@ Usage:
 import sys
 
 sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+    # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
+    # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
+    # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    # The packages this tool declares, from the environment its interpreter belongs to, put on the import path by
+    # hand and last: nothing in that folder is run at start-up.
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
 if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     _own = __file__.replace("\\", "/").rpartition("/")[0]
     del sys.path[0]
@@ -534,7 +554,8 @@ def selftest() -> int:
             git("commit", "-q", "-m", "first")
             git("tag", "before")
             fy = repo2 / "factory" / "factory.yaml"
-            fy.write_text(fy.read_text().replace("version: 0.8.0", "version: 0.8.1-candidate"))
+            was = str(yaml.safe_load(fy.read_text())["version"])  # whatever this definition's version is today
+            fy.write_text(fy.read_text().replace(f"version: {was}", f"version: {was}-candidate"))
             suite_file = repo2 / "factory" / "benchmarks" / "built-in-gain" / "suite.yaml"
             suite_file.write_text(suite_file.read_text().replace('  - name: current\n    definition: {path: "."}', '  - name: current\n    definition: {ref: before}'))
             seen = {}
@@ -545,7 +566,7 @@ def selftest() -> int:
 
             byref = run_suite(repo2 / "factory" / "benchmarks" / "built-in-gain", runner=spy)
             ok("a configuration named by a git ref is that commit's definition, plan and all, taken out into scratch",
-               byref["configurations"]["current"]["definition"]["version"] == "0.8.0" and byref["configurations"]["same-again"]["definition"]["version"] == "0.8.1-candidate"
+               byref["configurations"]["current"]["definition"]["version"] == was and byref["configurations"]["same-again"]["definition"]["version"] == f"{was}-candidate"
                and byref["configurations"]["current"]["definition"]["sha256"] != byref["configurations"]["same-again"]["definition"]["sha256"]
                and repo2 not in seen["current"][0].parents and seen["current"][1].name == "system-trial" and repo2 in seen["same-again"][0].parents)
             suite_file.write_text(suite_file.read_text().replace("definition: {ref: before}", "definition: {ref: no-such-commit}"))
