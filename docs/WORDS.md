@@ -30,7 +30,7 @@ The left column is what the package said before.
 | band edge | **right at that difference** | |
 | D2 development data | **working data** | anything you or your group have already looked at |
 | rehearsal | **rehearsal** | stays: it is required and recorded |
-| G1, freeze | **the lock** | plan and code together, by a person, the steward; the design adds the scientist's approval |
+| G1, freeze | **the lock** | plan and code together, by people: the steward and the scientist approve and merge a pull request that carries the lock request |
 | D3 confirmatory data | **held-out data** | |
 | look | **opening the held-out data** | unblinding, to those who use the word; said once |
 | broker | **access gate** | a step of the tool, not a person or an office |
@@ -74,7 +74,7 @@ These could not all be given one sense each, so each sense is named here.
 
 | Word | Its senses in this package |
 |---|---|
-| lock | **the lock** is the act by a person that binds the plan and the code. A *lockfile* is the file that pins every library version, and the organization's *release lock* is the file of checksums written for a release; neither has anything to do with the lock |
+| lock | **the lock** is the act by people that binds the plan and the code: a pull request approved and merged on a protected branch, or, in practice mode, typed at a command line. A *lockfile* is the file that pins every library version, and the organization's *release lock* is the file of checksums written for a release; neither has anything to do with the lock |
 | open | **opening** the held-out data; an *open note* is one not yet resolved. For anything not yet decided the documents say "undecided"; the worked request of the first real study that was planned marked such lines OPEN (historical; `records-2026-11`) |
 | gate | the **access gate** is a step of the tool. The organization also calls a repository's required checks before a merge its gate (hence the deliverable `findings-checker-in-gate`), and the roadmap file has a field `gate:` for a decision a person takes before work starts. The documents say "required check" for the second |
 | confirmatory | in every status that begins "confirmatory study": the study tests a claim written down beforehand on data nobody had opened. Its opposite is exploratory |
@@ -139,7 +139,7 @@ What the second picture leaves to the text, on purpose: that the review assistan
 
 Plain words must not blur what makes this more than a pipeline. These are the rules, whatever they are called; DESIGN.md says which of them the tool holds, which a control outside the tool holds, and which are convention:
 
-- The plan and the code are locked together, by a person, before any held-out data is opened, and the locked code is the code that runs.
+- The plan and the code are locked together, by people, where the platform they sign in to decides who they are, before any held-out data is opened, and the locked code is the code that runs.
 - A decision rule is shown, on known-answer tests, to fail when the idea is false and to behave right at the difference that matters, before the lock.
 - Held-out data is opened once per subject and window, by the access gate. A second study on the same data is exploratory. An opening can be voided only when its fetch failed and left nothing behind.
 - The tool only ever adds to the study log, and the log is checked against fingerprints posted where the workspace cannot rewrite them.
