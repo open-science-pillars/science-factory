@@ -6,7 +6,7 @@
 uv run examples/stand-alone/run.py
 ```
 
-It ends with `stand-alone example: PASS (44 of 44 steps)`, in three to four minutes after the first download of PyYAML (most of that is the known-answer tests of its last part). A warning the launcher prints on standard error does not disturb it: the run reads a tool's answer from what the tool prints, and one of its steps tests that.
+It ends with `stand-alone example: PASS (44 of 44 steps)`, in two to four minutes after the first download of PyYAML (most of that is the known-answer tests of its last part). A warning the launcher prints on standard error does not disturb it: the run reads a tool's answer from what the tool prints, and one of its steps tests that.
 
 **What you will see.** While it runs, nothing. At the end it prints the path of a scratch folder outside the repository (under the system's temporary folder), a short list of what is in it, and the line above. Nothing is written into the repository, and nothing it makes is kept by git. Open the folder to see what the two kinds of work look like on disk:
 
