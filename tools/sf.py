@@ -47,21 +47,40 @@ Commands, by stage. Each has one name.
                           real study it is the merge of the pull request
                           that carries the request, on the protected
                           branch, recorded with --record-merge by the
-                          job that follows the merge. --local-practice
-                          records a lock typed at a command line, for
-                          trying the tools out: such a study says so
-                          everywhere and never closes as a signed finding
+                          job that follows the merge. What that records
+                          is a merge found with git, which says nothing
+                          about people. --local-practice records a lock
+                          typed at a command line, for trying the tools
+                          out: such a study says so everywhere and never
+                          closes as a signed finding
+    verify-acts           ask the platform (over https, with a token
+                          from the environment) whether the lock and the
+                          signature are merges of approved pull requests
+                          on the protected branch, and record what it
+                          said. Only its answer makes an act `verified`;
+                          with no network or token the result is `not
+                          checked`, never a pass. Anybody can run it,
+                          at any time, also on a closed study
     open-held-out         the access gate fetches the held-out data
                           and runs the locked analysis, once; the
                           opening is used up the moment it starts. It
-                          needs a lock that is a merge on the protected
-                          branch, reachable from what is checked out,
-                          whose manifest matches the files, and a
-                          definition that has not changed since the lock
+                          needs a lock that git finds as a merge on the
+                          protected branch, reachable from what is
+                          checked out, whose manifest matches the files;
+                          a definition that has not changed since the
+                          lock; and the platform's word, asked at the
+                          opening, that people approved that merge. In a
+                          place with no network a person may open on the
+                          merge alone (--people-not-verified REASON):
+                          that is logged, and the study is not signed
+                          until somebody verifies it
     void-unread           a person voids an opening whose fetch failed
                           and left nothing behind
   Review, sign and learn
-    attach                the written finding joins the record
+    attach                the written finding joins the record; its first
+                          line says so when the lock is not verified
+    show-finding          the finding under a first line that says how
+                          its two acts stand now
     review                a review assistant that did none of the study
                           records approve or block, after the finding
     request-signature     write the signature request into the study:
@@ -176,14 +195,21 @@ at the lock by the people who lock it.
 Two. Names of who did what are typed, not proven, and on a machine where
 agents and people share one account nothing typed can be. So the two acts
 by people are not typed: a real study's lock and signature are pull
-requests merged on a protected branch, and the tool checks the merge with
-git (the commit exists, is one of the protected branch's own commits, is
-reachable from what is checked out, brought the request in, and its
-manifest matches the files). git cannot say who approved, or that the
-branch is protected: the platform's record says that, and the recording
-job copies the names into the log. A local branch with the protected
-branch's name looks the same to git alone, so an opening that matters runs
-from a fresh clone. Every other name in a log is still typed.
+requests merged on a protected branch. What the tool can do on a clone is
+find the merge with git (the commit exists, is one of the named branch's
+own commits, is reachable from what is checked out, has two parents and
+brought the request in from the second, and its manifest matches the
+files). That is local evidence: a clone can make all of it by itself, a
+branch with the protected branch's name included, and a file of approvals
+on the same machine is a file anybody there can write. So an act found
+that way stands as `merge found, people not verified`, and the tool never
+says people acted on it. It says `verified` only on what the platform
+answers when asked (`verify-acts`, and the opening asks for itself): that
+the commit is the merge of a pull request into the protected branch of the
+repository the definition names, approved by enough accounts other than
+its author. A verification is in its turn an entry in a log on a machine;
+its worth is that anybody can ask the platform again. Every other name in
+a log is still typed.
 Three. A log that is rewritten from its first line, cut short, or added
 to by hand with the right hashes checks out on its own. A later edit is
 detectable only against a commit or a log fingerprint posted outside the
@@ -199,7 +225,8 @@ rights, and can do anything (two red-team reviews did exactly that). No
 check inside a process survives a hostile process, and on a machine with
 no kernel fence a script the tool ran can have planted such code.
 The second is answered for the two acts by where they are made: on the
-platform, as merged pull requests. The third is answered the way the
+platform, as merged pull requests, and by asking the platform, never a
+file, who approved. The third is answered the way the
 organization already answers it for signatures: the log's fingerprint is
 posted on the tracking issue at the lock and after every opening, and
 `check-log --anchor SEQ:HASH` refuses a log that does not contain what was
@@ -279,7 +306,9 @@ EXPLORATORY = "exploratory study"
 NO_FINDING = "confirmatory study, waiting for the finding to be attached"
 NO_REVIEW = "confirmatory study, waiting for the review assistant"
 READY = "confirmatory study, ready for the steward's signature"
-SIGNED = "confirmatory study, signed by the steward"
+SIGNED = "confirmatory study, signed by the steward"  # only with a lock and a signature that are both verified
+AWAITING = "confirmatory study, signature recorded, awaiting verification"  # the steward decided `signed`; the people are not verified
+PRACTICE_SIGNED = "practice study, signature typed at a command line: not a signed finding"
 DECLINED = "confirmatory study, the steward declined to sign"
 ACTS_BY_PEOPLE = ("lock.recorded", "signature.recorded")
 HARNESS_PERSON = "human:blind-test-harness"  # the one named exception: the blind test harness records its own locks
@@ -602,9 +631,10 @@ class Study:
 
     def append(self, actor: str, kind: str, data: dict, f=None) -> dict:
         self.check_actor(actor)
-        if PLATFORM_ACTOR.fullmatch(actor or "") and not (kind in ACTS_BY_PEOPLE and data.get("route") == "pull-request" and data.get("merge")):
+        if PLATFORM_ACTOR.fullmatch(actor or "") and kind != "act.verification" and not (
+                kind in ACTS_BY_PEOPLE and data.get("route") == "pull-request" and data.get("merge")):
             raise Refused("an actor `platform:<host>` records one thing only: a lock or a signature that was a merged pull request "
-                          "(`--record-merge`). Everything else is written by human:<id> or agent:<id>")
+                          "(`--record-merge`), and the verification of one (`verify-acts`). Everything else is written by human:<id> or agent:<id>")
         if f is None:
             with self.held() as g:
                 return self._append(g, actor, kind, data)
@@ -612,7 +642,7 @@ class Study:
 
     def _append(self, f, actor: str, kind: str, data: dict) -> dict:
         ev = self.read_held(f)  # the chain is re-read while the file is held
-        if any(e["kind"] == "study.closed" for e in ev) and kind not in ("note.resolved", "change.recorded"):
+        if any(e["kind"] == "study.closed" for e in ev) and kind not in ("note.resolved", "change.recorded", "act.verification"):
             raise Refused("this study is closed; a new question is a new study that cites it")
         prev = ev[-1]["hash"] if ev else "genesis"
         body = {"seq": len(ev), "at": now(), "actor": actor, "kind": kind, "data": data}
@@ -1953,11 +1983,20 @@ def cmd_held_out_change(study: Study, a) -> None:
 # ---- the two acts by people: a request, then a merged pull request ------------------
 PRACTICE = "practice"            # the act was typed at a command line: for trying things out, the examples and the self-tests
 PULL_REQUEST = "pull-request"    # the act was a pull request approved and merged on a protected branch
+MERGE_FOUND = "merge found, people not verified"  # git here shows a merge of the request on the named branch: all git can show
+VERIFIED = "verified"            # the platform was asked and confirmed the pull request, the approvals and the branch
+STANDINGS = (PRACTICE, MERGE_FOUND, VERIFIED)  # the three standings of an act, shown wherever an act is shown
+REFUTED, NOT_CHECKED = "refuted", "not checked"  # the two other results of a verification; neither is a pass
+PLATFORM_CALL = None  # a stand-in for the harness's own call to the platform. Only a self-test sets it, inside its own process:
+#                       no option, file or environment variable does, because any of those would be local evidence again
+UNVERIFIED_WORDS = ("ACTS NOT VERIFIED: when this was written, the lock of this study was a merge found with git on one machine, and "
+                    "the people who approved it had not been verified with the platform. `sf.py status` says how it stands now.")
 PRACTICE_WORDS = ("PRACTICE LOCK: this study was locked from a command line, not by an approved pull request. It is a practice "
                   "run and cannot close as a signed finding.")
 ROUTES = ("in a real study the {act} is a pull request: `sf.py request-{act}` writes the request into the study, a person approves "
           "and merges it on the protected branch, and the merge is recorded with `sf.py {act} --record-merge` (the workflow in "
-          "factory/harnesses/github does that). To try the tools out, `sf.py {act} --local-practice --by human:<id> --evidence URL` "
+          "factory/harnesses/github does that), and the people who approved are verified with the platform (`sf.py verify-acts`). "
+          "To try the tools out, `sf.py {act} --local-practice --by human:<id> --evidence URL` "
           "records it from the command line; a study whose {act} was typed says so everywhere and never closes as a signed finding")
 
 
@@ -1984,6 +2023,80 @@ def is_act_by_people(e: dict) -> bool:
         return bool(PLATFORM_ACTOR.fullmatch(e["actor"]) and re.fullmatch(r"[0-9a-f]{40,64}", str(merge.get("commit")))
                     and (merge.get("people") or {}).get("approved"))
     return e["actor"].startswith("human:") and evidence_ok(d.get("evidence"))
+
+
+def verifications_of(ev: list, e: dict) -> list:
+    """The verifications in the log that are about one lock or signature, oldest first."""
+    return [v for v in ev if v["kind"] == "act.verification" and v["seq"] > e["seq"] and (v["data"].get("of") or {}).get("hash") == e["hash"]]
+
+
+def last_answer(ev: list, e: dict):
+    """The last verification of an act in which the platform gave an answer (verified or refuted). An attempt that
+    could not ask (no network, no token) changes nothing."""
+    decisive = [v for v in verifications_of(ev, e) if v["data"].get("result") in (VERIFIED, REFUTED)]
+    return decisive[-1] if decisive else None
+
+
+def standing_of(ev: list, e: dict | None) -> str | None:
+    """The standing of a lock or a signature in the log: `practice` (typed at a command line), `merge found, people
+    not verified` (a merge of the request found with git, which says nothing about people) or `verified` (the last
+    answer the platform gave, when `sf.py verify-acts` or the opening asked it, confirms the act). Nothing in the
+    work tree moves an act past the second: not the file of names handed to `--record-merge`, not the log entry made
+    from it. A verification is itself an entry in a log on this machine; what it rests on is that anybody can ask
+    the platform again."""
+    if not e:
+        return None
+    if route_of(e) != PULL_REQUEST:
+        return PRACTICE
+    v = last_answer(ev, e)
+    return VERIFIED if v is not None and v["data"]["result"] == VERIFIED else MERGE_FOUND
+
+
+def standings(ev: list) -> dict:
+    """{act: its standing, or None when the act is not made}, for the last lock and the last signature."""
+    last = lambda kind: next((e for e in reversed(ev) if e["kind"] == kind), None)  # noqa: E731
+    return {"lock": standing_of(ev, last("lock.recorded")), "signature": standing_of(ev, last("signature.recorded"))}
+
+
+def finding_line(ev: list) -> str:
+    """The first line of a finding wherever the tool shows one: how its two acts stand now, and so whether it is signed."""
+    st = standings(ev)
+    sig = next((e for e in reversed(ev) if e["kind"] == "signature.recorded"), None)
+    if PRACTICE in st.values():
+        return PRACTICE_WORDS
+    said = f"lock: {st['lock'] or 'not made'}; signature: {st['signature'] or 'not made'}"
+    if sig and sig["data"].get("decision") == "signed" and st["lock"] == VERIFIED and st["signature"] == VERIFIED:
+        return f"SIGNED ({said}): the platform confirmed the people who approved the lock and the signature."
+    if sig and sig["data"].get("decision") == "declined":
+        return f"NOT SIGNED: the steward declined ({said})."
+    if sig is None:
+        return f"NOT SIGNED: the steward has not decided ({said})."
+    return (f"NOT SIGNED, AWAITING VERIFICATION ({said}). An act that is not `verified` rests on git on one machine, which shows a "
+            "merge and nothing about people; `sf.py verify-acts` asks the platform.")
+
+
+def log_history_problems(study: Study) -> list:
+    """Every version of the study log in a commit reachable from what is checked out is a beginning of the log as it
+    is now: a log rewritten and committed again (N13) fails here, because the earlier commit still holds the earlier
+    log. What this cannot see is a history that was itself rewritten (an amended or rebased commit); a protected
+    branch refuses that push, and the log's head at the lock is pinned in the merged request, which a verification
+    compares."""
+    try:
+        top = git("-C", str(study.d), "rev-parse", "--show-toplevel")
+        if top is None or top.returncode != 0 or not study.log.exists():
+            return []
+        root = Path(top.stdout.strip()).resolve()
+        rel = study.log.resolve().relative_to(root).as_posix()
+        revs = git("-C", str(root), "log", "--format=%H", "-n", "300", "HEAD", "--", rel)
+        now_ = study.log.read_text()
+        for commit in (revs.stdout.split() if revs is not None and revs.returncode == 0 else []):
+            then = git("-C", str(root), "show", f"{commit}:{rel}")
+            if then is not None and then.returncode == 0 and not now_.startswith(then.stdout):
+                return [f"the study log as it was committed in {commit[:12]} is not a beginning of the study log here: the log was "
+                        "rewritten after that commit (and committed again, if the last commit agrees with it)"]
+    except (OSError, ValueError):
+        return []
+    return []
 
 
 def repo_of(study: Study) -> Path | None:
@@ -2064,12 +2177,18 @@ def definition_change_summary(locked: dict, factory: Path) -> list:
                     "be made here: run `tools/check_factory.py --summary OLD NEW` on the two trees"]
 
 
-def merge_problems(study: Study, merge: dict, request_folder: str) -> tuple:
-    """Check, with git alone and offline, the merge a lock or a signature cites: (problems, the manifest in the
-    merge commit or None). The commit exists; it lies on the named branch's own line of commits (its first parents)
-    and is reachable from HEAD; it brought the request in or changed it; and the request's manifest is in it.
-    git cannot say who approved the pull request, or that the branch is protected: the platform's record says
-    that, and the recording job copies it into the log."""
+def merge_problems(study: Study, merge: dict, request_folder: str, methods=None) -> tuple:
+    """Check, with git alone and offline, the merge a lock or a signature cites: (problems, what was found or None).
+    The commit exists; it lies on the named branch's own line of commits (its first parents) and is reachable from
+    HEAD; it has the shape of a merge method that is allowed; it brought the request in; and the request's manifest
+    is in it. The shapes: `merge` is a commit with two parents, the request the same in the commit and in its second
+    parent and absent or different in its first, so the request came in from the merged branch and from nowhere
+    else. `squash` is a commit with one parent that brought the request in, which git cannot tell from an ordinary
+    commit, so it is accepted only where the definition lists it. A rebase merge is never accepted: it rewrites the
+    approved commits. `methods` is what is allowed (default: what the act recorded, or `merge`).
+    All of this is local evidence. A clone can make every part of it by itself, a branch with the protected
+    branch's name included, so passing it gives the standing `merge found, people not verified` and nothing more:
+    git cannot say who approved the pull request, that there was one, or that the branch is protected."""
     repo = repo_of(study)
     if repo is None:
         return ["the study is not in a git work tree, so the merge the act cites cannot be checked"], None
@@ -2094,6 +2213,20 @@ def merge_problems(study: Study, merge: dict, request_folder: str) -> tuple:
     if not ok(g("merge-base", "--is-ancestor", commit, "HEAD")):
         problems.append(f"the merge commit {commit[:12]} is not reachable from what is checked out here (HEAD): check out the "
                         f"protected branch `{branch}` at or after the merge")
+    listed = g("rev-list", "--parents", "-n", "1", commit)
+    parents = (listed.stdout.split()[1:] if ok(listed) else [])
+    method = {2: "merge", 1: "squash"}.get(len(parents))
+    allowed = [str(m) for m in (methods or [merge.get("method") or "merge"])]
+    if method is None:
+        problems.append(f"the commit {commit[:12]} has {len(parents)} parents: a merge of a pull request has two (a merge commit), or one (a "
+                        "squash merge, where the definition allows it)")
+    elif method not in allowed and method == "squash":
+        problems.append(f"the commit {commit[:12]} has one parent: it is an ordinary commit, not a merge. A merge of a pull request has two "
+                        "parents, the protected branch as it was and the request's branch. A squash merge also has one parent and git "
+                        "cannot tell it from an ordinary commit, so it counts only where the definition lists it (`merge_methods: [merge, "
+                        "squash]`), and then only as far as the platform confirms it. A rebase merge is not accepted")
+    elif method not in allowed:
+        problems.append(f"the commit {commit[:12]} is a merge commit with two parents, and this act allows only: " + ", ".join(allowed))
     rel = (study.d / request_folder / "manifest.json").relative_to(repo).as_posix()
     shown = g("show", f"{commit}:{rel}")
     if not ok(shown):
@@ -2103,18 +2236,29 @@ def merge_problems(study: Study, merge: dict, request_folder: str) -> tuple:
     if ok(before) and before.stdout == shown.stdout:
         problems.append(f"the commit {commit[:12]} did not bring this request in or change it: the manifest was already there, "
                         "unchanged, in the commit before it on the branch")
+    if method == "merge":
+        merged = g("show", f"{commit}^2:{rel}")
+        if not ok(merged) or merged.stdout != shown.stdout:
+            problems.append(f"the request in the merge commit {commit[:12]} is not the request on the branch it merged (its second parent): "
+                            "the request did not come in from the merged branch, or the merge itself changed it")
     try:
         manifest = json.loads(shown.stdout)
     except ValueError:
         problems.append("the manifest in the merge commit is not JSON")
         return problems, None
-    return problems, {"manifest": manifest, "sha": sha_text(shown.stdout), "ref": ref}
+    summary_rel = (study.d / request_folder / "EVIDENCE.md").relative_to(repo).as_posix()
+    blob = lambda path: (lambda d: d.stdout.strip() if ok(d) else None)(g("rev-parse", "--verify", "--quiet", f"{commit}:{path}"))  # noqa: E731
+    return problems, {"manifest": manifest, "sha": sha_text(shown.stdout), "ref": ref, "method": method, "parents": parents,
+                      "files": {"manifest": {"path": rel, "blob": blob(rel)}, "evidence": {"path": summary_rel, "blob": blob(summary_rel)}}}
 
 
 def platform_record(path, act: str, declared: dict) -> dict:
-    """The platform's record of a merged pull request, read from the file the recording job wrote, and held to
-    what the definition declares for the act: the pull request was merged, and enough people other than its author
-    approved it. The names in it are the platform's, never typed at this tool."""
+    """The file handed to `--record-merge`, read and held to what the definition declares for the act: it says the
+    pull request was merged, and that enough people other than its author approved it. On the platform the recording
+    job writes this file from the platform's own record. On any other machine it is a file like any other, and
+    whoever runs the command can write it by hand: so the names in it are recorded as what the tool was handed, the
+    act stands as `merge found, people not verified`, and only `sf.py verify-acts`, which asks the platform itself,
+    moves it further."""
     try:
         rec = json.loads(Path(path).read_text())
     except (OSError, ValueError, TypeError):
@@ -2368,6 +2512,7 @@ def cmd_request_lock(study: Study, a) -> None:
     head = got["ev"][-1]
     manifest.update(log_head={"seq": head["seq"], "hash": head["hash"]}, prepared={"by": a.by, "at": now()},
                     protected_branch=(acts_declared(factory).get("lock") or {}).get("protected_branch"),
+                    repository=(acts_declared(factory).get("lock") or {}).get("repository"),
                     after_opening=got["data"]["after_opening"])
     msha, ssha = write_request(study, "lock-request", lock_summary(study, got, factory), manifest)
     study.append(a.by, "lock.requested", {"manifest_sha": msha, "summary_sha": ssha, "plan_sha": manifest["plan_sha"],
@@ -2422,8 +2567,10 @@ def request_problems(study: Study, act: str, factory: Path) -> list:
 
 def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
     """Record a lock or a signature whose act was a pull request merged on the protected branch. Run by the job
-    that follows the merge (factory/harnesses/github), under the platform's name; the people are the platform's
-    record, read from a file that job wrote, and nothing typed here names a person."""
+    that follows the merge (factory/harnesses/github), under the platform's name. What is recorded is a merge found
+    with git and the names in the file that job handed over; the act stands as `merge found, people not verified`
+    until the platform is asked (`sf.py verify-acts`), because this command cannot tell the job from anybody else
+    who runs it with a file of their own."""
     if not PLATFORM_ACTOR.fullmatch(str(a.by)):
         raise Refused(f"a merged {act} is recorded under the platform's name (`--by platform:github`), by the job that follows the merge; "
                       "the people who approved are read from the platform's record, not typed")
@@ -2435,7 +2582,8 @@ def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
     if rec["branch"] != branch:
         raise Refused(f"the pull request was merged into `{rec['branch']}`; the definition names `{branch}` as the protected branch for the {act}")
     folder = f"{act}-request"
-    problems, found = merge_problems(study, {"commit": rec["merge_commit"], "branch": branch}, folder)
+    methods = [str(m) for m in (declared.get(act) or {}).get("merge_methods") or ["merge"]]
+    problems, found = merge_problems(study, {"commit": rec["merge_commit"], "branch": branch}, folder, methods)
     if problems:
         raise Refused(f"the merge does not check out, so no {act} is recorded: " + "; ".join(problems))
     manifest = found["manifest"]
@@ -2449,12 +2597,18 @@ def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
     ev = study.events()
     merge = {"commit": rec["merge_commit"], "branch": branch, "ref_checked": found["ref"], "pull_request": rec["pull_request"],
              "url": rec["url"], "platform": rec["platform"], "merged_at": rec["merged_at"], "people": rec["people"],
-             "manifest_sha": found["sha"], "approvals_asked": int((declared.get(act) or {}).get("approvals") or 1)}
+             "manifest_sha": found["sha"], "approvals_asked": int((declared.get(act) or {}).get("approvals") or 1),
+             "method": found["method"], "parents": found["parents"],
+             "repository": found["manifest"].get("repository") or (declared.get(act) or {}).get("repository"),
+             "people_source": "the file handed to this tool with --platform-record, on the machine where the command ran: not "
+                              "checked with the platform, and no proof of who approved"}
+    handed = (f"Its standing is `{MERGE_FOUND}`: git here shows the merge, and the names (" + ", ".join(rec["people"]["approved"])
+              + ") are what the file handed to this tool says, which proves nothing about people. `sf.py verify-acts` asks the platform")
     if act == "lock":
         got = lock_evidence(study, a)
         e = study.append(a.by, "lock.recorded", {**got["data"], "evidence": rec["url"], "route": PULL_REQUEST, "merge": merge})
-        print(f"The lock: recorded from the merge {rec['merge_commit'][:12]} of pull request {rec['pull_request']} on `{branch}`, approved by "
-              + ", ".join(rec["people"]["approved"]) + " (the platform's record)")
+        print(f"The lock: a merge found with git, {rec['merge_commit'][:12]} on `{branch}` ({found['method']}), recorded for pull request "
+              f"{rec['pull_request']}. {handed}")
     else:
         rep = check_log(study, getattr(a, "anchor", None) or manifest.get("anchors"))
         att = attached_finding(ev)
@@ -2466,9 +2620,120 @@ def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
         e = study.append(a.by, "signature.recorded", {"decision": decision, "evidence": rec["url"], "route": PULL_REQUEST, "merge": merge,
                                                       "status_at_decision": rep["status"], "comment": getattr(a, "comment", None),
                                                       "finding": {"file": att["data"]["file"], "sha": att["data"]["sha"]} if att else None})
-        print(f"the steward's signature: {decision}, recorded from the merge {rec['merge_commit'][:12]} of pull request {rec['pull_request']} "
-              f"on `{branch}`, approved by " + ", ".join(rec["people"]["approved"]) + " (the platform's record)")
+        print(f"the steward's signature: {decision}, a merge found with git, {rec['merge_commit'][:12]} on `{branch}` ({found['method']}), "
+              f"recorded for pull request {rec['pull_request']}. {handed}"
+              + ("; until then the study is awaiting verification, not signed" if decision == "signed" else ""))
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
+
+
+def act_harness(factory: Path, act: str) -> tuple:
+    """(the verifier of the harness that carries an act, the `platform` block of its harness.yaml). The verifier is
+    the file `verify_acts.py` in that harness's folder: it holds what is about one platform, and the one function
+    that calls it. It is loaded only from this factory's own definition, the one beside this tool."""
+    if Path(factory).resolve() != FACTORY.resolve():
+        raise Refused("an act is verified with the harness of this factory's own definition (factory/ beside the tools): the program "
+                      "that asks the platform is not taken from another folder")
+    name = str((acts_declared(factory).get(act) or {}).get("harness") or "")
+    folder = FACTORY.resolve() / "harnesses" / name
+    try:
+        block = (yaml.safe_load((folder / "harness.yaml").read_text()) or {}).get("platform") if re.fullmatch(r"[a-z][a-z0-9-]{0,40}", name) else None
+    except (OSError, yaml.YAMLError):
+        block = None
+    if not isinstance(block, dict) or not str(block.get("api") or "").startswith("https://") or not (folder / "verify_acts.py").is_file():
+        raise Refused(f"the definition names no harness for the {act} that can ask a platform (a folder in harnesses/ with a "
+                      "`platform.api` that begins with https:// and a verify_acts.py): the act stays at `" + MERGE_FOUND + "`")
+    key = f"sf_verify_acts_{name.replace('-', '_')}"
+    if key not in sys.modules:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(key, folder / "verify_acts.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[key] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[key], block
+
+
+def verify_act(study: Study, ev: list, e: dict, act: str, factory: Path) -> dict:
+    """Verify one lock or signature that was recorded from a merge: first what git shows here, then the platform,
+    asked now. Returns the data of an `act.verification` event: the result (`verified`, `refuted` or `not checked`),
+    why, what the platform said, every endpoint that was asked and the name of the variable the token came from.
+    Nothing here reads a file of names: the people are what the platform answers, or they are not verified."""
+    merge = e["data"].get("merge") or {}
+    data = {"act": act, "of": {"seq": e["seq"], "hash": e["hash"], "merge_commit": merge.get("commit")}, "result": NOT_CHECKED,
+            "problems": [], "told": {}, "asked": [], "stand_in_for_the_platform": PLATFORM_CALL is not None}
+    problems, found = merge_problems(study, merge, f"{act}-request")
+    if not problems and found["sha"] != merge.get("manifest_sha"):
+        problems.append("the manifest in the merge commit is not the one the log recorded")
+    head = (found or {}).get("manifest", {}).get("log_head") if found else None
+    if isinstance(head, dict) and str(head.get("seq")).isdigit():
+        at = int(head["seq"])
+        data["log_head_at_the_request"] = {"seq": at, "hash": head.get("hash")}
+        if at >= len(ev) or ev[at]["hash"] != head.get("hash"):
+            problems.append(f"the study log here is not the log the merged request was made from: the request pins event {at} with a "
+                            "checksum this log does not have there, so the log was rewritten before the act")
+    if problems:
+        data.update(result=REFUTED, problems=["git here: " + p for p in problems])
+        return data
+    mod, block = act_harness(factory, act)
+    declared = acts_declared(factory).get(act) or {}
+    repository = merge.get("repository") or found["manifest"].get("repository") or declared.get("repository")
+    name, token = mod.token_from(os.environ)
+    data.update(platform=block.get("name"), api=block["api"], repository=repository, token_from=name, through=mod.through(os.environ))
+    if PLATFORM_CALL is None and not token:
+        data["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES) + "), and "
+                            "none of those is set. Nothing was asked, so nothing is verified"]
+        return data
+    if not repository:
+        data["problems"] = ["neither the merged request nor the definition names the repository on the platform (`repository: owner/name`)"]
+        return data
+    expect = {"repository": repository, "branch": merge.get("branch"), "commit": merge.get("commit"), "parents": found["parents"],
+              "approvals": int(merge.get("approvals_asked") or declared.get("approvals") or 1), "request": found["files"]}
+    got = mod.verify(PLATFORM_CALL or mod.platform_call, block["api"], token or "a-self-test", expect)
+    data.update(result=got["result"], problems=got["problems"], told=got["told"], asked=got["asked"], answers_sha256=got["answers_sha256"])
+    return data
+
+
+def cmd_verify_acts(study: Study, a) -> None:
+    """Ask the platform about this study's lock and signature, and record what it said. Anybody can run this, at any
+    time, also on a closed study and also somebody who was not there: it needs the clone, the network and a token
+    that may read the repository. Only its answer moves an act to `verified`."""
+    factory = Path(getattr(a, "factory", None) or FACTORY)
+    if not getattr(a, "report_only", False):
+        study.check_actor(a.by)
+    ev, out = study.events(), {}
+    for act, kind in (("lock", "lock.recorded"), ("signature", "signature.recorded")):
+        e = next((x for x in reversed(ev) if x["kind"] == kind), None)
+        if e is None:
+            out[act] = {"standing": None, "said": "not made"}
+        elif route_of(e) != PULL_REQUEST:
+            out[act] = {"standing": PRACTICE, "said": "typed at a command line: there is nothing to verify, and it stays practice"}
+        else:
+            data = verify_act(study, ev, e, act, factory)
+            if not getattr(a, "report_only", False):
+                study.append(a.by, "act.verification", data)
+                ev = study.events()
+            st = VERIFIED if data["result"] == VERIFIED else (standing_of(ev, e) if data["result"] == NOT_CHECKED else MERGE_FOUND)
+            out[act] = {"standing": st, "result_of_this_verification": data["result"], "problems": data["problems"],
+                        "asked": [f"{q['status']} {q['endpoint']}" for q in data["asked"]], "token_from": data.get("token_from"),
+                        "approved_by": [p["login"] for p in (data["told"].get("approved_by") or [])],
+                        "pull_request": (data["told"].get("pull_request") or {}).get("url"), "recorded": not getattr(a, "report_only", False)}
+    print(json.dumps({"study": study.d.name, "acts": out, "finding_first_line": finding_line(ev),
+                      "what_verified_means": "the platform, asked now, said the commit is the merge of a pull request into the protected "
+                                             "branch of the named repository, approved on the request as merged by enough accounts other "
+                                             "than its author. Whether those accounts are the right people is for whoever reads the names"}, indent=1))
+    short = [act for act, v in out.items() if v.get("result_of_this_verification") not in (None, VERIFIED)]
+    if short:
+        raise Refused("not verified: " + "; ".join(f"the {act} ({out[act]['result_of_this_verification']}): " + " | ".join(out[act]["problems"][:3]) for act in short))
+
+
+def cmd_show_finding(study: Study, a) -> None:
+    """The finding in force, under a first line that says how the study's two acts stand now."""
+    ev = study.events()
+    att = attached_finding(ev)
+    if not att:
+        raise Refused("no finding is attached")
+    print(finding_line(ev))
+    print()
+    print((study.d / att["data"]["file"]).read_text(), end="")
 
 
 def judge(plan: dict, receipt_path: Path, data_path: Path, exit_code) -> tuple:
@@ -2503,7 +2768,7 @@ def judge(plan: dict, receipt_path: Path, data_path: Path, exit_code) -> tuple:
     return outcomes, (str(declined)[:300] if declined else None)
 
 
-def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None, practice_ok: bool = False) -> tuple:
+def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None, practice_ok: bool = False, unverified_reason=None) -> tuple:
     """Everything that decides whether an opening may start, and the start itself, done while the study log is
     held: two openings asked for at the same moment cannot both pass the allowance."""
     spec = plan["tests"][test]
@@ -2512,10 +2777,16 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     if not locks:
         raise Refused("no lock yet: held-out data is opened only after people lock the plan and the code")
     lock = locks[-1]
+    waived = None
     if study.plan_sha() != lock["data"]["plan_sha"]:
         raise Refused("the analysis plan changed after the lock")
     locked_definition = lock["data"].get("definition") or {}
     here = definition_tool().tree_checksum(Path(factory or FACTORY).resolve())
+    links = definition_tool().links_in(Path(factory or FACTORY).resolve())
+    if links:
+        raise Refused("the factory's definition holds a symlink (" + ", ".join(links[:4]) + "): a definition is the files themselves, "
+                      "and a link can be pointed elsewhere without a byte of the tree changing. Nothing was opened and the opening is "
+                      "not used up")
     if locked_definition.get("sha256") and locked_definition["sha256"] != here["sha256"]:
         raise Refused("the factory's definition changed after the lock (the lock binds the tree's checksum "
                       f"{locked_definition['sha256'][:16]}, version {locked_definition.get('version')}; the tree here is {here['sha256'][:16]}). "
@@ -2566,6 +2837,9 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     if committed is not None and not f.read().startswith(committed):
         raise Refused("the study log is not a continuation of the committed study log (rewritten or cut short); "
                       "nothing is opened from a log that lost events")
+    rewritten = log_history_problems(study) if in_git else []
+    if rewritten:
+        raise Refused(rewritten[0] + "; nothing is opened from a log that was rewritten")
     if in_git and lock["hash"] not in (committed or ""):
         raise Refused("the lock is not committed: it lands as a commit (the approved pull request) before the held-out data is opened")
     disagree = record_problems(study, ev)
@@ -2577,12 +2851,38 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     if not_set(spec):
         raise Refused(f"the plan passes {', '.join(not_set(spec))} to this opening's commands (`passes_environment`) and it "
                       "is not set in the environment; set it and open again. Nothing was opened and the opening is not used up")
+    if route_of(lock) == PULL_REQUEST:
+        # Opened data cannot be un-opened, and a merge found with git is something a clone can make by itself. So the
+        # platform is asked now, whatever the log already says, and the answer is logged whichever way it goes.
+        try:
+            checked = verify_act(study, ev, lock, "lock", Path(factory or FACTORY))
+        except Refused as r:
+            checked = {"act": "lock", "of": {"seq": lock["seq"], "hash": lock["hash"]}, "result": NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": []}
+        study._append(f, by, "act.verification", {**checked, "asked_at": "the opening"})
+        ev = study.read_held(f)
+        if checked["result"] == REFUTED:
+            raise Refused("the lock is not verified, and the held-out data is opened only on a verified lock: the platform's answer does "
+                          "not bear the lock out: " + " | ".join(checked["problems"][:4]) + ". This is not something "
+                          "`--people-not-verified` waives. Nothing was opened and the opening is not used up")
+        if checked["result"] != VERIFIED and not str(unverified_reason or "").strip():
+            raise Refused(f"the lock stands as `{MERGE_FOUND}`, and the held-out data is opened only on a verified lock: opened data "
+                          "cannot be un-opened, and a merge found with git is something a clone can make by itself. The platform could "
+                          "not be asked: " + " | ".join(checked["problems"][:3]) + ". Give the opening a token that may read the "
+                          "repository and a network. In a place with no network, and only there, `open-held-out --people-not-verified "
+                          "\"REASON\"` opens on the merge alone: that is logged, and the study stays at people not verified, and so "
+                          "not signed, until somebody verifies it. Nothing was opened and the opening is not used up")
+        if checked["result"] != VERIFIED:
+            waived = {"reason": str(unverified_reason).strip(), "by": by, "why_not_verified": checked["problems"][:3]}
+            print("OPENING WITHOUT VERIFYING THE PEOPLE. The lock of this study is a merge found with git on this machine; nobody has "
+                  f"confirmed with the platform that people approved it. Reason given: {waived['reason']}. This is in the study log. "
+                  "The study stays at people not verified, and is not signed, until `sf.py verify-acts` succeeds", file=sys.stderr)
     n = len(started) + 1
     prior = earlier_openings(study, plan, spec, ev)
     before = study.listing()
     started_ev = study._append(f, by, "opening.started", {
         "test": test, "n": n, "plan_sha": study.plan_sha(), "code": code, "env": env_stamp(study, plan),
-        "lock_route": route_of(lock), "definition_sha": here["sha256"],
+        "lock_route": route_of(lock), "lock_standing": standing_of(study.read_held(f), lock),
+        **({"opened_without_verification": waived} if waived else {}), "definition_sha": here["sha256"],
         "lock_committed": bool(in_git), "earlier_openings_of_this_window": prior, "listing": sorted(before),
         "uv_environments": study.uv_environments() if uses_uv(plan) else {}})
     key = subject_key(plan, spec)
@@ -2608,7 +2908,7 @@ def cmd_open_held_out(study: Study, a) -> None:
         raise Refused(f"{a.test} is not in the plan")
     with study.held() as f:
         n, prior, before, data_rel = start_opening(study, plan, a.test, a.by, f, getattr(a, "factory", None),
-                                                   bool(getattr(a, "local_practice", False)))
+                                                   bool(getattr(a, "local_practice", False)), getattr(a, "people_not_verified", None))
     data, rp = study.path(data_rel), study.path(spec["receipt"])
     passes = spec.get("passes_environment") or ()
     mark = len(RUNS)
@@ -2769,9 +3069,13 @@ def cmd_attach(study: Study, a) -> None:
     f = Path(a.file).resolve()
     if not f.is_file():
         raise Refused("the finding file does not exist")
-    if route_of(study.last("lock.recorded")) == PRACTICE and PRACTICE_WORDS not in " ".join(f.read_text(errors="replace").split()):
-        raise Refused("this study's lock was typed at a command line (a practice lock), and its finding has to say so. Put this "
-                      f"sentence in the finding, word for word, and attach again: {PRACTICE_WORDS}")
+    lock_standing = standing_of(ev, study.last("lock.recorded"))
+    first = " ".join(next((ln for ln in f.read_text(errors="replace").splitlines() if ln.strip()), "").split())
+    for standing, words, what in ((PRACTICE, PRACTICE_WORDS, "was typed at a command line (a practice lock)"),
+                                  (MERGE_FOUND, UNVERIFIED_WORDS, "is a merge found with git whose people are not verified")):
+        if lock_standing == standing and words not in first:
+            raise Refused(f"this study's lock {what}, and its finding has to say so in its first line. Make this sentence the first "
+                          f"line of the finding, word for word, and attach again: {words}")
     (study.d / "finding").mkdir(exist_ok=True)
     dest = study.d / "finding" / f"{len(ev):03d}-{f.name}"
     shutil.copyfile(f, dest)
@@ -2814,7 +3118,8 @@ def cmd_signature(study: Study, a) -> None:
         manifest = manifest_now(study, plan, ev, factory, "signature")
         manifest.update(decision=a.decision, log_head={"seq": ev[-1]["seq"], "hash": ev[-1]["hash"]}, prepared={"by": a.by, "at": now()},
                         status_at_request=rep["status"], anchors=list(a.anchor or []),
-                        protected_branch=(acts_declared(factory).get("signature") or {}).get("protected_branch"))
+                        protected_branch=(acts_declared(factory).get("signature") or {}).get("protected_branch"),
+                        repository=(acts_declared(factory).get("signature") or {}).get("repository"))
         msha, ssha = write_request(study, "signature-request", signature_summary(study, plan, ev, rep, att, a.decision), manifest)
         study.append(a.by, "signature.requested", {"manifest_sha": msha, "summary_sha": ssha, "decision": a.decision})
         print(f"signature request written: {study.d.name}/signature-request/EVIDENCE.md and manifest.json (manifest sha256 {msha[:16]}). "
@@ -2873,8 +3178,14 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
             with contextlib.suppress(OSError):
                 out += ["", f"The verdict file of {e['actor']} (`{e['data']['file']}`):", "", "```", *(study.d / e["data"]["file"]).read_text().rstrip().splitlines(), "```"]
     out += ["", "## The lock this rests on", "",
-            (f"A pull request merged on `{lock['data']['merge']['branch']}` (merge {lock['data']['merge']['commit'][:12]}), approved by "
-             + ", ".join(lock["data"]["merge"]["people"]["approved"]) + " by the platform's record." if route_of(lock) == PULL_REQUEST
+            f"Standing of the lock: **{standing_of(ev, lock)}**.", "",
+            ((f"A merge on `{lock['data']['merge']['branch']}` (merge {lock['data']['merge']['commit'][:12]}). "
+              + ("The platform, asked on " + last_answer(ev, lock)["at"] + ", confirmed the pull request and its approval by "
+                 + ", ".join(p["login"] for p in last_answer(ev, lock)["data"]["told"].get("approved_by") or []) + "."
+                 if standing_of(ev, lock) == VERIFIED else
+                 "It was found with git, which shows nothing about people, and nobody has verified with the platform who approved it. "
+                 "A signature on this study leaves it awaiting verification, not signed, until `sf.py verify-acts` succeeds."))
+             if route_of(lock) == PULL_REQUEST
              else "A PRACTICE LOCK, typed at a command line. This study cannot close as a signed finding."), "",
             "## Problems and remarks from the log check", ""]
     out += [f"- problem: {p}" for p in rep["problems"]] + [f"- {r}" for r in rep["purity"] + rep["remarks"]] or ["None."]
@@ -2897,7 +3208,8 @@ def cmd_resolve(study: Study, a) -> None:
 
 EARLY_EXITS = ("answered-by-existing-knowledge", "outside-a-signed-domain", "dead-end", "withdrawn")
 LATE_EXITS = {"finding-signed": "signed", "negative-result-signed": "signed", "system-trial-accepted": "signed",
-              "not-signed": "declined", "system-trial-declined": "declined", "practice-ended": None}
+              "not-signed": "declined", "system-trial-declined": "declined", "practice-ended": None,
+              "awaiting-verification": "signed"}  # the steward signed and the people are not verified: the study ends, not as a signed finding
 SIGNED_FINDINGS = ("finding-signed", "negative-result-signed")  # never the close of a study whose lock or signature was typed
 TRIAL_EXITS = ("system-trial-accepted", "system-trial-declined")
 
@@ -2931,6 +3243,15 @@ def cmd_close(study: Study, a) -> None:
                 problems, _found = merge_problems(study, e["data"].get("merge") or {}, folder)
                 if problems:
                     raise Refused(f"`{a.outcome}` is refused: the {what}'s merge does not check out: " + "; ".join(problems[:4]))
+            unverified = [what for what, e in (("lock", lock), ("signature", sig)) if standing_of(ev, e) != VERIFIED]
+            if unverified:
+                raise Refused(f"`{a.outcome}` is refused: this study's {' and '.join(unverified)} stands as `{MERGE_FOUND}`. A merge found "
+                              "with git on one machine says nothing about people, so the study is awaiting verification, not signed. "
+                              "`sf.py verify-acts` asks the platform; a study that cannot be verified closes as `awaiting-verification`")
+        if a.outcome == "awaiting-verification":
+            if not check_log(study, getattr(a, "anchor", None))["status"].startswith(AWAITING):
+                raise Refused("`awaiting-verification` closes a study whose signature is recorded as signed and whose lock or signature is "
+                              "not verified; this one's log check says: " + check_log(study, getattr(a, "anchor", None))["status"])
         if a.outcome == "practice-ended":
             if not any(route_of(e) == PRACTICE for e in ev if e["kind"] in ACTS_BY_PEOPLE):
                 raise Refused("`practice-ended` closes a practice study (one whose lock or signature was typed at a command line); "
@@ -2938,7 +3259,8 @@ def cmd_close(study: Study, a) -> None:
         # a signed outcome, in practice too, is recorded only on a study that still checks out
         if LATE_EXITS[a.outcome] == "signed" or (a.outcome == "practice-ended" and sig["data"]["decision"] == "signed"):
             rep = check_log(study, getattr(a, "anchor", None))
-            if rep["status"] != SIGNED:
+            want = AWAITING if a.outcome == "awaiting-verification" else SIGNED if a.outcome in SIGNED_FINDINGS else PRACTICE_SIGNED
+            if rep["status"] != want and not (a.outcome == "system-trial-accepted" and rep["status"] == SIGNED):
                 raise Refused(f"`{a.outcome}` needs a study whose log check still says it is signed; this one says: "
                               f"{rep['status']}" + ("".join("; " + x for x in rep["problems"][:3])))
         if a.outcome == "system-trial-accepted":
@@ -3044,15 +3366,17 @@ def stage_of(study: Study, factory: Path) -> dict:
     if closed:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
     return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study),
+            "awaiting_verification": [act for act, st in standings(study.events()).items() if st == MERGE_FOUND],
             "done": done, **(here or {"stage": "complete"}),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
 
 def acts_report(study: Study) -> dict:
-    """How this study's two acts by people were made, for `status`, the scorecard and anyone reading either: by a
-    pull request merged on the protected branch, with the people the platform recorded, or typed at a command
-    line, which is practice."""
+    """How this study's two acts by people stand, for `status`, the scorecard and anyone reading either. Each has
+    one of three standings: `practice` (typed at a command line), `merge found, people not verified` (git here
+    shows a merge; nothing shows people) or `verified` (the platform, asked, confirmed the pull request and who
+    approved it)."""
     out = {}
     for name, kind in (("lock", "lock.recorded"), ("signature", "signature.recorded")):
         e = study.last(kind)
@@ -3060,15 +3384,35 @@ def acts_report(study: Study) -> dict:
             asked = study.last(f"{name}.requested")
             out[name] = "requested, not made: the request waits for a pull request to be approved and merged" if asked else "not made"
         elif route_of(e) == PULL_REQUEST:
-            m = e["data"]["merge"]
-            out[name] = {"route": PULL_REQUEST, "merge_commit": m["commit"], "branch": m["branch"], "pull_request": m.get("url") or m.get("pull_request"),
-                         "approved_by": m["people"]["approved"], "author": m["people"]["author"],
-                         "note": "the people are the platform's record, copied by the recording job; git alone shows the merge, not who approved"}
+            m, ev = e["data"]["merge"], study.events()
+            st, v, tries = standing_of(ev, e), last_answer(ev, e), verifications_of(ev, e)
+            out[name] = {"route": PULL_REQUEST, "standing": st, "merge_commit": m["commit"], "branch": m["branch"], "merge_method": m.get("method"),
+                         "pull_request": m.get("url") or m.get("pull_request")}
+            if st == VERIFIED:
+                told = v["data"].get("told") or {}
+                out[name].update({"approved_by": [p["login"] for p in told.get("approved_by") or []],
+                                  "author": (told.get("pull_request") or {}).get("author"), "merged_by": (told.get("pull_request") or {}).get("merged_by"),
+                                  "pull_request": (told.get("pull_request") or {}).get("url") or out[name]["pull_request"],
+                                  "verified": {"at": v["at"], "run_by": v["actor"], "log_event": v["seq"], "platform_asked": v["data"].get("api"),
+                                               "repository": v["data"].get("repository"), "rules_not_shown": told.get("not_shown") or [],
+                                               **({"BY A STAND-IN FOR THE PLATFORM": "a self-test's recorded answers, not the platform"}
+                                                  if v["data"].get("stand_in_for_the_platform") else {})},
+                                  "note": "VERIFIED: the platform, asked, said this commit is the merge of a pull request into the protected "
+                                          "branch, approved on the request as merged by the accounts named here. Whether they are the right "
+                                          "people is for whoever reads the names; `sf.py verify-acts` asks again"})
+            else:
+                out[name].update({"names_handed_to_the_tool": {"approved": m["people"]["approved"], "author": m["people"]["author"]},
+                                  "last_verification": ({"at": tries[-1]["at"], "result": tries[-1]["data"].get("result"),
+                                                         "problems": (tries[-1]["data"].get("problems") or [])[:3]} if tries else "never tried"),
+                                  "note": "MERGE FOUND, PEOPLE NOT VERIFIED: git here shows a merge of the request on a branch with the "
+                                          "protected branch's name, which a clone can make by itself. The names are from a file handed to the "
+                                          "tool and prove nothing. A study with such an act is not signed; `sf.py verify-acts` asks the platform"})
         else:
-            out[name] = {"route": PRACTICE, "typed_by": e["actor"],
+            out[name] = {"route": PRACTICE, "standing": PRACTICE, "typed_by": e["actor"],
                          "note": "PRACTICE: typed at a command line, with no approval the platform recorded. This study cannot close as a signed finding"}
     if any(isinstance(v, dict) and v["route"] == PRACTICE for v in out.values()):
         out["practice"] = True
+    out["standings"] = "each act has one of three standings: " + "; ".join(STANDINGS)
     return out
 
 
@@ -3159,6 +3503,14 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
         problems.append("the study log is not a continuation of the committed study log (rewritten or cut short)")
     if not in_git:
         remarks.append("not in a git work tree: only posted fingerprints guard against a rewritten study log here")
+    else:
+        problems += log_history_problems(study)
+    for e in ev:
+        if e["kind"] == "act.verification":
+            of = e["data"].get("of") or {}
+            if not (isinstance(of.get("seq"), int) and of["seq"] < e["seq"] and ev[of["seq"]]["hash"] == of.get("hash")
+                    and ev[of["seq"]]["kind"] in ACTS_BY_PEOPLE and e["data"].get("result") in (VERIFIED, REFUTED, NOT_CHECKED)):
+                problems.append(f"the verification at event {e['seq']} names no lock or signature of this log")
     for e in ev:
         if e["kind"] in ("lock.recorded", "signature.recorded", "opening.voided"):
             if not is_act_by_people(e):
@@ -3167,7 +3519,18 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
                 bad, found = merge_problems(study, e["data"]["merge"], "lock-request" if e["kind"] == "lock.recorded" else "signature-request")
                 if not bad and found["sha"] != e["data"]["merge"].get("manifest_sha"):
                     bad = ["the manifest in the merge commit is not the one the log recorded"]
+                pinned = (found or {}).get("manifest", {}).get("log_head") if found else None
+                if not bad and isinstance(pinned, dict) and str(pinned.get("seq")).isdigit() and (
+                        int(pinned["seq"]) >= len(ev) or ev[int(pinned["seq"])]["hash"] != pinned.get("hash")):
+                    bad = [f"the merged request pins event {pinned['seq']} of the study log with a checksum this log does not have there: "
+                           "the log was rewritten before the act"]
                 problems += [f"{e['kind']} at event {e['seq']}: {b}" for b in bad]
+                if standing_of(ev, e) != VERIFIED:
+                    tried = verifications_of(ev, e)
+                    remarks.append(f"{e['kind']} at event {e['seq']} stands as `{MERGE_FOUND}`: git shows the merge and nothing about "
+                                   "people" + (f" (the last verification, at event {tried[-1]['seq']}, said: {tried[-1]['data'].get('result')}"
+                                               + "".join("; " + p for p in (tried[-1]["data"].get("problems") or [])[:2]) + ")" if tried else
+                                               " (never verified: run `sf.py verify-acts`)"))
             elif e["kind"] != "opening.voided":
                 remarks.append(f"{e['kind']} at event {e['seq']} was typed at a command line by {e['actor']} (practice): this study "
                                "cannot close as a signed finding")
@@ -3292,7 +3655,8 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     elif purity:
         status = EXPLORATORY
     elif sig and sig["data"]["decision"] == "signed":
-        status = SIGNED + ending
+        acts = (standing_of(ev, locks[-1]), standing_of(ev, sig))
+        status = (PRACTICE_SIGNED if PRACTICE in acts else SIGNED if acts == (VERIFIED, VERIFIED) else AWAITING) + ending
     elif sig:
         status = DECLINED + ending
     elif failed:
@@ -3312,6 +3676,7 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     return {"study": study.d.name, "status": status, "problems": problems, "purity": purity,
             "remarks": remarks, "outcomes": outcomes, "reviews": verdicts,
             "finding": att["data"]["file"] if att else None,
+            "acts": standings(ev), "finding_first_line": finding_line(ev) if att else None,
             "signature": sig["data"]["decision"] if sig else None,
             "closed": closed["data"]["outcome"] if closed else None,
             "openings_without_a_committed_lock": no_commit,
@@ -3345,7 +3710,7 @@ def cmd_scorecard(study: Study, a) -> None:
     card = {"study": study.d.name, "status": status, "acts": acts_report(study),
             "definition": definition_stamp(Path(a.factory), study.last("lock.recorded")),
             "models": models_report(ev, definition_stamp(Path(a.factory), study.last("lock.recorded"))),
-            "finished": status.startswith("confirmatory study") or status == EXPLORATORY,
+            "finished": status.startswith(("confirmatory study", "practice study")) or status == EXPLORATORY,
             "closed": rep["closed"],
             "elapsed_seconds": int((t1 - t0).total_seconds()) if ev else 0,
             "tests": by_test,
@@ -3576,6 +3941,52 @@ def _posted(study: Study) -> list:
     return [f"{e['seq']}:{e['hash']}" for e in study.events() if e["kind"] in ("lock.recorded", "opening.finished")]
 
 
+def _dead_platform(api: str, path: str, token: str) -> dict:
+    """What stands in for the platform through the self-tests unless a check puts recorded answers there: no answer.
+    No self-test asks a platform, whatever token the environment holds."""
+    return {"status": 0, "error": "a self-test asks no platform"}
+
+
+def _stand_in_platform(study: Study, act: str, merge: str, head: str, number: int = 7, case: str | None = None, change: dict | None = None):
+    """A stand-in for the platform, for one act of a study in a throwaway repository: the harness's recorded answers
+    (factory/harnesses/github/fixtures/verify.answers.json), filled in with that repository's own commits and the
+    request's own files, optionally with one of its hostile cases laid over them."""
+    mod, _block = act_harness(FACTORY, act)
+    _problems, found = merge_problems(study, {"commit": merge, "branch": "main"}, f"{act}-request", ["merge", "squash"])
+    fill = {"REPOSITORY": "example-org/example-studies", "BRANCH": "main", "MERGE_SHA": merge, "FIRST_PARENT": found["parents"][0],
+            "SECOND_PARENT": found["parents"][1] if len(found["parents"]) > 1 else "f" * 40, "HEAD_SHA": head, "OLDER_SHA": "d" * 40,
+            "MANIFEST_PATH": found["files"]["manifest"]["path"], "EVIDENCE_PATH": found["files"]["evidence"]["path"],
+            "MANIFEST_BLOB": found["files"]["manifest"]["blob"], "EVIDENCE_BLOB": found["files"]["evidence"]["blob"]}
+    return mod.recorded(fill, case, number=number, change=change)
+
+
+def _either(*calls):
+    """Several stand-ins as one: the first that knows the question answers it."""
+    def call(api: str, path: str, token: str) -> dict:
+        got = {"status": 404, "body": None}
+        for c in calls:
+            got = c(api, path, token)
+            if got.get("status") != 404:
+                return got
+        return got
+    return call
+
+
+def _rewritten(study: Study) -> str:
+    """The study log rewritten from its second event on, with every checksum made right again: what N13 does."""
+    out, prev = [], "genesis"
+    for i, e in enumerate(study.events()):
+        body = {k: e[k] for k in ("seq", "at", "actor", "kind", "data")}
+        if i == 1:
+            body["data"] = {**body["data"], "rewritten": True}
+        if "model" in e:
+            body["model"] = e["model"]
+        prev_hash = prev
+        prev = study._digest(prev, body)
+        out.append({**body, "prev": prev_hash, "hash": prev})
+    return "".join(json.dumps(e, sort_keys=True) + "\n" for e in out)
+
+
 def _refuses(fn, *args) -> bool:
     try:
         fn(*args)
@@ -3598,6 +4009,7 @@ def _selftest_fence_and_acts(tmp: Path, check) -> None:
     pull requests. Every study is in a throwaway folder; the only person's name typed is the placeholder."""
     import copy
     import time
+    global PLATFORM_CALL
     person = "human:throwaway-placeholder"
     kernel = bool(fence.landlock())
     have_git = bool(shutil.which("git"))
@@ -3804,8 +4216,23 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
     refusal = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
     check("a one-line change to a skill blocks it too, and is named", "definition changed after the lock" in refusal and "read-what-is-known" in refusal)
     cmd_lock(study, A(by=person, evidence=URL, factory=str(definition), local_practice=True))
+    scorer = definition / "scorers" / "chain-of-custody" / "scorer.md"
+    mode = scorer.stat().st_mode
+    scorer.chmod(0o777)
+    refusal = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
+    check("A3-3: a file of the definition made executable after the lock, with not a byte changed, blocks the opening and uses no opening up",
+          "the factory's definition changed after the lock" in refusal and not study.last("opening.started"))
+    scorer.chmod(mode)
+    runner, aside = definition / "runners" / "local.yaml", tmp / "local.yaml.the-same-bytes"
+    runner.rename(aside)
+    runner.symlink_to(aside)
+    refusal = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
+    check("A3-3: a file of the definition swapped after the lock for a symlink to the same bytes blocks the opening: a definition holds no link",
+          "holds a symlink (runners/local.yaml)" in refusal and runner.read_bytes() == aside.read_bytes() and not study.last("opening.started"))
+    runner.unlink()
+    aside.rename(runner)
     cmd_open_held_out(study, A(test="held-out", by="agent:coordinating", factory=str(definition), local_practice=True))
-    check("locked again on the definition as it is now, the study opens", study.last("opening.finished") is not None)
+    check("locked again on the definition as it is now, and with the mode and the file put back, the study opens", study.last("opening.finished") is not None)
 
     # ---- practice: a typed lock is practice, by name, and says so everywhere
     route = Study.default_route
@@ -3827,22 +4254,31 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
               and not study.last("opening.started"))
         cmd_open_held_out(study, A(test="held-out", by="agent:coordinating", local_practice=True))
         (tmp / "bare-finding.md").write_text("SUPPORTED, from the receipts\n")
-        (tmp / "practice-finding.md").write_text("SUPPORTED, from the receipts\n\n" + PRACTICE_WORDS + "\n")
-        check("the finding of a practice study is refused until it says, word for word, that the lock was practice",
-              "has to say so" in _refusal(cmd_attach, study, A(by="agent:analysis", file=str(tmp / "bare-finding.md"))))
+        (tmp / "practice-finding.md").write_text(PRACTICE_WORDS + "\n\nSUPPORTED, from the receipts\n")
+        (tmp / "buried-finding.md").write_text("SUPPORTED, from the receipts\n\n" + PRACTICE_WORDS + "\n")
+        check("the finding of a practice study is refused until its first line says, word for word, that the lock was practice",
+              "has to say so in its first line" in _refusal(cmd_attach, study, A(by="agent:analysis", file=str(tmp / "bare-finding.md")))
+              and "has to say so in its first line" in _refusal(cmd_attach, study, A(by="agent:analysis", file=str(tmp / "buried-finding.md"))))
         cmd_attach(study, A(by="agent:analysis", file=str(tmp / "practice-finding.md")))
         (tmp / "ok.md").write_text("APPROVE")
         cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "ok.md")))
         posted = _posted(study)
         cmd_scorecard(study, A(factory=str(FACTORY), anchor=posted))
         card = json.loads((study.d / "scorecard.json").read_text())
-        check("the scorecard of a practice study says practice", card["acts"]["practice"] is True and card["acts"]["lock"]["route"] == PRACTICE)
+        check("the scorecard of a practice study says practice", card["acts"]["practice"] is True and card["acts"]["lock"]["route"] == PRACTICE
+              and card["acts"]["lock"]["standing"] == PRACTICE)
         check("a signature typed with no word of practice is refused",
               "the signature is a pull request" in _refusal(cmd_signature, study, A(by=person, evidence=URL, decision="signed", anchor=posted, comment=None)))
         cmd_signature(study, A(by=person, evidence=URL, decision="signed", anchor=posted, comment=None, local_practice=True))
         check("a practice study never closes as a signed finding; it closes as the practice study it is",
               "typed at a command line" in _refusal(cmd_close, study, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted))
               and "typed at a command line" in _refusal(cmd_close, study, A(by="agent:coordinating", outcome="negative-result-signed", cite=None, comment=None, anchor=posted)))
+        signed = check_log(study, posted)
+        check("a practice study with a typed signature is never called signed: its status, its machine-readable record and the first line "
+              "the tool puts on its finding say practice",
+              signed["status"] == PRACTICE_SIGNED and "signed by the steward" not in signed["status"] and signed["acts"] == {"lock": PRACTICE, "signature": PRACTICE}
+              and signed["finding_first_line"] == PRACTICE_WORDS and "awaiting" in _refusal(
+                  cmd_close, study, A(by="agent:coordinating", outcome="awaiting-verification", cite=None, comment=None, anchor=posted)))
         cmd_close(study, A(by="agent:coordinating", outcome="practice-ended", cite=None, comment=None, anchor=posted))
         check("an actor `platform:<host>` writes nothing but a merged act", "records one thing only" in _refusal(
             cmd_note, _fresh(tmp, "p-platform"), A(kind="method", about="a", text="b", evidence=None, by="platform:github")))
@@ -3905,7 +4341,14 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
             lock = study.last("lock.recorded")
             check("the merge is the lock: recorded under the platform's name with the merge commit, the branch and the people the record names",
                   lock["actor"] == "platform:github" and route_of(lock) == PULL_REQUEST and lock["data"]["merge"]["commit"] == merge
-                  and lock["data"]["merge"]["people"]["approved"] == ["octo-steward"] and stage_of(study, FACTORY)["acts"]["lock"]["route"] == PULL_REQUEST)
+                  and lock["data"]["merge"]["people"]["approved"] == ["octo-steward"] and stage_of(study, FACTORY)["acts"]["lock"]["route"] == PULL_REQUEST
+                  and lock["data"]["merge"]["method"] == "merge" and len(lock["data"]["merge"]["parents"]) == 2)
+            shown = stage_of(study, FACTORY)["acts"]["lock"]
+            check("A3-1: a lock recorded from a merge found with git and a file of approvals stands as `merge found, people not verified`: the "
+                  "names are shown as what the tool was handed, and nobody is said to have approved",
+                  shown["standing"] == MERGE_FOUND and shown["names_handed_to_the_tool"]["approved"] == ["octo-steward"] and "approved_by" not in shown
+                  and "PEOPLE NOT VERIFIED" in shown["note"] and shown["last_verification"] == "never tried"
+                  and "not checked with the platform" in lock["data"]["merge"]["people_source"])
             check("until the recorded lock is committed, nothing is opened", "the lock is not committed" in _refusal(
                 cmd_open_held_out, study, A(test="held-out", by="agent:coordinating")))
             g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + merge)
@@ -3934,10 +4377,188 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
                   "bring its request in, and it was not recorded by the platform",
                   "the lock's merge does not check out" in _refusal(cmd_open_held_out, forged, A(test="held-out", by="agent:coordinating"))
                   and check_log(forged)["status"] == INVALID and not forged.last("opening.started"))
+            tokens = {k: os.environ.pop(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if k in os.environ}
+            PLATFORM_CALL = None  # as a command line has it; with no token set nothing is asked
+            try:
+                no_token = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating"))
+            finally:
+                os.environ.update(tokens)
+                PLATFORM_CALL = _dead_platform
+            tried = study.last("act.verification")
+            check("A3-1: the held-out data is not opened on a merge found with git. With no token the platform is not asked, the opening is "
+                  "refused and not used up, and the attempt is in the log as `not checked`, which is never a pass",
+                  "opened only on a verified lock" in no_token and "no token" in no_token and "--people-not-verified" in no_token
+                  and not study.last("opening.started") and tried["data"]["result"] == NOT_CHECKED and tried["data"]["asked"] == []
+                  and tried["data"]["asked_at"] == "the opening" and standing_of(study.events(), lock) == MERGE_FOUND)
+            PLATFORM_CALL = _stand_in_platform(study, "lock", merge, on_branch, case="the only approval is the author's own")
+            hostile = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", people_not_verified="there is no network here"))
+            check("A3-1: when the platform answers and its answer does not bear the lock out (only the author approved), the opening is refused, "
+                  "and the option for a place with no network does not waive it",
+                  "does not bear the lock out" in hostile and "an author's own approval does not count" in hostile and not study.last("opening.started")
+                  and study.last("act.verification")["data"]["result"] == REFUTED)
+            PLATFORM_CALL = _stand_in_platform(study, "lock", merge, on_branch)
             cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
-            check("a lock that is a merge on the protected branch, reachable from HEAD, with a manifest that matches, opens the held-out data",
+            shown, asked = stage_of(study, FACTORY)["acts"]["lock"], study.last("act.verification")
+            check("a lock that is a merge on the protected branch, reachable from HEAD, with a manifest that matches, and that the platform "
+                  "confirms when the opening asks it, opens the held-out data",
                   study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == PULL_REQUEST
-                  and check_log(study)["status"] != INVALID)
+                  and study.last("opening.started")["data"]["lock_standing"] == VERIFIED and check_log(study)["status"] != INVALID)
+            check("a verified act says who approved by the platform's answer, when it was asked, of which repository and at which address, and "
+                  "that a stand-in answered when one did; the token's name is kept and its value never",
+                  shown["standing"] == VERIFIED and shown["approved_by"] == ["example-scientist"] and shown["author"] == "example-author"
+                  and "names_handed_to_the_tool" not in shown and shown["verified"]["repository"] == "example-org/example-studies"
+                  and shown["verified"]["platform_asked"] == "https://api.github.com" and "BY A STAND-IN FOR THE PLATFORM" in shown["verified"]
+                  and asked["data"]["asked"][0] == {"endpoint": "https://api.github.com/repos/example-org/example-studies", "status": 200}
+                  and "token" not in json.dumps(asked["data"]["told"]) and set(asked["data"]) >= {"token_from", "through", "answers_sha256"})
+            ev2 = Study._parse(_rewritten(study))
+            pinned = verify_act(study, ev2, next(e for e in ev2 if e["kind"] == "lock.recorded"), "lock", FACTORY)
+            check("N13: the merged request pins the log's head as it was when the request was made, so a log rewritten before the lock, with every "
+                  "checksum made right again, is refuted by the verification before the platform is even asked",
+                  pinned["result"] == REFUTED and "the log was rewritten before the act" in pinned["problems"][0] and pinned["asked"] == [])
+            PLATFORM_CALL = _dead_platform
+            g("add", "-A"), g("commit", "-q", "-m", "after the first opening")
+
+            # ---- a place with no network: opened on the merge alone, loudly, and then not signed until somebody verifies
+            g("checkout", "-q", "-b", "lock/R3")
+            r3 = _fresh(repo / "studies", "R3", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+            cmd_test(r3, A(what="known-answers", by="agent:analysis"))
+            cmd_test(r3, A(what="working-data", by="agent:analysis"))
+            cmd_request_lock(r3, A(by="agent:coordinating"))
+            g("add", "-A"), g("commit", "-q", "-m", "lock request")
+            head3 = sha()
+            g("checkout", "-q", "main")
+            g("merge", "-q", "--no-ff", "-m", "Merge the lock request", "lock/R3")
+            merge3 = sha()
+            cmd_lock(r3, platform(merge3))
+            g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + merge3)
+            dead = _refusal(cmd_open_held_out, r3, A(test="held-out", by="agent:coordinating"))
+            check("with no network the opening is refused, says the platform could not be asked, and names the one way on",
+                  "The platform could not be asked" in dead and "--people-not-verified" in dead and not r3.last("opening.started"))
+            cmd_open_held_out(r3, A(test="held-out", by="agent:coordinating", people_not_verified="a field station with no network"))
+            began = r3.last("opening.started")["data"]
+            check("with `--people-not-verified` and a reason the opening goes ahead on the merge alone: the reason, who gave it and why the "
+                  "platform could not be asked are in the opening's own event, and the lock stays at people not verified",
+                  r3.last("opening.finished") is not None and began["lock_standing"] == MERGE_FOUND
+                  and began["opened_without_verification"]["reason"] == "a field station with no network"
+                  and began["opened_without_verification"]["by"] == "agent:coordinating" and standing_of(r3.events(), r3.last("lock.recorded")) == MERGE_FOUND)
+            (tmp / "r3-bare.md").write_text("SUPPORTED, from the receipts\n")
+            (tmp / "r3-buried.md").write_text("SUPPORTED, from the receipts\n\n" + UNVERIFIED_WORDS + "\n")
+            (tmp / "r3-finding.md").write_text(UNVERIFIED_WORDS + "\n\nSUPPORTED, from the receipts\n")
+            check("the finding of a study whose lock is not verified is refused until its first line says so, word for word",
+                  "has to say so in its first line" in _refusal(cmd_attach, r3, A(by="agent:analysis", file=str(tmp / "r3-bare.md")))
+                  and "has to say so in its first line" in _refusal(cmd_attach, r3, A(by="agent:analysis", file=str(tmp / "r3-buried.md"))))
+            cmd_attach(r3, A(by="agent:analysis", file=str(tmp / "r3-finding.md")))
+            (tmp / "r3-ok.md").write_text("APPROVE")
+            cmd_review(r3, A(by="agent:review", verdict="approve", file=str(tmp / "r3-ok.md")))
+            posted3 = _posted(r3)
+            g("add", "-A"), g("commit", "-q", "-m", "the finding and the review")
+            g("checkout", "-q", "-b", "sign/R3")
+            cmd_request_signature(r3, A(by="agent:coordinating", decision="signed", anchor=posted3, evidence=None, comment=None))
+            check("the signature request tells the steward how the lock stands",
+                  "Standing of the lock: **merge found, people not verified**" in (r3.d / "signature-request" / "EVIDENCE.md").read_text())
+            g("add", "-A"), g("commit", "-q", "-m", "signature request")
+            shead3 = sha()
+            g("checkout", "-q", "main")
+            g("merge", "-q", "--no-ff", "-m", "Merge the signature request", "sign/R3")
+            smerge3 = sha()
+            signing = platform(smerge3)
+            signing.anchor, signing.comment, signing.decision = None, None, None
+            cmd_signature(r3, signing)
+            rep3 = check_log(r3, posted3)
+            check("A3-1: a signature found with git on a lock found with git is not a signed finding. The study is awaiting verification, and "
+                  "its status, its machine-readable record and the first line the tool puts on its finding all say so",
+                  rep3["status"] == AWAITING and "signed by the steward" not in rep3["status"] and rep3["acts"] == {"lock": MERGE_FOUND, "signature": MERGE_FOUND}
+                  and rep3["finding_first_line"].startswith("NOT SIGNED, AWAITING VERIFICATION (lock: merge found, people not verified; signature: merge found, people not verified)")
+                  and stage_of(r3, FACTORY)["awaiting_verification"] == ["lock", "signature"]
+                  and any("stands as `merge found, people not verified`" in r for r in rep3["remarks"]))
+            check("A3-1: and it does not close as a signed finding",
+                  "awaiting verification, not signed" in _refusal(cmd_close, r3, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted3))
+                  and not r3.last("study.closed"))
+            PLATFORM_CALL = _either(_stand_in_platform(r3, "lock", merge3, head3),
+                                    _stand_in_platform(r3, "signature", smerge3, shead3, number=8, case="the approver is a bot"))
+            half = _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY)))
+            rep3 = check_log(r3, posted3)
+            check("`verify-acts` asks the platform about each act and records each answer: with the lock confirmed and the signature approved "
+                  "by a bot only, the lock is verified, the signature is not, and the study is still awaiting verification",
+                  "the signature (refuted)" in half and "is not a person's" in half and rep3["acts"] == {"lock": VERIFIED, "signature": MERGE_FOUND}
+                  and rep3["status"] == AWAITING and stage_of(r3, FACTORY)["awaiting_verification"] == ["signature"])
+            before = len(r3.events())
+            PLATFORM_CALL = _dead_platform
+            _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY), report_only=True))
+            lost = _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY)))
+            check("a verification that cannot reach the platform is `not checked`: it is no pass, and it takes nothing away from an act the "
+                  "platform confirmed before; with --report-only nothing is written",
+                  "not checked" in lost and len(r3.events()) == before + 2 and check_log(r3, posted3)["acts"] == {"lock": VERIFIED, "signature": MERGE_FOUND})
+            PLATFORM_CALL = _either(_stand_in_platform(r3, "lock", merge3, head3), _stand_in_platform(r3, "signature", smerge3, shead3, number=8))
+            cmd_verify_acts(r3, A(by="platform:github", factory=str(FACTORY)))
+            rep3, shown = check_log(r3, posted3), stage_of(r3, FACTORY)["acts"]
+            check("with both acts verified the study is signed: the status says so, the first line of the finding says so, and each act names "
+                  "the accounts the platform said approved it",
+                  rep3["status"] == SIGNED and rep3["acts"] == {"lock": VERIFIED, "signature": VERIFIED}
+                  and rep3["finding_first_line"].startswith("SIGNED (lock: verified; signature: verified)")
+                  and shown["signature"]["approved_by"] == ["example-scientist"] and shown["signature"]["pull_request"].endswith("/pull/8")
+                  and r3.last("act.verification")["actor"] == "platform:github" and stage_of(r3, FACTORY)["awaiting_verification"] == [])
+            cmd_close(r3, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted3))
+            cmd_verify_acts(r3, A(by="agent:coordinating", factory=str(FACTORY)))
+            check("a study with two verified acts closes as a signed finding, and anybody can verify it again after the close",
+                  r3.last("study.closed")["data"]["outcome"] == "finding-signed" and r3.events()[-1]["kind"] == "act.verification"
+                  and check_log(r3, posted3)["status"] == SIGNED + "; closed as finding-signed")
+            PLATFORM_CALL = _dead_platform
+            g("add", "-A"), g("commit", "-q", "-m", "the signature, verified, and the close")
+
+            # ---- A3-2: what counts as the merge
+            r4 = _fresh(repo / "studies", "R4", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+            cmd_test(r4, A(what="known-answers", by="agent:analysis"))
+            cmd_test(r4, A(what="working-data", by="agent:analysis"))
+            cmd_request_lock(r4, A(by="agent:coordinating"))
+            g("add", "-A"), g("commit", "-q", "-m", "a lock request committed straight onto the branch")
+            plain = sha()
+            ordinary = _refusal(cmd_lock, r4, platform(plain))
+            check("A3-2: an ordinary commit with one parent that holds the request is not a merge: it is not recorded as the lock, whatever "
+                  "the file of approvals says",
+                  "has one parent: it is an ordinary commit, not a merge" in ordinary and not r4.last("lock.recorded"))
+            bad, found = merge_problems(r4, {"commit": plain, "branch": "main"}, "lock-request", ["merge", "squash"])
+            mod, _block = act_harness(FACTORY, "lock")
+            expect = {"repository": "example-org/example-studies", "branch": "main", "commit": plain, "parents": found["parents"], "approvals": 1, "request": found["files"]}
+            one_parent = {"/repos/REPOSITORY/commits/MERGE_SHA": {"body": {"parents": [{"sha": "FIRST_PARENT"}]}}}
+            squashed = mod.verify(_stand_in_platform(r4, "lock", plain, "c" * 40, change=one_parent), "https://api.github.com", "a-self-test", expect)
+            forged = mod.verify(_stand_in_platform(r4, "lock", plain, "c" * 40, case="no pull request brought the commit in", change=one_parent),
+                                "https://api.github.com", "a-self-test", expect)
+            check("A3-2: where the definition allows a squash merge, a commit with one parent that brought the request in is accepted by git's "
+                  "check as far as git can see, and the platform carries the rest: verified when the platform says it is a pull request's merge, "
+                  "refuted when the platform knows no pull request for it (an ordinary local commit)",
+                  bad == [] and found["method"] == "squash" and squashed["result"] == VERIFIED and forged["result"] == REFUTED
+                  and "knows no pull request" in forged["problems"][0])
+            g("checkout", "-q", "-b", "lock/R6")
+            r6 = _fresh(repo / "studies", "R6", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+            cmd_test(r6, A(what="known-answers", by="agent:analysis"))
+            cmd_test(r6, A(what="working-data", by="agent:analysis"))
+            cmd_request_lock(r6, A(by="agent:coordinating"))
+            g("add", "-A"), g("commit", "-q", "-m", "lock request")
+            g("checkout", "-q", "-b", "another-line", "main")
+            g("merge", "-q", "--no-ff", "--no-commit", "lock/R6")
+            (r6.d / "lock-request" / "manifest.json").write_text((r6.d / "lock-request" / "manifest.json").read_text() + "\n")
+            g("add", "-A"), g("commit", "-q", "-m", "a merge that changes the request as it merges it")
+            bad, _found = merge_problems(r6, {"commit": sha(), "branch": "another-line"}, "lock-request")
+            check("A3-2: a merge commit whose request is not the request on the branch it merged is not accepted: the request comes in from "
+                  "the second parent, unchanged, and from nowhere else",
+                  len(g("rev-list", "--parents", "-n", "1", "HEAD").stdout.split()) == 3
+                  and any("is not the request on the branch it merged" in b for b in bad))
+            g("checkout", "-q", "-f", "main")
+
+            # ---- N13: a log rewritten and committed again
+            r5 = _fresh(repo / "studies", "R5", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+            cmd_test(r5, A(what="known-answers", by="agent:analysis"))
+            cmd_test(r5, A(what="working-data", by="agent:analysis"))
+            g("add", "-A"), g("commit", "-q", "-m", "a study under way")
+            clean = check_log(r5)["status"]
+            r5.log.write_text(_rewritten(r5))
+            g("add", "-A"), g("commit", "-q", "-m", "the log, rewritten and committed again")
+            again = check_log(r5)
+            check("N13: a study log rewritten with every checksum made right, and committed again, fails the log check: the earlier commit "
+                  "still holds the earlier log, though the last commit agrees with the rewritten one",
+                  clean != INVALID and not r5.chain_problems() and r5.committed_log()[1] == r5.log.read_text()
+                  and again["status"] == INVALID and any("rewritten after that commit" in p for p in again["problems"]))
     finally:
         Study.default_route = route
 
@@ -3952,6 +4573,8 @@ def selftest() -> int:
     results = []
     Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
     Study.default_route = PRACTICE  # the self-test types its locks and signatures: practice, in throwaway folders; the pull request route is tested by name
+    global PLATFORM_CALL
+    PLATFORM_CALL = _dead_platform  # no self-test asks a platform; the checks of the verification put recorded answers here
 
     def check(name: str, ok: bool) -> None:
         results.append((name, bool(ok)))
@@ -3960,7 +4583,7 @@ def selftest() -> int:
         tmp = Path(t).resolve()
         (tmp / "v.md").write_text("APPROVE")
         (tmp / "b.md").write_text("BLOCK")
-        (tmp / "finding.md").write_text("a finding drafted from receipts\n\n" + PRACTICE_WORDS + "\n")
+        (tmp / "finding.md").write_text(PRACTICE_WORDS + "\n\na finding drafted from receipts\n")
         approve = lambda who: A(by=who, verdict="approve", file=str(tmp / "v.md"))  # noqa: E731
         block = lambda who: A(by=who, verdict="block", file=str(tmp / "b.md"))  # noqa: E731
         finding = lambda who="agent:analysis": A(by=who, file=str(tmp / "finding.md"))  # noqa: E731
@@ -4061,8 +4684,8 @@ def selftest() -> int:
               study.last("signature.recorded")["data"]["finding"] == study.last("finding.attached")["data"]
               and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(tmp / "finding.md"))
         check("a finding attached after the signature is refused", _refuses(cmd_attach, study, finding()))
-        check("after the signature the log check says signed, not ready",
-              check_log(study)["status"] == SIGNED and check_log(study)["signature"] == "signed")
+        check("after the signature the log check says the signature is recorded, and that the study is practice and not a signed finding",
+              check_log(study)["status"] == PRACTICE_SIGNED and check_log(study)["signature"] == "signed")
         check("a declined note needs its reason",
               _refuses(cmd_resolve, study, A(by="agent:curating", note="NOTE-001", disposition="declined", ref=None, comment=None)))
         cmd_resolve(study, A(by="agent:curating", note="NOTE-001", disposition="linked", ref="https://example.invalid/pr/9", comment=None))
@@ -4076,7 +4699,7 @@ def selftest() -> int:
         check("the study closes, as the practice study it is, and takes nothing more",
               stage_of(study, FACTORY)["stage"] == "closed"
               and _refuses(cmd_note, study, A(kind="method", about="x", text="n", evidence=None, by="agent:x")))
-        check("and after the close the log check says so", check_log(study)["status"] == SIGNED + "; closed as practice-ended")
+        check("and after the close the log check says so", check_log(study)["status"] == PRACTICE_SIGNED + "; closed as practice-ended")
         rep = check_log(study, change_log=tmp / "changes.jsonl")
         (tmp / "changes.jsonl").write_text((tmp / "changes.jsonl").read_text().replace('"predicted": "p"', '"predicted": "another"'))
         check("the log check, given the change log, catches a change record edited afterwards",
@@ -5189,7 +5812,7 @@ def selftest() -> int:
             answer_file.write_text(kept_answer)
             check("the sealed answer is bound by the opening too: changed afterwards, the log check fails",
                   kept_answer != answer_file.read_text().replace('"gain": 0.9', '"gain": 1.0') and edited["status"] == INVALID
-                  and any("sealed/answer.json" in x for x in edited["problems"]) and check_log(study)["status"] == SIGNED)
+                  and any("sealed/answer.json" in x for x in edited["problems"]) and check_log(study)["status"] == PRACTICE_SIGNED)
             verdict = [sys.executable, str(kit / "system_trial.py"), "verdict", "--study", str(study.d), "--by", "human:tester"]
             one = subprocess.run(verdict, capture_output=True, text=True, env=dict(os.environ))
             event = study.last("trial.verdict")
@@ -5305,7 +5928,14 @@ def build_parser() -> argparse.ArgumentParser:
     add("request-signature", cmd_request_signature, by, proc, anchor, (["--decision"], {"required": True, "help": "signed or declined"}))
     add("check-request", cmd_check_request, proc, (["--act"], {"required": True, "help": "lock or signature"}))
     add("lock", cmd_lock, by, evidence, proc, practice, record_merge, platform_rec)
-    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice)
+    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice,
+        (["--people-not-verified"], {"default": None, "dest": "people_not_verified", "metavar": "REASON",
+                                     "help": "for a place with no network only: open on a lock that is a merge found with git, whose "
+                                             "people the platform could not be asked about. Logged with the reason; the study stays at "
+                                             "people not verified, and not signed, until `verify-acts` succeeds"}))
+    add("verify-acts", cmd_verify_acts, by, proc,
+        (["--report-only"], {"action": "store_true", "dest": "report_only", "help": "ask and print, and write nothing into the study log"}))
+    add("show-finding", cmd_show_finding)
     add("held-out-change", cmd_held_out_change, by, (["--reason"], {"required": True, "help": "why what is held out changed; the lock shows it"}))
     add("void-unread", cmd_void_unread, held_out, by, evidence, (["--reason"], {"required": True}))
     add("review", cmd_review, by, (["--verdict"], {"required": True}), (["--file"], {"required": True}))

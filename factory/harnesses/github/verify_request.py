@@ -34,7 +34,10 @@ It prints the evidence summary of each request with the result of each check, an
 no request. Exit 1: a check failed. Exit 2: it could not check.
 
 What it cannot check: that the branch is protected and this check required, and who the approvers are beyond their
-login. Those are the repository's settings (README.md beside this file). It has never been run by GitHub.
+login. Those are the repository's settings (README.md beside this file). It has never been run by GitHub. It is a
+check on the platform, where the event and the reviews are the platform's own; run by hand on a clone, with files
+somebody wrote, it proves nothing about people, and the study tool never takes its word for who approved: that is
+asked of the platform by `sf.py verify-acts` (verify_acts.py beside this file).
 """
 import sys
 
@@ -67,15 +70,18 @@ def flat(reviews) -> list:
 
 
 def approvals(reviews, author: str) -> list:
-    """Who approves the pull request now, the author apart: for each person the latest review that is an approval,
-    a request for changes or a dismissal decides (a later comment does not withdraw an approval)."""
+    """Who approves the pull request now, the author and every bot apart: for each account the latest review that is
+    an approval, a request for changes or a dismissal decides (a later comment does not withdraw an approval). An
+    account the platform does not call a user (an app, a bot) approves nothing: an act by people is approved by
+    people. An entry that is not a review in the platform's shape is passed over."""
     latest = {}
-    for r in sorted(flat(reviews), key=lambda r: str(r.get("submitted_at") or "")):
-        login = str((r.get("user") or {}).get("login") or "")
+    for r in sorted((r for r in flat(reviews) if isinstance(r, dict) and isinstance(r.get("user"), dict)), key=lambda r: str(r.get("submitted_at") or "")):
+        login = str(r["user"].get("login") or "")
         if login and str(r.get("state")).upper() in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
             latest[login.casefold()] = r
+    person = lambda r: str(r["user"].get("type") or "User").casefold() == "user" and not str(r["user"].get("login")).casefold().endswith("[bot]")  # noqa: E731
     return [{"login": r["user"]["login"], "commit_id": r.get("commit_id"), "submitted_at": r.get("submitted_at")}
-            for key, r in sorted(latest.items()) if str(r.get("state")).upper() == "APPROVED" and key != author.casefold()]
+            for key, r in sorted(latest.items()) if str(r.get("state")).upper() == "APPROVED" and key != author.casefold() and person(r)]
 
 
 def requests_touched(repo: Path, base: str, head: str) -> tuple:
@@ -103,6 +109,8 @@ def verify(repo: Path, event: dict, reviews, tools: Path, factory: Path) -> tupl
     found, paths = requests_touched(repo, base_sha, head)
     if not found:
         return 0, []
+    if not isinstance(reviews, list):
+        return 2, ["The reviews are not a list, as the platform gives them: the check could not read who approved, and nothing is passed on an answer it cannot read."]
     acts, failed, out = declared(factory), False, []
     for study, act in found:
         rules = acts.get(act) or {}

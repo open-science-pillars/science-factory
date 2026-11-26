@@ -334,6 +334,15 @@ def main() -> int:
              practice["acts"]["practice"] is True and "cannot close as a signed finding" in practice["acts"]["lock"]["note"]
              and "practice lock" in tool("sf.py", "open-held-out", *S, "--by", coordinator, expect=2)
              and not any(json.loads(ln)["kind"] == "opening.started" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+        # The three standings of an act. This example can show the first only: `merge found, people not verified` needs a
+        # merge in a repository, and `verified` needs the platform to be asked, and a scratch folder has neither.
+        checked = json.loads(tool("sf.py", "verify-acts", *S, "--by", coordinator, answer=True))
+        step("the status names the three standings an act can have and gives this lock the first, practice; asked to verify it, the tool "
+             "says a typed lock has nothing to verify and stays practice",
+             practice["acts"]["standings"] == "each act has one of three standings: practice; merge found, people not verified; verified"
+             and practice["acts"]["lock"]["standing"] == "practice" and checked["acts"]["lock"]["standing"] == "practice"
+             and "nothing to verify" in checked["acts"]["lock"]["said"] and checked["acts"]["signature"]["standing"] is None)
+        standings_shown = f"{practice['acts']['standings']}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
@@ -352,6 +361,9 @@ def main() -> int:
                                 known-answer tests, the working data, the rehearsal), lock-request/ (what a person
                                 would be asked to approve), and a practice lock, typed here because a scratch folder
                                 has no protected branch
+                                {standings_shown}
+                                The second standing is what git on a clone can show of a merged request; the third is
+                                what the platform answers when `sf.py verify-acts` asks it. Neither can be shown here.
   studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
   knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given

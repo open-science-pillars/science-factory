@@ -556,7 +556,7 @@ def selftest() -> int:
         sys.stdout = quiet
         sf.cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
         finding = tmp / "finding.md"
-        finding.write_text("# Finding\n\nSECRET-OUTCOME: the interval lies between 0.98 and 1.06, so the idea is supported.\n\n" + sf.PRACTICE_WORDS + "\n")
+        finding.write_text(sf.PRACTICE_WORDS + "\n\n# Finding\n\nSECRET-OUTCOME: the interval lies between 0.98 and 1.06, so the idea is supported.\n")
         sf.cmd_attach(study, A(by="agent:analysis", file=str(finding)))
         review = tmp / "review.md"
         review.write_text("# Review\n\nSECRET-OUTCOME: checked the finding against the receipt; the idea is supported.\n")

@@ -1,0 +1,4 @@
+[
+  {"id": 301, "user": {"login": "octo-app[bot]", "type": "Bot"}, "state": "APPROVED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T11:00:00Z"},
+  {"id": 302, "user": {"login": "octo-service", "type": "Bot"}, "state": "APPROVED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T11:05:00Z"}
+]

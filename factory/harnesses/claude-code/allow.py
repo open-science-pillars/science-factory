@@ -251,6 +251,9 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
         j += 1
     declared = declared_model(fm, root)
     for name, value in values:
+        if name == "--people-not-verified":
+            return ("`--people-not-verified` opens held-out data on a lock nobody has verified with the platform: whether a place has no "
+                    "network, and whether to spend the held-out data there, is a person's decision and a person's command, never a role's")
         if str(value).casefold().startswith(("human:", "platform:")):
             return (f"{name or 'the word'} `{value}` names a person or a platform: a role types its own name and other roles' names, "
                     "never a person's. Who asked, who reviews as a person and who approved are recorded by people, where they act")
@@ -860,6 +863,13 @@ def selftest() -> int:
            and all(call(r, "Bash", command=f"uv run {tmp}/tools/sf.py {act} --study studies/S1 --by {who} {how}") is not None
                    for r in ("coordinating", "analysis", "review", "curating") for act in ("lock", "signature")
                    for who, how in ((f"agent:{r}", "--local-practice"), ("platform:github", "--record-merge abc --platform-record r.json"))))
+        ok("A3-1: no role opens held-out data on a lock whose people are not verified: the option for a place with no network is a "
+           "person's to give, and the opening without it is the coordinating role's as before",
+           all(call(r, "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 --by agent:{r} --people-not-verified no-network")
+               is not None for r in ("coordinating", "analysis", "review", "curating"))
+           and "a person's decision" in str(call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 "
+                                                                                  "--by agent:coordinating --people-not-verified no-network"))
+           and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 --by agent:coordinating") is None)
         ok("no role writes a lock request or a signature request by hand",
            all(call(r, "Write", file_path=f"studies/S1/{folder}/{name}", content="x") is not None for r in ("coordinating", "analysis", "review", "curating")
                for folder in ("lock-request", "signature-request") for name in ("manifest.json", "EVIDENCE.md")))

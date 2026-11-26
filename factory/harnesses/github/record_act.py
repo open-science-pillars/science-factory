@@ -11,22 +11,26 @@ identity. It reads the platform's record of the merged pull request and of its r
 a small file made from them: the pull request, its author, who merged it, and each person other than the author
 whose latest review is an approval, with the commit they approved. The study tool then checks the merge with git
 (`sf.py lock --record-merge`, `sf.py signature --record-merge`) and writes the lock or the signature under the
-actor `platform:github`, naming those people. No name is typed by anybody: every name in the log entry comes
-from the platform's record.
+actor `platform:github`. The names it handed over are recorded as handed over, and the act stands as `merge
+found, people not verified`: the study tool cannot tell this job from anybody else who runs the same command with
+a file of their own. The step after this one in the workflow, `sf.py verify-acts`, asks the platform itself, and
+only its answer makes the act `verified`.
 
-  record_act.py --repo CHECKOUT --pull PULL.json --reviews REVIEWS.json --commit MERGE_SHA [--tools DIR] [--factory DIR]
+  record_act.py --repo CHECKOUT --pull PULL.json --reviews REVIEWS.json --commit MERGE_SHA [--verify] [--tools DIR] [--factory DIR]
   record_act.py --which-pull PULLS.json --commit MERGE_SHA     the number of the pull request that commit merged, or nothing
   record_act.py --selftest
 
   --pull      the platform's pull request object (the pulls API), after the merge
   --reviews   the platform's list of reviews of that pull request, one page or several
   --commit    the merge commit on the protected branch
+  --verify    after recording, ask the platform about the act (`sf.py verify-acts`, with the token in the environment)
+              and record its answer, whichever way it goes
 
 Exit 0: every request the merge brought in is recorded, or it brought none. Exit 1: the study tool refused one
 (the merge does not check out, too few people approved, a request changed after its approval), and says why.
 
-What this cannot do: prove to someone who has only the git history who approved. The log entry is a copy of the
-platform's record made by this job; the record itself stays on the platform. This program has never been run by
+What this cannot do: prove to anybody who approved. The names in the log entry are a copy this job made; the
+record itself stays on the platform, and `sf.py verify-acts` is how anybody asks it. This program has never been run by
 GitHub: it is tested here on payloads written in the platform's shapes and a throwaway repository.
 """
 import sys
@@ -77,7 +81,7 @@ def platform_record(repo: Path, pull: dict, reviews, study: str, act: str) -> di
             "merged_by": (pull.get("merged_by") or {}).get("login"), "base": (pull.get("base") or {}).get("ref"), "approved": approved}
 
 
-def record(repo: Path, pull: dict, reviews, commit: str, tools: Path, factory: Path) -> int:
+def record(repo: Path, pull: dict, reviews, commit: str, tools: Path, factory: Path, verify: bool = False) -> int:
     if not pull.get("merged") or pull.get("merge_commit_sha") != commit:
         print(f"record_act: the platform's record does not say this pull request was merged as {commit[:12]}; nothing is recorded", file=sys.stderr)
         return 1
@@ -96,6 +100,12 @@ def record(repo: Path, pull: dict, reviews, commit: str, tools: Path, factory: P
         said = "\n".join(ln for ln in (done.stdout + done.stderr).splitlines() if not ln.startswith("warning: "))
         print(f"record_act: the {act} of {study}: " + ("recorded" if done.returncode == 0 else "NOT RECORDED") + "\n" + said)
         worst = max(worst, 1 if done.returncode else 0)
+        if verify and done.returncode == 0:
+            asked = subprocess.run(["uv", "run", "--quiet", str(tools / "sf.py"), "verify-acts", "--study", str(repo / study), "--by", "platform:github",
+                                    "--factory", str(factory)], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+            said = "\n".join(ln for ln in (asked.stdout + asked.stderr).splitlines() if not ln.startswith("warning: "))
+            print(f"record_act: the platform was asked about the acts of {study}: "
+                  + ("verified" if asked.returncode == 0 else "NOT VERIFIED (the act stays at `merge found, people not verified`)") + "\n" + said)
     return worst
 
 
@@ -132,6 +142,7 @@ def selftest(only: str | None = None) -> int:
         g("add", "-A"), g("commit", "-q", "-m", "start")
         base = sha()
         sf.Study.default_model, sf.Study.default_route = "selftest-model", None  # the real route: nothing here is typed as a person's act
+        sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; recorded answers are put here where a check needs them
         try:
             g("checkout", "-q", "-b", "lock/S1")
             study = sf._fresh(repo / "studies", "S1", start=A(id="STUDY-TEST", question=sf.PLAN["question"], by="agent:coordinating"))
@@ -156,6 +167,14 @@ def selftest(only: str | None = None) -> int:
             good = run(event(), fixture("reviews.approved.json", APPROVED_SHA=head))
             ok("approved at its head by somebody other than the author, with a manifest that matches the files, the request passes",
                good[0] == 0 and "every check passed" in said(good) and "octo-steward" in said(good), V)
+            bots = run(event(), fixture("reviews.bot-only.json", APPROVED_SHA=head))
+            ok("an approval by a bot or an app is not an approval by a person, whatever its login looks like",
+               bots[0] == 1 and "nobody but the author" in said(bots), V)
+            odd = run(event(), fixture("reviews.odd-entries.json", APPROVED_SHA=head))
+            broken = run(event(), fixture("reviews.malformed.json"))
+            ok("reviews that are not in the platform's shape approve nothing: entries with no account are passed over, and an answer that "
+               "is not a list at all is `not checked`, never a pass",
+               odd[0] == 1 and "nobody but the author" in said(odd) and broken[0] == 2 and "could not read who approved" in said(broken), V)
             gone = run(event(), fixture("reviews.approval-withdrawn.pages.json", APPROVED_SHA=head))
             ok("an approval its giver later replaced by a request for changes does not count, read from an answer that came in pages",
                gone[0] == 1 and "nobody but the author" in said(gone), V)
@@ -216,18 +235,39 @@ def selftest(only: str | None = None) -> int:
                and not study.last("lock.recorded"), R)
             ok("a merge into another branch than the protected one is not recorded",
                record(repo, pull(MERGE_SHA=merge, BASE_REF="develop"), reviews, merge, tools, factory) == 1 and not study.last("lock.recorded"), R)
-            done = record(repo, pull(MERGE_SHA=merge), reviews, merge, tools, factory)
+            tokens = {k: os.environ.pop(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if k in os.environ}
+            try:  # with no token in the environment the step that asks the platform asks nothing, and says so
+                done = record(repo, pull(MERGE_SHA=merge), reviews, merge, tools, factory, verify=True)
+            finally:
+                os.environ.update(tokens)
             lock = study.last("lock.recorded")
+            ok("asked to verify after recording, with no token, the job records that the platform was not asked: `not checked`, never a pass",
+               done == 0 and study.last("act.verification")["actor"] == "platform:github" and study.last("act.verification")["data"]["result"] == "not checked"
+               and "no token" in study.last("act.verification")["data"]["problems"][0], R)
             ok("the merge is recorded as the lock: under the platform's name, citing the merge commit, the pull request and the people "
                "who approved by the platform's record, with nothing typed",
                done == 0 and lock is not None and lock["actor"] == "platform:github" and lock["data"]["route"] == "pull-request"
                and lock["data"]["merge"]["commit"] == merge and lock["data"]["merge"]["pull_request"] == 7
                and lock["data"]["merge"]["people"] == {"author": "octo-author", "approved": ["octo-steward"], "merged_by": "octo-steward"}
                and not any(e["actor"].startswith("human:") for e in study.events()), R)
+            ok("what the job recorded stands as `merge found, people not verified`: the names it copied are shown as handed to the tool",
+               sf.acts_report(study)["lock"]["standing"] == sf.MERGE_FOUND and "names_handed_to_the_tool" in sf.acts_report(study)["lock"], R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + merge)
+            ok("the held-out data is not opened on what the job recorded alone: the platform has to be asked",
+               "opened only on a verified lock" in sf._refusal(sf.cmd_open_held_out, study, A(test="held-out", by="agent:coordinating"))
+               and not study.last("opening.started"), R)
+            sf.PLATFORM_CALL = sf._stand_in_platform(study, "lock", merge, again)
+            sf.cmd_verify_acts(study, A(by="platform:github", factory=str(factory)))
+            ok("the step after the recording asks the platform and records its answer under the platform's name: the lock is then verified",
+               study.last("act.verification")["actor"] == "platform:github" and sf.acts_report(study)["lock"]["standing"] == sf.VERIFIED
+               and sf.acts_report(study)["lock"]["approved_by"] == ["example-scientist"], R)
+            g("add", "-A"), g("commit", "-q", "-m", "Record the verification of " + merge)
             sf.cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
-            ok("with the lock recorded from the merge and committed, the held-out data is opened, with no practice flag anywhere",
-               study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == "pull-request", R)
+            sf.PLATFORM_CALL = sf._dead_platform
+            ok("with the lock recorded from the merge, committed, and confirmed by the platform when the opening asks, the held-out data is "
+               "opened, with no practice flag anywhere",
+               study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == "pull-request"
+               and study.last("opening.started")["data"]["lock_standing"] == sf.VERIFIED, R)
 
             # ---- the signature, the same way
             g("checkout", "-q", "-b", "sign/S1")
@@ -254,11 +294,18 @@ def selftest(only: str | None = None) -> int:
                s_done == 0 and sig is not None and sig["actor"] == "platform:github" and sig["data"]["decision"] == "signed"
                and sig["data"]["merge"]["commit"] == s_merge and sig["data"]["finding"]["sha"] == sf.sha_file(tmp / "finding.md"), R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + s_merge)
+            ok("a study whose signature is a merge the job recorded, and nothing more, is awaiting verification and does not close as a signed finding",
+               sf.check_log(study, posted)["status"] == sf.AWAITING
+               and "awaiting verification, not signed" in sf._refusal(
+                   sf.cmd_close, study, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted)), R)
+            sf.PLATFORM_CALL = sf._either(sf._stand_in_platform(study, "lock", merge, again), sf._stand_in_platform(study, "signature", s_merge, s_head, number=8))
+            sf.cmd_verify_acts(study, A(by="platform:github", factory=str(factory)))
             sf.cmd_close(study, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted))
-            ok("a study whose lock and signature were merged pull requests closes as a signed finding",
-               study.last("study.closed")["data"]["outcome"] == "finding-signed", R)
+            ok("a study whose lock and signature were merged pull requests, each confirmed by the platform, closes as a signed finding",
+               study.last("study.closed")["data"]["outcome"] == "finding-signed" and sf.check_log(study, posted)["status"].startswith(sf.SIGNED), R)
         finally:
             sf.Study.default_model = sf.Study.default_route = None
+            sf.PLATFORM_CALL = None
     for name, passed in results:
         print(("PASS  " if passed else "FAIL  ") + name)
     good = bool(results) and all(passed for _n, passed in results)
@@ -273,6 +320,7 @@ def main() -> int:
     ap.add_argument("--reviews")
     ap.add_argument("--commit")
     ap.add_argument("--which-pull", dest="which_pull", default=None)
+    ap.add_argument("--verify", action="store_true")
     ap.add_argument("--tools", default=None)
     ap.add_argument("--factory", default=None)
     ap.add_argument("--selftest", action="store_true")
@@ -288,7 +336,7 @@ def main() -> int:
         repo = Path(a.repo).resolve()
         tools = Path(a.tools).resolve() if a.tools else repo / "tools"
         factory = Path(a.factory).resolve() if a.factory else tools.parent / "factory"
-        return record(repo, json.loads(Path(a.pull).read_text()), json.loads(Path(a.reviews).read_text()), a.commit, tools, factory)
+        return record(repo, json.loads(Path(a.pull).read_text()), json.loads(Path(a.reviews).read_text()), a.commit, tools, factory, a.verify)
     except (OSError, ValueError) as e:
         print(f"record_act: a file could not be read ({e})", file=sys.stderr)
         return 1

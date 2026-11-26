@@ -1,0 +1,6 @@
+[
+  null,
+  "a string where a review should be",
+  {"id": 401, "state": "APPROVED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T11:00:00Z"},
+  {"id": 402, "user": null, "state": "APPROVED", "commit_id": "APPROVED_SHA", "submitted_at": "2026-01-02T11:01:00Z"}
+]

@@ -1,16 +1,43 @@
 # A harness for the two acts by people. It starts no agent. It carries a lock or a signature as a pull request in
 # the repository where the study lives, and records the merge in the study log afterwards. The name of this harness
 # is the name of this folder, and factory.yaml names it under procedure.acts_by_people.
-description: "Carries the lock and the signature as pull requests on a protected branch: a required check on the request, and a job that records the merge with the people the platform recorded."
-starts: "no agent: a GitHub workflow (acts.workflow.yml) runs verify_request.py on a pull request that touches a study's request, and record_act.py after the merge"
+description: "Carries the lock and the signature as pull requests on a protected branch: a required check on the request, a job that records the merge, and a verification that asks the platform who approved."
+starts: "no agent: a GitHub workflow (acts.workflow.yml) runs verify_request.py on a pull request that touches a study's request, and record_act.py after the merge; `sf.py verify-acts` runs verify_acts.py, there and on any machine"
 models: any                         # no model runs here; the two scripts call no model
-status: "built, not exercised"      # the scripts test themselves on recorded payloads and a throwaway repository; the workflow has never run on GitHub
+status: "built, not exercised"      # the scripts test themselves on recorded payloads and a throwaway repository; the workflow has never run on GitHub, and verify_acts.py has never asked GitHub anything
+# The platform a verification asks (`sf.py verify-acts`, and the opening of held-out data). The address is here, in
+# the definition and under its checksum, and not in an option or an environment variable.
+platform:
+  name: github
+  api: https://api.github.com
+  token_from: [SF_PLATFORM_TOKEN, GH_TOKEN, GITHUB_TOKEN]     # environment variables, the first that is set; never a file in the repository
+  token_needs:                                                 # the least that answers every question
+    - "a fine-grained token for the one repository where the studies live, with read access to Contents and to Pull requests (Metadata comes with it)"
+    - "in a workflow, the job's own token with `contents: read` and `pull-requests: read`"
+    - "optional, to be shown the classic branch protection in full: read access to Administration. Without it the verification still runs, and says which rules it was not shown"
+  asks:
+    - "the repository, by the name the definition gives"
+    - "the pull requests the merge commit belongs to, and the one whose merge it is"
+    - "that pull request: merged or not, as which commit, into which branch of which repository, by whom, written by whom"
+    - "its reviews, every page: who approved, when, on which commit"
+    - "the merge commit's parents, and whether the commit is on the protected branch now"
+    - "whether the branch is protected, and its rules where the token may see them"
+    - "the request's manifest and evidence summary as they stood at each approved commit"
+  proves:
+    - "that the commit an act cites is the merge of a pull request into the protected branch of the named repository"
+    - "that enough accounts other than its author, none a bot, hold an approval as their latest word, given before the merge, on the request byte for byte as it was merged"
+    - "that the commit is on that branch now and the branch is protected; and, where the rules were shown, that they ask for a pull request, as many approvals and the request check"
+  does_not_prove:
+    - "that the approving accounts are the right people: whoever reads the names judges that, and the repository's code owners say who may approve"
+    - "that whoever ran the verification ran this code on an honest machine: the answer is a log entry like any other, and its worth is that anybody can ask again"
+    - "anything at all against GitHub so far: it has been tested on answers written by hand in the platform's shapes, never on the platform"
 holds:
   - "that the request's manifest matches the files at the head of the pull request (verify_request.py, through sf.py check-request)"
   - "that somebody other than the pull request's author approved, as many as the definition asks (verify_request.py, from the platform's reviews)"
   - "that no commit after an approval changed what the approval covered (verify_request.py)"
   - "that a pull request which carries a request changes nothing in tools/, factory/ or .github/ (verify_request.py)"
-  - "that the lock or the signature in the study log cites the merge commit, the pull request and the approving reviews (record_act.py, through sf.py --record-merge)"
+  - "that the lock or the signature in the study log cites the merge commit, and that the commit has the shape of an allowed merge method (record_act.py, through sf.py --record-merge); the names it copies are not verified by being copied"
+  - "that an act is called `verified` only on the platform's own answer, asked over https with a token from the environment (verify_acts.py, through sf.py verify-acts and at the opening)"
 by_instruction_only:
   - "that the branch is protected, the check is required and the code owners are the right people: the repository's settings, which README.md lists as a checklist"
   - "that the workflow file in the repository is this one, unchanged: a change to .github/ is itself a pull request the same people review"

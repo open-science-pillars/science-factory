@@ -28,7 +28,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: osp-science-factory
-version: 0.9.0                            # the content of this definition; every change to it is in the change log
+version: 0.10.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before held-out data is opened once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding (the specification's finding concept), or a recorded negative result
@@ -152,6 +152,12 @@ procedure:
   # checklist a person follows once. `practice` is the other way, for trying the tools out, the examples and the
   # self-tests: the act is typed at a command line (`--local-practice`), the study says so in its status, on its
   # scorecard and in its finding, and it never closes as a signed finding.
+  # An act has one of three standings, shown wherever it is shown. `practice`: typed. `merge found, people not
+  # verified`: git on this machine shows a merge of the request on a branch with the protected branch's name, which
+  # is all git can show, and which a local clone can make by itself. `verified`: the platform was asked
+  # (`sf.py verify-acts`) and said that the commit is the merge of a pull request into the protected branch of the
+  # repository named here, approved on the request as merged by enough accounts other than its author. No file in
+  # the work tree moves an act past the second standing. The held-out data is opened on a verified lock only.
   acts_by_people:
     lock:
       who: [scientist, steward]
@@ -160,11 +166,14 @@ procedure:
       harness: github                          # a folder in harnesses/: what carries the act and records it afterwards
       protected_branch: main                   # the merge that is the act lands here
       approvals: 1                             # approving reviews by people other than the pull request's author
+      repository: example-org/example-studies  # a placeholder: owner/name of the repository on the platform where the studies live; the verification asks about it and no other
+      merge_methods: [merge]                   # how the platform may bring the request onto the branch: merge (two parents, which git can show), squash (one parent: nothing until verified); never a rebase merge
+      opening_needs: verified                  # the held-out data is opened only on a lock the platform has confirmed; with no network, `open-held-out --people-not-verified REASON` is the logged exception
       shows: [the question, the plan's rules and each criterion with its measured rate, "the held-out block and every change to it",
               the known-answer tests and the receipts, the bound code by checksum, the definition by checksum and the models it declares,
               open notes, what the reviewer of the lead said, how many things were tried in the exploration that led here]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
-      not_held_by_the_tool: "who approved, and that the branch is protected: git shows the merge and the manifest, the platform's record shows the people. The scientist and the steward approving together is one approval count here, not two named roles"
+      not_held_by_the_tool: "who approved, and that the branch is protected: git on a clone shows a merge and the manifest and nothing about people, so an act found with git alone stands as `merge found, people not verified`; the platform, asked by `sf.py verify-acts`, says who approved. That the approving accounts are the right people is for whoever reads their names. The scientist and the steward approving together is one approval count here, not two named roles"
     signature:
       who: [steward]
       command: "tools/sf.py signature"
@@ -172,14 +181,16 @@ procedure:
       harness: github
       protected_branch: main
       approvals: 1
+      repository: example-org/example-studies
+      merge_methods: [merge]
       shows: [the question, what the opening showed under the locked rules, the finding that would be signed, the review's verdict and its file,
               the lock this rests on, problems and remarks from the log check]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them; signing knowledge is the organization's signing tool"
-      not_held_by_the_tool: "who approved, and that the approver is the steward: the platform's record and the repository's code owners say that"
+      not_held_by_the_tool: "who approved, and that the approver is the steward: the platform says who approved when `sf.py verify-acts` asks it, and the repository's code owners say who the steward is. Until it is verified the signature stands as `merge found, people not verified` and the study is awaiting verification, not signed"
 
   rules_for_people:      # for people: not checked by the tool here; each says what does hold it
     - "Tests are repeated freely. Held-out data is never reopened until it agrees (held by the openings allowed and the record of what has been opened)."
-    - "An assistant never makes the lock or the signature (each is a pull request a person approves and merges on the protected branch; an assistant may prepare the request, which records nothing as done. The tool checks the merge with git; who approved is the platform's record)."
+    - "An assistant never makes the lock or the signature (each is a pull request a person approves and merges on the protected branch; an assistant may prepare the request, which records nothing as done. The tool finds the merge with git, which shows nothing about people; who approved is what the platform answers when `sf.py verify-acts` asks, and until then the act stands as `merge found, people not verified`)."
     - "A finding quotes no number that is not in a run receipt (held by the findings checker)."
     - "Nothing about a named provider's product reaches a public place before the third-party findings policy is satisfied (held by where the opening runs and by review)."
     - "Inconclusive is a result and is final for that data; the next chance is the next data held out."

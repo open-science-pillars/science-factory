@@ -7,8 +7,9 @@
 #   manifest matches the files, that the pull request targets the protected branch, that enough people other than
 #   its author have approved, and that nothing an approval covered changed afterwards; and shows the evidence
 #   summary on the pull request. Make it a required status check on the protected branch.
-# record: after the merge, writes the lock or the signature into the study log, citing the merge commit, the pull
-#   request and the approving reviews from the platform's record, and commits the log under the repository's name.
+# record: after the merge, writes the lock or the signature into the study log, citing the merge commit; then asks
+#   the platform itself who approved (`sf.py verify-acts`) and records its answer; then commits the log under the
+#   repository's name. Until the platform has answered, the act stands as `merge found, people not verified`.
 name: acts by people
 
 on:
@@ -82,10 +83,12 @@ jobs:
           test -n "$number" || { echo "no merged pull request for this commit: nothing to record"; exit 0; }
           gh api "repos/${{ github.repository }}/pulls/$number" > "$RUNNER_TEMP/pull.json"
           gh api --paginate --slurp "repos/${{ github.repository }}/pulls/$number/reviews" > "$RUNNER_TEMP/reviews.json"
-      - name: Record the act in the study log
+      - name: Record the act in the study log, then ask the platform who approved and record its answer
+        env:
+          GH_TOKEN: ${{ github.token }}   # read by `sf.py verify-acts`; this job's token reads contents and pull requests of this repository
         run: |
           test -s "$RUNNER_TEMP/pull.json" || exit 0
-          uv run factory/harnesses/github/record_act.py --repo . --pull "$RUNNER_TEMP/pull.json" --reviews "$RUNNER_TEMP/reviews.json" --commit "${{ github.sha }}"
+          uv run factory/harnesses/github/record_act.py --repo . --pull "$RUNNER_TEMP/pull.json" --reviews "$RUNNER_TEMP/reviews.json" --commit "${{ github.sha }}" --verify
       - name: Commit the study log under the repository's name
         run: |
           git config user.name "github-actions[bot]"
