@@ -101,6 +101,8 @@ Commands.
   status         where the exploration stands and who is next
   check-log      everything re-checked from the files
   fingerprint    the log's fingerprint, to post outside the workspace
+  contribution   who did each step, from the log: a paragraph for a paper,
+                 and what the log cannot show
   selftest       the tool tests itself, attacks included
 
 What a look is. A launcher the study tool knows (`{python}` followed by a
@@ -335,8 +337,8 @@ NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.name
 # A look runs in a scratch folder of its own, which holds its script and the files its command names and nothing else.
 PATTERN = set("*?[]{}")  # what a script could expand into names the tool never read
 JOINS = re.compile(r"[,:;@|]")  # what joins several paths into one word, or hides one behind a sign
-KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json")
-KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside")  # where a look leaves nothing
+KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json", "contribution.md", "contribution.json")
+KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside", "so-what")  # where a look leaves nothing
 PLACES_OF_THE_LAUNCHER = ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "UV_PYTHON_BIN_DIR",
                           "UV_CONFIG_FILE", "UV_PYTHON", "UV_INSTALL_DIR")  # variables whose whole purpose is to name a path
 SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt", "/nix", "/proc", "/sys",
@@ -2515,6 +2517,23 @@ def cmd_check_log(x: Exploration, a) -> None:
           "earlier one: a log rewritten and then committed again passes this check.")
 
 
+def cmd_contribution(x: Exploration, a) -> None:
+    """Write who did each step of this exploration, drawn from its log, as contribution.md and contribution.json: a paragraph
+    a scientist can paste into a paper, and what the log cannot show."""
+    ev = x.events()
+    start = x.started()
+    fresh = (start["data"]["set_aside"].get("fresh_data") or {})
+    model = None
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
+        model = yaml.safe_load(Path(fresh["file"]).read_text())["proposed"]["model"]
+    extra = [{"kind": "fresh-data.proposed", "actor": fresh["proposed_by"], "model": model, "data": {}}] if fresh.get("proposed_by") else []
+    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra)
+    lines = sf.contribution_lines(c, f"{start['data']['id']} ({WAY}; a lead, not a finding)")
+    (x.d / "contribution.md").write_text("\n".join(lines))
+    write_json(x.d / "contribution.json", c)
+    print("\n".join(lines))
+
+
 def cmd_fingerprint(x: Exploration, a) -> None:
     ev = x.events()
     if not ev:
@@ -2923,6 +2942,10 @@ def selftest() -> int:
         quiet(sf.cmd_start, study, argparse.Namespace(id="STUDY-T", question=ho["question"], by="agent:tester-coordinating",
                                                       request=str(y.d / "hand-over/request.md"), asked_by=None))
         ok("the study tool starts a study from the hand-over", study.events()[0]["data"]["request"]["sha"] == ho["request"]["sha256"])
+        whole = sf.study_contribution(study, sf.FACTORY)
+        ok("a study started from a hand-over knows the exploration it came from, and its contribution statement reads both logs",
+           study.events()[0]["data"]["from_exploration"]["id"] == y.started()["data"]["id"] and len(whole["logs"]) == 2
+           and any(w["actor"].startswith("agent:tester-analysis") for r in whole["rows"] if r["work"] == "exploring" for w in r["who"]))
         ok("check-study waits for the plan", any("no analysis plan yet" in q for q in study_problems(y, study.d)))
 
         def plan(window: dict, pair: dict | None = None) -> None:
@@ -3396,6 +3419,15 @@ def selftest() -> int:
         ok("the hand-over carries every figure the looks kept, by checksum, with the reason of the look that drew it as its caption",
            figs == [{"file": "figures/LOOK-001-a-on-b.svg", "sha256": sf.sha_file(sw.d / "figures/a-on-b.svg"), "look": "LOOK-001",
                      "caption": "a picture of A against B, every row"}] and (sw.d / "hand-over/figures/LOOK-001-a-on-b.svg").is_file())
+        quiet(cmd_contribution, sw, A())
+        said_c = (sw.d / "contribution.md").read_text()
+        ok("the contribution statement of a lead names who did each kind of work, with counts, the agents with the model they declared, "
+           "and says what the log cannot show",
+           "| the so what | human:throwaway-placeholder (a person, by the name typed) |" in said_c
+           and "| exploring | agent:tester-analysis (an AI agent, model selftest-model as declared) |" in said_c
+           and "| reviewing | agent:tester-review (an AI agent, model selftest-model as declared) | 3 |" in said_c
+           and "What the logs cannot show" in said_c and "a lead, not a finding" in said_c
+           and json.loads((sw.d / "contribution.json").read_text())["rows"][0]["work"] == "asking the question")
         ok("the hand-over carries the so what, who gave it and its standing, and the log checks out",
            "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "standing: practice" in swho
            and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
@@ -3811,6 +3843,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("status", cmd_status)
     add("check-log", cmd_check_log, (["--anchor"], {"action": "append", "default": None, "help": "SEQ:HASH posted outside the workspace; repeatable"}))
     add("fingerprint", cmd_fingerprint)
+    add("contribution", cmd_contribution)
     sub.add_parser("selftest", allow_abbrev=False)
     return ap
 

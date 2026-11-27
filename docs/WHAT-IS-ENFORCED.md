@@ -57,6 +57,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.23 | Every command shown in an agent file, a skill or AGENTS.md parses under its tool's options as they are now, and passes `--model` where it acts as an agent. |
 | 1.24 | No exploration ends as a lead, and no lead is handed over, without a person's `worth-confirming` given after the latest review on the lead as it stands, by checksum; a new version, a correction or a later review undoes it. A so what is refused from an agent's name, refused typed unless it says practice, and taken from `platform:github` only from a comment by a user who belongs to the named repository, naming this exploration and this lead. A hand-over from a practice so what must say practice. |
 | 1.25 | A lock request shows every figure the exploration's looks kept (copied by the hand-over and bound by checksum when the study starts) and every figure the plan's tests and rehearsals declare, as a picture with its caption; a signature request shows the opening's. A declared figure not drawn fails its step, a picture changed since it was kept refuses the request, and both manifests bind them. |
+| 1.26 | An attached finding carries a statement of who did each kind of work, drawn by the tool from the study's log and the log of the exploration it came from, with each agent's declared model and what the logs cannot show. A draft from an exploration or a study is refused without a paragraph that begins **Who did what.** |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -85,6 +86,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 23. `check_roles.py --selftest`: "a skill shows an agent's command without `--model`", "a skill shows a command with an option the tool does not have".
 24. `explore.py selftest`: the checks under "the person's so what on a reviewed lead"; `verify_acts.py --selftest`: the five checks named "a so what"; `check_factory.py --selftest`: "a definition with no so what", "an agent that may call the so what"; `allow.py --selftest`: "no role may record a person's so what".
 25. `sf.py selftest`: the checks of `_selftest_figures`; `explore.py selftest`: "the hand-over carries every figure the looks kept"; `verify_request.py --selftest`: "points each figure at the head of the pull request".
+26. `sf.py selftest`: "the finding carries who did each step", "the contribution statement of a study"; `explore.py selftest`: "the contribution statement of a lead"; `knowledge.py selftest`: "does not say who did the work it rests on".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 
@@ -126,7 +128,7 @@ Tests, by row: 2.1 `explore.py selftest`, four checks named "N1" (R2-01). 2.2 `e
 
 Nothing checks these. An agent is told, and the log shows afterwards what the tools saw.
 
-- Which model wrote an event: declared by the caller, recorded, proven by nothing.
+- Which model wrote an event: declared by the caller, recorded, proven by nothing. A contribution statement says so, and cannot show thinking that left no event.
 - That the people at the lock and the signature look at each figure: the request shows them, and the GitHub check points each at the pull request's head so the comment shows it, which has never run.
 - That only knowledge is read before data is set aside; that nothing is looked at outside the tool; that a choice is written down when it is made; that every comparison inside a look is declared.
 - That the agent proposing the fresh data opened no data file first; that a metadata file holds no values under the names the tool allows; that the reasons in a proposal are true; and that a confirmatory plan names a proposal at all (the lock request says so when it does not).

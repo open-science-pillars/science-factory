@@ -290,7 +290,13 @@ def main() -> int:
                 "generated": {"by": "stand-alone-run/no-model", "at": "2026-11-26T00:00:00Z"}, "status": "draft", "seen_while": "exploring",
                 "drafted_from": {"exploration": "EXPLORATION-A", "notes": ["NOTE-001"], "by": curator},
                 "sources": [{"id": "look", "resource": "explorations/EXPLORATION-A/receipts/LOOK-002.json", "title": "the look with the screen"}]}
-        body = f"\n# One degraded reading steers the gain\n\nSeen while exploring one year. With every reading the gain is {gain_all}; with degraded readings out it is {gain}.[^look]\n\n[^look]: the look\n"
+        said = tool("explore.py", "contribution", *E)
+        step("the contribution statement of the lead says who did each kind of work, the agents with the model they declared, and what the log cannot show",
+             "| the so what | human:throwaway-placeholder (a person, by the name typed) | 2 |" in said and "| exploring | agent:analysis-a (an AI agent, the analysis role" in said
+             and "What the logs cannot show" in said)
+        who = json.loads((x / "contribution.json").read_text())["paragraph"]
+        body = (f"\n# One degraded reading steers the gain\n\nSeen while exploring one year. With every reading the gain is {gain_all}; with degraded readings out it is {gain}.[^look]\n\n"
+                f"**Who did what.** {who} The log cannot show thinking that left no event, and a model is declared, not proven.\n\n[^look]: the look\n")
         draft.write_text("---\n" + yaml.safe_dump(head, sort_keys=False) + "---\n" + body)
         step("a draft that bears on a wiki page without saying how is refused",
              "does not say how it relates" in tool("knowledge.py", "check-drafts", "--queue", queue, "--wiki", wiki, expect=2))
@@ -384,6 +390,12 @@ def main() -> int:
         step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
              "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
         tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
+        credit = tool("sf.py", "contribution", *S)
+        step("the study's contribution statement credits the practice lock to the name typed, the tests to the analysis agent with its declared model, "
+             "and lists the steps with no event yet",
+             "| the lock | human:throwaway-placeholder (a person, by the name typed) | 1 |" in credit
+             and f"| planning and testing the method | agent:analysis-a (an AI agent, the analysis role, model {MODEL} as declared) | 3 |" in credit
+             and "Steps with no event yet:" in credit and "the signature" in credit.split("Steps with no event yet:")[1].split("\n")[0])
         practice = json.loads(tool("sf.py", "status", *S, answer=True))
         step("a practice lock says so in the study's status, and the held-out data is not opened unless the caller says practice too",
              practice["acts"]["practice"] is True and "cannot close as a signed finding" in practice["acts"]["lock"]["note"]

@@ -65,6 +65,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **openings allowed**: how many times a test on fresh data may be opened: one.
 - **inconclusive**: a result, and final for that data.
 - **note**: something missing or wrong, raised during work, with evidence; never deleted.
+- **contribution statement**: who did each kind of work, person or agent and declared model, with counts, drawn from the logs (`sf.py contribution`, `explore.py contribution`); the finding and every draft carry it.
 
 ## An exploration
 

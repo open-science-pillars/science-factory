@@ -299,7 +299,8 @@ def selftest(only: str | None = None) -> int:
             sig = study.last("signature.recorded")
             ok("the merged signature request is recorded as the steward's signature, with the decision the request carried",
                s_done == 0 and sig is not None and sig["actor"] == "platform:github" and sig["data"]["decision"] == "signed"
-               and sig["data"]["merge"]["commit"] == s_merge and sig["data"]["finding"]["sha"] == sf.sha_file(tmp / "finding.md"), R)
+               and sig["data"]["merge"]["commit"] == s_merge and sig["data"]["finding"]["sha"] == sf.sha_file(study.d / sig["data"]["finding"]["file"])
+               and (study.d / sig["data"]["finding"]["file"]).read_text().startswith((tmp / "finding.md").read_text()), R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + s_merge)
             ok("a study whose signature is a merge the job recorded, and nothing more, is awaiting verification and does not close as a signed finding",
                sf.check_log(study, posted)["status"] == sf.AWAITING

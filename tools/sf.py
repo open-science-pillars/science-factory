@@ -94,6 +94,9 @@ Commands, by stage. Each has one name.
     curation-list         open notes, for the curating agent
     resolve               a note is accepted, linked or declined
     scorecard             the definition's checks for this study
+    contribution          who did each step, from the logs of the study
+                          and the exploration it came from: a paragraph
+                          for a paper, and what the logs cannot show
     log-change            a change to the definition, with its prediction
   The log
     fingerprint           the log's fingerprint, to post outside the workspace
@@ -1455,6 +1458,10 @@ def cmd_start(study: Study, a) -> None:
             for f in figs:
                 shutil.copyfile(src.parent / f["file"], study.d / "exploration-figures" / Path(f["file"]).name)
             data["exploration_figures"] = [{**f, "file": f"exploration-figures/{Path(f['file']).name}"} for f in figs]
+        if (src.parent / "hand-over.json").is_file() and (src.parent.parent / "exploration-log.jsonl").is_file():
+            with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+                ho = json.loads((src.parent / "hand-over.json").read_text())
+                data["from_exploration"] = {"id": ho.get("from"), "path_from_study": os.path.relpath(src.parent.parent, study.d)}
     if asked_by:
         data["asked_by"] = asked_by
     for sub in ("receipts", "notes", "verdicts", "data"):
@@ -3235,6 +3242,122 @@ def cmd_curation_list(study: Study, a) -> None:
     print(f"curation list: {out['open_notes']} open note(s) across {len(by_subject)} subject(s)")
 
 
+# ---- who did each step: a contribution statement drawn from the logs ----------
+WORK = (  # (the kind of work, in words; the kinds of event that are that work)
+    ("asking the question", ("study.started", "exploration.started")),
+    ("choosing the fresh data", ("fresh-data.proposed",)),
+    ("exploring", ("knowledge.listed", "knowledge.read", "look.run", "look.refused", "choice.recorded", "lead.recorded", "lead.corrected")),
+    ("planning and testing the method", ("test.run", "rehearsal.run", "held-out.changed")),
+    ("reviewing", ("review.verdict",)),
+    ("the so what", ("so-what.asked", "so-what.recorded")),
+    ("coordinating", ("reviewer.named", "handed.over", "lock.requested", "signature.requested", "exploration.ended", "study.closed")),
+    ("the lock", ("lock.recorded",)),
+    ("the opening", ("opening.started", "opening.finished", "opening.voided")),
+    ("writing the finding", ("finding.attached",)),
+    ("the signature", ("signature.recorded",)),
+    ("raising notes and drafting knowledge", ("note.raised", "note.resolved")),
+    ("asking the platform", ("act.verification", "so-what.verification")),
+)
+LOG_CANNOT_SHOW = ("What the logs cannot show. They record who wrote each event and nothing else: the thinking that left no event (choosing "
+                   "the problem, the conversations, what was read outside the tools, a person steering an agent in its chat) is not in them. "
+                   "An agent's model is the name its caller declared, not proven. A person's name typed at a command line (practice) proves "
+                   "nothing; an act on the platform names the accounts the platform recorded, and is shown with its standing.")
+
+
+def who_in_words(e: dict, roles: tuple) -> str:
+    """An event's actor as a reader of a paper would want it: a person by the name the platform recorded, or an agent by its
+    role and the model it declared."""
+    actor, d = str(e["actor"]), e.get("data") or {}
+    if actor.startswith("platform:"):
+        if d.get("comment"):
+            return f"{d['comment']['author']} (an account on {actor[9:]}, by a comment)"
+        people = ((d.get("merge") or {}).get("people") or {}).get("approved") or []
+        return (", ".join(people) or "nobody named") + f" (accounts on {actor[9:]}, by approving a pull request)"
+    if actor.startswith("agent:"):
+        name = actor[6:]
+        role = next((r for r in roles if name == r or name.startswith((r + "-", r + "_"))), None)
+        return f"{actor} (an AI agent{', the ' + role + ' role' if role else ''}, model {e.get('model') or 'not recorded'} as declared)"
+    return f"{actor} (a person, by the name typed)"
+
+
+def contribution(logs: list, roles: tuple, extra: list | None = None) -> dict:
+    """{"rows": [{work, who, events}], "paragraph": words, "cannot_show": words} from one or more logs, each (what, events).
+    `extra` are events that are not in a log but name who did a step (the proposal of the fresh data)."""
+    events = [e for _what, ev in logs for e in ev] + list(extra or [])
+    rows = []
+    for work, kinds in WORK:
+        count_by = {}
+        for e in events:
+            if e["kind"] in kinds and not (e["kind"] == "note.resolved" and work != "raising notes and drafting knowledge"):
+                who = who_in_words(e, roles)
+                count_by[who] = count_by.get(who, 0) + 1
+        rows.append({"work": work, "who": [{"actor": w, "events": n} for w, n in count_by.items()]})
+    started = next((e for e in events if e["kind"] in ("study.started", "exploration.started")), None)
+    asked = (started or {}).get("data", {}).get("asked_by") if started else None
+    said = []
+    for r in rows:
+        if r["who"]:
+            said.append(f"{r['work']}: " + "; ".join(f"{w['actor']}, {w['events']} event{'s' if w['events'] != 1 else ''}" for w in r["who"]))
+    para = ("Contributions, from the logs. " + (f"The question was asked by {asked}. " if asked else
+                                               "The request names nobody as having asked; the logs show who started the work. ")
+            + ". ".join(x[0].upper() + x[1:] for x in said) + ". "
+            + "Steps with no event yet: " + (", ".join(r["work"] for r in rows if not r["who"]) or "none") + ".")
+    return {"rows": rows, "paragraph": para, "cannot_show": LOG_CANNOT_SHOW, "logs": [w for w, _ in logs]}
+
+
+def contribution_lines(c: dict, title: str) -> list:
+    out = [f"# Who did what: {title}", "", c["paragraph"], "", "| Kind of work | Who, as the log records them | Events |", "|---|---|---|"]
+    for r in c["rows"]:
+        for w in r["who"] or [{"actor": "no event yet", "events": 0}]:
+            out.append(f"| {r['work']} | {w['actor']} | {w['events']} |")
+    return out + ["", c["cannot_show"], "", "Drawn from: " + ", ".join(c["logs"]) + ".", ""]
+
+
+def roles_of(factory: Path) -> tuple:
+    return tuple(sorted((p.name for p in (Path(factory) / "agents").iterdir() if (p / "agent.md").is_file()), key=len, reverse=True)) \
+        if (Path(factory) / "agents").is_dir() else ()
+
+
+def exploration_log_of(study: Study, ev: list):
+    """The log of the exploration a study was handed over from, as its start recorded it, or None."""
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    came = (start or {}).get("data", {}).get("from_exploration") if start else None
+    if not came:
+        return None
+    log = Path(os.path.normpath(study.d / came["path_from_study"])) / "exploration-log.jsonl"
+    return (f"the exploration {came['id']}", Study._parse(log.read_text())) if log.is_file() else None
+
+
+def fresh_data_event(proposal: dict | None) -> list:
+    who = ((proposal or {}).get("proposed") or {})
+    return [{"kind": "fresh-data.proposed", "actor": who["by"], "model": who.get("model"), "data": {}}] if who.get("by") else []
+
+
+def study_contribution(study: Study, factory: Path) -> dict:
+    ev = study.events()
+    logs = [(f"the study {study.d.name}", ev)]
+    x = exploration_log_of(study, ev)
+    if x:
+        logs.insert(0, x)
+    extra = []
+    try:
+        fresh = fresh_data_of(study, study.plan())
+        extra = fresh_data_event(fresh["proposal"]) if fresh else []
+    except Refused:
+        pass
+    return contribution(logs, roles_of(factory), extra)
+
+
+def cmd_contribution(study: Study, a) -> None:
+    """Write who did each step of this study (and of the exploration it came from), drawn from the logs, as contribution.md
+    and contribution.json in the study: a paragraph a scientist can paste into a paper, and what the logs cannot show."""
+    c = study_contribution(study, Path(getattr(a, "factory", None) or FACTORY))
+    lines = contribution_lines(c, study.d.name)
+    (study.d / "contribution.md").write_text("\n".join(lines))
+    (study.d / "contribution.json").write_text(json.dumps(c, indent=1) + "\n")
+    print("\n".join(lines))
+
+
 def cmd_attach(study: Study, a) -> None:
     """The drafted finding (or negative result) joins the record, by hash."""
     ev = study.events()
@@ -3256,6 +3379,9 @@ def cmd_attach(study: Study, a) -> None:
     (study.d / "finding").mkdir(exist_ok=True)
     dest = study.d / "finding" / f"{len(ev):03d}-{f.name}"
     shutil.copyfile(f, dest)
+    c = study_contribution(study, Path(getattr(a, "factory", None) or FACTORY))
+    with dest.open("a") as out:  # the finding carries who did each step, as the logs show it when it is attached
+        out.write("\n\n## Who did what, from the logs\n\n" + c["paragraph"] + "\n\n" + c["cannot_show"] + "\n")
     study.append(a.by, "finding.attached", {"file": f"finding/{dest.name}", "sha": sha_file(dest)})
     live = last_live_opening(ev)
     earlier = any(e["kind"] == "review.verdict" and live and e["seq"] > live["seq"] for e in ev)
@@ -4251,6 +4377,17 @@ def _selftest_figures(tmp: Path, check) -> None:
     (tmp / "f-v.md").write_text("APPROVE")
     cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "f-v.md")))
     cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=_posted(study), evidence=None, comment=None))
+    attached = (study.d / study.last("finding.attached")["data"]["file"]).read_text()
+    check("the finding carries who did each step, from the log, with the agents' declared models and what the log cannot show",
+          "## Who did what, from the logs" in attached and "agent:analysis (an AI agent, the analysis role, model selftest-model as declared)" in attached
+          and "human:tester (a person, by the name typed)" in attached and "What the logs cannot show" in attached
+          and sha_file(study.d / study.last("finding.attached")["data"]["file"]) == study.last("finding.attached")["data"]["sha"])
+    cmd_contribution(study, A(factory=str(FACTORY)))
+    table = (study.d / "contribution.md").read_text()
+    check("the contribution statement of a study is a paragraph and a table by kind of work, with counts",
+          table.startswith("# Who did what: F1") and "| the lock | human:tester (a person, by the name typed) | 1 |" in table
+          and "| writing the finding | agent:analysis (an AI agent, the analysis role, model selftest-model as declared) | 1 |" in table
+          and "Contributions, from the logs." in table and "The request names nobody as having asked" in table)
     sig = (study.d / "signature-request" / "EVIDENCE.md").read_text()
     check("the signature request shows the opening's figure with its caption and binds it",
           "## The figures the opening drew: look at each one yourself" in sig and "](../figures/held-out.svg)" in sig
@@ -5050,7 +5187,8 @@ def selftest() -> int:
               stage_of(study, FACTORY)["stage"] == "learn" and stage_of(study, FACTORY)["open_notes"] == ["NOTE-001"])
         check("the signature records the path and checksum of the finding it signs",
               study.last("signature.recorded")["data"]["finding"] == study.last("finding.attached")["data"]
-              and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(tmp / "finding.md"))
+              and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(study.d / study.last("finding.attached")["data"]["file"])
+              and (study.d / study.last("finding.attached")["data"]["file"]).read_text().startswith((tmp / "finding.md").read_text()))
         check("a finding attached after the signature is refused", _refuses(cmd_attach, study, finding()))
         check("after the signature the log check says the signature is recorded, and that the study is practice and not a signed finding",
               check_log(study)["status"] == PRACTICE_SIGNED and check_log(study)["signature"] == "signed")
@@ -5944,11 +6082,12 @@ def selftest() -> int:
               and not stage_checks(study)[0]["reviewed"] and _refuses(cmd_signature, study, sign(study)))
         cmd_review(study, approve("agent:review"))
         attached = study.d / study.last("finding.attached")["data"]["file"]
+        as_attached = attached.read_text()
         attached.write_text("SUPPORTED: something the receipts do not say")
         rep = check_log(study, _posted(study))
         check("a finding edited after it was attached fails the log check",
               rep["status"] == INVALID and any("finding" in p and "changed" in p for p in rep["problems"]))
-        attached.write_text((tmp / "finding.md").read_text())
+        attached.write_text(as_attached)
         cmd_signature(study, sign(study))
         (study.d / "receipts" / "held-out.json").write_text("{}")
         check("closing as signed runs the log check again: a receipt edited after the signature blocks the close",
@@ -6288,6 +6427,7 @@ DESCRIBE = {'start': 'a study exists; with --request, the request it answers is 
     'curation-list': 'open notes, for the curating agent',
     'resolve': 'a note is accepted, linked or declined',
     'scorecard': "the definition's checks for this study", 'log-change': 'a change to the definition, with its prediction',
+    'contribution': 'who did each step, from the logs of the study and the exploration it came from: a paragraph for a paper, and what the logs cannot show',
     'fingerprint': "the log's fingerprint, to post outside the workspace", 'check-log': 'everything re-checked from the files and against posted fingerprints',
     'selftest': 'the tool tests itself, attacks included'}  # one line for each command, as the help at the top of this file has it
 
@@ -6359,6 +6499,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("check-log", cmd_check_log, anchor,
         (["--change-log"], {"default": None, "dest": "change_log", "help": "the change log, to check this study's change records against"}))
     add("scorecard", cmd_scorecard, proc, anchor)
+    add("contribution", cmd_contribution, proc)
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),
         (["--problem"], {"required": True}), (["--change"], {"required": True}), (["--rationale"], {"required": True}),
         (["--predicted"], {"required": True}), (["--observed"], {"default": None}), (["--model"], {"default": None}))

@@ -141,7 +141,7 @@ git commit -m "TRIAL-1: the verdict and the close"
 git push -u origin trial-1-close
 ```
 
-Done when `sf status --study $W` says `closed`, the verdict is `right`, and a third pull request with this commit is merged. Write `--observed` in your own words if something else happened.
+Done when `sf status --study $W` says `closed`, the verdict is `right`, and a third pull request with this commit is merged. `sf contribution --study $W` then writes who did each step, from the logs, as a paragraph you can paste into a paper's contribution section; the finding already carries it from the moment it was attached. Write `--observed` in your own words if something else happened.
 
 **When the verdict is not `right`.** About one trial in eight comes back inconclusive, which cannot be `right`. Close the second pull request unmerged, have the agent write the request again with `--decision declined`, merge that, and close with `--outcome system-trial-declined`. Then run a second trial beside it, as `TRIAL-2`, with new branch names. A `WRONG` verdict is a defect in the factory: raise a note before the close.
 

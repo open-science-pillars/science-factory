@@ -45,7 +45,7 @@ When a lead is to become a finding that others rely on, it is tested once on the
 | 3. Test on known answers | The plan check, the known-answer tests (synthetic data with the truth put in, including cases where the idea is false and cases right at the smallest difference you care about), the working data and the rehearsals of the opening, repeated freely. |
 | The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words and every figure the work drew, for them to look at themselves. |
 | 4. Check once, on fresh data | The tool fetches the fresh data and runs the locked analysis on it, once. It will not do so for the agent that ran the tests. |
-| 5. Review, sign and learn | The finding is written from the run's own records. A review agent that did none of the study checks every number. The steward signs the finding, or records the decision not to, by a second pull request. Notes go into the wiki through a queue of drafts, and what should change goes into the definition. |
+| 5. Review, sign and learn | The finding is written from the run's own records, and the tool adds who did each step, from the logs. A review agent that did none of the study checks every number. The steward signs the finding, or records the decision not to, by a second pull request. Notes go into the wiki through a queue of drafts, and what should change goes into the definition. |
 
 Every step is written to a **study log** that is only ever added to. Once it is committed and its fingerprints are posted outside the workspace, a later edit to it shows.
 
