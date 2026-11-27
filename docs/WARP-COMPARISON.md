@@ -23,7 +23,7 @@ What became of each Warp concept: **kept**, **translated** (the same idea in ano
 | Benchmarks: fixed tasks under several configurations | sealed planted-truth cases under two definitions, in a design and an acceptance set | translated, built |
 | Benchmark tasks made from past runs | never: a closed study's data has been opened | changed |
 | Self-improvement: failures past a threshold become a pull request | the flag and the firewall only; no loop | missing, on purpose for now |
-| A validator with three results; a summary of what a change does | the same | translated, built |
+| A validator with three results; a summary of what a change does | the same, and a pull request check that posts it (`factory-check.workflow.yml`) | translated, built |
 
 ## What Warp has that this project had not thought about
 

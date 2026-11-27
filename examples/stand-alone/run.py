@@ -486,6 +486,60 @@ def main() -> int:
              and practice["acts"]["lock"]["standing"] == "practice" and checked["acts"]["lock"]["standing"] == "practice"
              and "nothing to verify" in checked["acts"]["lock"]["said"] and checked["acts"]["signature"]["standing"] is None)
         standings_shown = f"{practice['acts']['standings'].split('.')[0]}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
+
+        # The factory updated: a throwaway pair of git repositories, the science factory and a study repository copied from
+        # it, as docs/FIRST-STUDY.md sets one up. Upstream then changes an agent's file; the update keeps the study
+        # repository's own edits, moves the pin, and writes the pull request's description.
+        pair = work / "update-pair"
+        upstream, mine = pair / "science-factory", pair / "my-science"
+
+        def git_in(repo: Path, *words) -> str:
+            return ran(["git", "-C", str(repo), "-c", "user.name=stand-alone", "-c", "user.email=stand-alone@example.invalid",
+                        "-c", "commit.gpgsign=false", *words], answer=True)
+        for repo in (upstream, mine):
+            for part in ("factory", "tools", "methods"):
+                shutil.copytree(ROOT / part, repo / part, ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(HERE / "system-trial", repo / "examples" / "stand-alone" / "system-trial")
+            git_in(repo, "init", "-q", "-b", "main")
+        git_in(upstream, "add", "-A")
+        git_in(upstream, "commit", "-q", "-m", "the science factory")
+        version = yaml.safe_load((ROOT / "factory" / "factory.yaml").read_text())["version"]
+        fy = mine / "factory" / "factory.yaml"
+        fy.write_text(fy.read_text().replace("example-org/example-studies", "owner/my-science").replace(f"version: {version} ", f"version: {version}+local.1 ", 1))
+        here_tools = mine / "tools"
+        ran(["uv", "run", str(here_tools / "sf.py"), "log-change", "--study", str(mine / "studies" / "SETUP"), "--by", person,
+             "--log", str(mine / "factory" / "change-log.jsonl"), "--factory", str(mine / "factory"), "--problem", "the definition names the example repository",
+             "--change", f"repository: under both acts names owner/my-science, as version {version}+local.1",
+             "--rationale", "the acts are verified on the repository where the studies live", "--predicted", "check_factory.py says VALID"])
+        ran(["uv", "run", str(here_tools / "factory_update.py"), "pin", "--repo", str(mine), "--source", str(upstream)])
+        git_in(mine, "add", "-A")
+        git_in(mine, "commit", "-q", "-m", "the factory, copied, named and pinned")
+        review_file = upstream / "factory" / "agents" / "review" / "agent.md"
+        review_file.write_text(review_file.read_text() + "\nRead the request before the plan.\n")
+        ufy = upstream / "factory" / "factory.yaml"
+        ufy.write_text(ufy.read_text().replace(f"version: {version} ", "version: 99.0.0 ", 1))
+        ran(["uv", "run", str(upstream / "tools" / "sf.py"), "log-change", "--study", str(pair / "CHANGE-99"), "--by", coordinator, "--model", MODEL,
+             "--log", str(upstream / "factory" / "change-log.jsonl"), "--factory", str(upstream / "factory"),
+             "--problem", "the review agent reads the plan before the request", "--change", "Definition 99.0.0: the review agent reads the request first.",
+             "--rationale", "a review starts from what was asked", "--predicted", "check_factory.py says VALID"])
+        git_in(upstream, "add", "-A")
+        git_in(upstream, "commit", "-q", "-m", "upstream 99.0.0")
+        status = json.loads(ran(["uv", "run", str(here_tools / "factory_update.py"), "status", "--repo", str(mine), "--source", str(upstream), "--json"], answer=True))
+        step("the study repository's pin sees that the science factory has moved, and that the update keeps the repository's own name",
+             status["moved"] and status["update_needed"] and not status["refused"]
+             and {"field": "procedure.acts_by_people.lock.repository", "value": '"owner/my-science"'} in status["factory"]["fields_kept_here"])
+        body = pair / "PULL_REQUEST.md"
+        ran(["uv", "run", str(here_tools / "factory_update.py"), "update", "--repo", str(mine), "--source", str(upstream), "--by", person,
+             "--body-out", str(body), "--git-identity", "stand-alone <stand-alone@example.invalid>"])
+        merged = yaml.safe_load(fy.read_text())
+        step("the update is written on a branch: upstream's change in, the repository's name kept, a local version, the pin moved, and a "
+             "pull request description with the summary of the change and the change-log record between the two versions",
+             git_in(mine, "rev-parse", "--abbrev-ref", "HEAD").strip() == "factory-update/99.0.0"
+             and "Read the request before the plan." in (mine / "factory" / "agents" / "review" / "agent.md").read_text()
+             and merged["procedure"]["acts_by_people"]["lock"]["repository"] == "owner/my-science" and merged["version"] == "99.0.0+local.1"
+             and yaml.safe_load((mine / "factory-pin.yaml").read_text())["version"] == "99.0.0"
+             and "Definition 99.0.0: the review agent reads the request first." in body.read_text() and "**valid**" in body.read_text()
+             and "check-factory: VALID" in ran(["uv", "run", str(here_tools / "check_factory.py")], answer=True))
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
@@ -512,6 +566,8 @@ def main() -> int:
   waiting.md                    what waited on a person before the practice lock (tools/waiting.py), in plain words
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given
                                 to judge the review of the lead and the clarity of the plan; no model was asked
+  update-pair/                  a throwaway science factory and a study repository copied from it, pinned, then updated on
+                                a branch by tools/factory_update.py; PULL_REQUEST.md is the description it wrote
   data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0

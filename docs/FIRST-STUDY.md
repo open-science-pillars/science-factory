@@ -30,9 +30,10 @@ uv run tools/sf.py log-change --study studies/SETUP --by human:YOUR-ID --log fac
   --rationale "the acts are verified on the repository where the studies live" \
   --predicted "check_factory.py says VALID"
 uv run tools/check_factory.py
+uv run tools/factory_update.py pin --repo . --source ../science-factory
 ```
 
-Put your repository's owner/name for `OWNER/REPO` in all three places, and your id for `YOUR-ID` (the trial's plan is copied because the shipped benchmarks name it). Naming the repository changes the acts by people, so the validator wants a new version and a change-log record that names the acts; `log-change` writes it. Expect `check-factory: VALID`; commit these, `studies/SETUP/` included, by a pull request before the first study.
+Put your repository's owner/name for `OWNER/REPO` in all three places, and your id for `YOUR-ID` (the trial's plan is copied because the shipped benchmarks name it). Naming the repository changes the acts by people, so the validator wants a new version and a change-log record that names the acts; `log-change` writes it. Expect `check-factory: VALID`; the pin (`factory-pin.yaml`) names the commit you copied, so the copy can be updated later. Commit these, `studies/SETUP/` and the pin included, by a pull request before the first study.
 
 In every shell you use for the study:
 
