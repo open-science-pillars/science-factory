@@ -1,7 +1,8 @@
 # The words the overclaiming check flags in leads, reviews and findings. A factory edits this list: each entry is a
 # pattern (a regular expression, matched without regard to case, at word boundaries) and why it is flagged. `when:
 # not-supported` flags a word only where the locked rules did not give `supported` (in a lead, always: a lead is
-# tested on nothing). `unless` is a pattern that, when it stands on the same line, clears the flag. The check warns;
+# tested on nothing). `unless` is a pattern that, when it stands on the same line, clears the flag; a fixed expression
+# that is no claim (`significant figures`) is left out of the pattern itself, so a claim beside it is still flagged. The check warns;
 # it never blocks. Each flag names the phrase and the line.
 phrases:
   - {pattern: "good agreement", why: "say what agreed with what, by how much, against which criterion"}
@@ -15,7 +16,7 @@ phrases:
   - {pattern: "(years|decades|months|weeks) of (work|effort|labou?r|research)", why: "a dramatic timescale: say what was done, not what it would have cost"}
   - {pattern: "what (would have )?(took|taken|take) (years|decades|months|weeks)", why: "a dramatic timescale: say what was done, not what it would have cost"}
   - {pattern: "(in|within) (seconds|minutes|hours|days) (what|that)", why: "a dramatic timescale: say what was done, not how fast it was"}
-  - {pattern: "significant(ly)?", unless: "(p\\s*[<=>≤≥]|p-value|\\btest\\b|interval|confidence|sign test)", why: "say which test, at what level; without one, `significant` is a mood"}
+  - {pattern: "significant(ly)?(?!\\s+(figures?|digits?|bits?|wave\\s+heights?))", unless: "(p\\s*[<=>≤≥]|p-value|\\btest\\b|interval|confidence|sign test)", why: "say which test, at what level; without one, `significant` is a mood"}
 precision:
   # A number stated with more decimals than its uncertainty supports is flagged: at most this many digits beyond the
   # first significant digit of the uncertainty, read from `X ± U` on the same line or from a receipt that gives an

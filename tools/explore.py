@@ -335,6 +335,7 @@ COMMENT = "comment"  # the route of a so what on the platform: a person's commen
 COMMENT_FOUND = "comment recorded, person not verified"  # what the job that recorded it was handed: all a clone can show
 SO_WHAT_STANDINGS = (sf.PRACTICE, COMMENT_FOUND, sf.VERIFIED)
 QUESTION_KEYS = ("what_the_lead_shows", "why_it_might_matter", "what_would_make_it_unremarkable")
+QUESTION_OPTIONAL = ("options",)  # the ways on the lead sets out for the person, none chosen
 VERDICTS = ("holes-found", "no-holes-found")
 DISPOSITIONS = ("drafted", "linked", "declined")
 FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in figures/ as a picture
@@ -355,8 +356,10 @@ SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32"
 CONFINED_BY_THE_KERNEL = "kernel"   # Landlock was applied and tried: the script could open the system's folders, its interpreter and its scratch folder, nothing else
 SCRATCH_ONLY = "scratch-only"       # no kernel fence here: the script ran in a scratch folder and could still open a path it built itself
 AFTER_END = ("note.resolved", "handed.over", "review.verdict", "so-what.verification", "method.promoted")
-LEAD_KEYS = ("what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
+LEAD_KEYS = ("summary", "what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
              "pitfalls", "proposed_plan")
+SUMMARY_KEYS = ("looks_true", "how_strong", "cannot_settle")  # the lead in a minute, at the top of lead.md, for the person's so what
+SUMMARY_WORDS = 150
 LEAD_OPTIONAL = ("what_does_not_hold", "open_explanations", "figures")
 # words that mislead the person the lead is for, and what to write in their place
 MISLEADING = (
@@ -1277,10 +1280,15 @@ def cmd_read(x: Exploration, a) -> None:
     fm, _body = k.front_matter(f)
     fm = fm or {}
     signed, by = k.signed_by(fm, _body)
-    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sf.sha_file(f), "status": k.status_of(fm, _body),
-                                   "signed": signed, "signed_by": by, "takes": a.takes, "depth": depth})
+    sha = sf.sha_file(f)
+    # A page the search did not list may be read too (one a listed page leans on, say): it is recorded, and the lead says
+    # that the search did not list it, so a reader can see the list was not the whole of the reading.
+    listed = any(c.get("sha256") == sha and Path(str(c.get("path"))).name == f.name
+                 for e in x.events() if e["kind"] == "knowledge.listed" for c in e["data"].get("concepts") or [])
+    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sha, "status": k.status_of(fm, _body),
+                                   "signed": signed, "signed_by": by, "takes": a.takes, "depth": depth, "listed": listed})
     print(f"read: {f.name} ({'signed by ' + ', '.join(by) if signed else 'NOT SIGNED, status ' + str(k.status_of(fm, _body))}), "
-          f"recorded ({WAY})")
+          f"recorded ({WAY})" + ("" if listed else "; the search did not list it, and the lead will say so"))
 
 
 def cmd_look(x: Exploration, a) -> None:
@@ -1560,6 +1568,17 @@ def lead_problems(lead, ev: list) -> list:
     for k in ("what_looks_true", "how_it_was_found"):
         if not isinstance(lead[k], str) or len(lead[k].split()) < 5:
             p.append(f"`{k}` is a sentence or more, in words")
+    summ = lead["summary"]
+    if not isinstance(summ, dict) or set(map(str, summ)) != set(SUMMARY_KEYS):
+        p.append("`summary` is the lead in a minute, with exactly these keys: " + ", ".join(SUMMARY_KEYS)
+                 + " (what looks true, how strong the evidence is, what it cannot settle)")
+    else:
+        short = [k for k in SUMMARY_KEYS if not isinstance(summ[k], str) or len(summ[k].split()) < 5]
+        if short:
+            p.append("each part of `summary` is a sentence, in words: " + ", ".join(short))
+        elif sum(len(summ[k].split()) for k in SUMMARY_KEYS) > SUMMARY_WORDS:
+            p.append(f"`summary` is under {SUMMARY_WORDS} words in all, so that a person can read it in a minute; it has "
+                     f"{sum(len(summ[k].split()) for k in SUMMARY_KEYS)}")
     looks = {e["data"]["id"]: e for e in ev if e["kind"] == "look.run"}
     cited = lead["evidence"] if isinstance(lead["evidence"], list) else []
     if not cited:
@@ -1640,14 +1659,56 @@ def as_written(number: str) -> str:
     return re.sub(r"\s+", "", number).replace(",", ".").lower()
 
 
+# Numbers a method names that are not results: the normal quantiles and the usual levels, and those levels as shares. They
+# pass without a receipt in the lead's method text (how it was found, the choices, the pitfalls, a quoted plan sentence),
+# never where it says what looks true. A count written with a thousands comma there (5,000 draws) is a whole number.
+CONSTANTS = ("1.645", "1.96", "2.576", "0.05", "0.01", "0.95", "0.99")
+CONSTANT_SHARES = ("90", "95", "99")
+COUNT = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d.,])(?=\s+[A-Za-z])")
+LOOK_NAMED = re.compile(r"\bLOOK-\d{3,}\b")
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
 def own_words(lead: dict) -> list:
-    """The lead's own words: everything but the proposed plan, whose numbers are proposals and not things that were seen."""
-    texts = [str(lead.get(k)) for k in ("what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations") if lead.get(k)]
+    """The lead's own words: everything but the proposed plan, whose numbers are proposals and not things that were seen
+    (a plan sentence that names a look quotes it, and is read by `plan_quotes`)."""
+    return result_words(lead) + method_words(lead)
+
+
+def result_words(lead: dict) -> list:
+    """Where the lead says what it saw: every number there is a result."""
+    texts = [str(lead.get(k)) for k in ("what_looks_true", "what_does_not_hold", "open_explanations") if lead.get(k)]
+    texts += [str(v) for v in (lead.get("summary") or {}).values()] if isinstance(lead.get("summary"), dict) else []
+    texts += [str(f.get("shows")) for f in lead.get("figures") or [] if isinstance(f, dict)]
+    return texts
+
+
+def method_words(lead: dict) -> list:
+    """Where the lead says how: a number there may also be a listed constant or a count."""
+    texts = [str(lead.get("how_it_was_found"))] if lead.get("how_it_was_found") else []
     texts += [str(t) for t in lead.get("pitfalls") or []]
     texts += [str(c.get("how") or c.get("why")) for key in ("choices_that_would_change_it", "choices_that_would_not")
               for c in lead.get(key) or [] if isinstance(c, dict)]
-    texts += [str(f.get("shows")) for f in lead.get("figures") or [] if isinstance(f, dict)]
     return texts
+
+
+def plan_quotes(lead: dict) -> list:
+    """(sentence, the looks it names) for each sentence of the proposed plan that names a look: it quotes that look, so its
+    numbers are checked against what the look printed. A sentence that names no look proposes, and is not checked."""
+    out = []
+    for v in (lead.get("proposed_plan") or {}).values() if isinstance(lead.get("proposed_plan"), dict) else []:
+        for sentence in SENTENCE_END.split(" ".join(str(v).split())):
+            named = sorted(set(LOOK_NAMED.findall(sentence)))
+            if named:
+                out.append((sentence, named))
+    return out
+
+
+def loose_in(text: str, backed: set, method: bool) -> set:
+    t = number_forms(COUNT.sub(" ", text) if method else text)
+    out = {n.strip() for n in QUOTED.findall(t) if as_written(n) not in backed and not (method and as_written(n) in CONSTANTS)}
+    out |= {m.group(0).strip() for m in PERCENT.finditer(t) if m.group(1) not in backed and not (method and m.group(1) in CONSTANT_SHARES)}
+    return out
 
 
 def backing_pages(x: Exploration, ev: list) -> list:
@@ -1669,17 +1730,20 @@ def unbacked_numbers(x: Exploration, lead: dict, ev: list | None = None) -> list
     """Numbers in the lead's own words that no look it cites printed and no knowledge page recorded as read holds.
     A number counts only when it was printed whole and in the form the lead gives it: 1.4 is not backed by a look that
     printed 1.4826, and .8888 is not backed by 0.8888. A whole number given as a share (105 percent) is checked too."""
-    backed = set()
-    texts = []
-    for lid in lead.get("evidence") or []:
+    def printed(texts: list) -> set:
+        return {as_written(n) for t in texts for n in PRINTED.findall(t)}
+
+    def out_of(lid: str) -> list:
         f = x.d / f"receipts/{lid}.out.txt"
-        texts += [f.read_text(errors="replace")] if f.is_file() else []
-    texts += [f.read_text(errors="replace") for f in backing_pages(x, ev or [])]
-    for t in texts:
-        backed |= {as_written(n) for n in PRINTED.findall(t)}
-    words = [number_forms(t) for t in own_words(lead)]
-    loose = {n.strip() for t in words for n in QUOTED.findall(t) if as_written(n) not in backed}
-    loose |= {m.group(0).strip() for t in words for m in PERCENT.finditer(t) if m.group(1) not in backed}
+        return [f.read_text(errors="replace")] if re.fullmatch(r"LOOK-\d{3,}", lid) and f.is_file() else []
+    pages = printed([f.read_text(errors="replace") for f in backing_pages(x, ev or [])])
+    backed = printed([t for lid in lead.get("evidence") or [] for t in out_of(str(lid))]) | pages
+    loose = {n for t in result_words(lead) for n in loose_in(t, backed, False)}
+    loose |= {n for t in method_words(lead) for n in loose_in(t, backed, True)}
+    logged = {e["data"]["id"] for e in ev or [] if e["kind"] == "look.run"}
+    for sentence, named in plan_quotes(lead):
+        quoted = printed([t for lid in named if lid in logged for t in out_of(lid)]) | pages
+        loose |= {f"{n} (in the proposed plan, in a sentence that quotes {', '.join(named)})" for n in loose_in(sentence, quoted, True)}
     return sorted(loose)
 
 
@@ -1692,8 +1756,14 @@ def render_lead(lead: dict) -> str:
         aside += (f", after the cut-off {sa['cut_off']} (the working data was bound by checksum at the start, {len(sa.get('bound') or [])} "
                   "file(s), and a look at a file that changed or holds a later date is refused)")
     order = lead.get("order") or {"sequence": [], "choices": {}, "choices_recorded_after_looks": 0, "choices_in_all": 0}
-    lines = [f"# Lead from {lead['exploration']} (exploring; version {lead['version']})", "", BANNER, "",
-             f"**The question.** {lead['question']}", "",
+    summ = lead.get("summary") or {}
+    lines = [f"# Lead from {lead['exploration']} (exploring; version {lead['version']})", "", BANNER, ""]
+    if summ:
+        lines += ["## In short", "", f"**What looks true.** {' '.join(str(summ.get('looks_true')).split())}", "",
+                  f"**How strong the evidence is.** {' '.join(str(summ.get('how_strong')).split())}", "",
+                  f"**What it cannot settle.** {' '.join(str(summ.get('cannot_settle')).split())}", "",
+                  "The rest of this page is the lead in full, with every choice and number behind it.", ""]
+    lines += [f"**The question.** {lead['question']}", "",
              f"**What looks true.** {lead['what_looks_true'].strip()}", ""]
     if lead.get("what_does_not_hold"):
         lines += [f"**What does not hold.** {lead['what_does_not_hold'].strip()}", ""]
@@ -1747,6 +1817,7 @@ def render_lead(lead: dict) -> str:
     lines += ["", "## Knowledge read before looking", ""]
     lines += [f"- `{k['path']}`: {'signed by ' + ', '.join(k['signed_by']) if k['signed'] else 'NOT SIGNED (status ' + str(k['status']) + ')'}"
               + (" (skimmed, not read whole)" if k.get("depth") == "skimmed" else "")
+              + (" (read, though the search did not list it)" if k.get("listed") is False else "")
               + (f". Takes from it: {k['takes']}" if k.get("takes") else "") for k in lead["knowledge_read"]] or ["- none recorded as read"]
     if lead.get("listed_not_read"):
         lines += ["", "Listed by the search and not recorded as read: " + ", ".join(f"`{q}`" for q in lead["listed_not_read"]) + "."]
@@ -1782,8 +1853,9 @@ def cmd_lead(x: Exploration, a) -> None:
         raise Refused("the lead is not complete: " + "; ".join(problems))
     loose = unbacked_numbers(x, given, ev)
     if loose:
-        raise Refused("the lead quotes numbers that none of the looks it cites under `evidence` printed (whole, digit for digit) "
-                      "and that no page of a listed wiki recorded as read holds: " + "; ".join(loose[:12])
+        raise Refused("the lead quotes numbers that none of the looks it cites under `evidence` printed (whole, digit for digit), "
+                      "that no page of a listed wiki recorded as read holds, and, in a sentence of the proposed plan that names a look, "
+                      "that the look named did not print: " + "; ".join(loose[:12])
                       + ". Every number in a lead comes from a look or a page of the knowledge base that was read; cite the look, "
                       "run it, or quote the number as it was printed: not rounded, not in another form (a decimal comma, an "
                       "exponent, a missing zero), and a share (`5 percent`) only when a look printed that number")
@@ -1803,7 +1875,7 @@ def cmd_lead(x: Exploration, a) -> None:
             "fenced": fence_counts(ev),
             "choices": [{k: e["data"][k] for k in ("id", "choice", "alternatives", "rests_on", "look")} for e in ev if e["kind"] == "choice.recorded"],
             "order": order_of(ev),
-            "knowledge_read": [{k: r.get(k) for k in ("path", "sha256", "status", "signed", "signed_by", "takes", "depth")} for r in reads],
+            "knowledge_read": [{k: r.get(k) for k in ("path", "sha256", "status", "signed", "signed_by", "takes", "depth", "listed")} for r in reads],
             "listed_not_read": listed_not_read(ev),
             "set_aside": start["data"]["set_aside"], "log_fingerprint": f"{ev[-1]['seq']}:{ev[-1]['hash']}"}
     sha = write_json(x.d / "lead.json", lead)
@@ -1872,7 +1944,7 @@ def cmd_correct(x: Exploration, a) -> None:
             return {k: swap(i) for k, i in v.items()}
         return v
 
-    words = ("what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations", "pitfalls",
+    words = ("summary", "what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations", "pitfalls",
              "choices_that_would_change_it", "choices_that_would_not", "proposed_plan")
     for k in words:
         if k in lead:
@@ -2027,7 +2099,9 @@ def render_question(lead: dict, q: dict, x: Exploration, verdict: dict) -> str:
         f"(verdict `{verdict['data']['verdict']}`, `{verdict['data']['file']}`). Read the lead (`lead.md`) and look at its figures yourself before you answer.", "",
         f"**What the lead shows.** {' '.join(str(q['what_the_lead_shows']).split())}", "",
         f"**Why it might matter.** {' '.join(str(q['why_it_might_matter']).split())}", "",
-        f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", "",
+        f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", ""]
+        + ((["**The options the lead sets out, none chosen.**", ""] + [f"{chr(97 + i)}. {' '.join(str(o).split())}" for i, o in enumerate(q["options"])] + [""])
+           if q.get("options") else []) + [
         "## How to answer", "",
         "One of four: `worth-confirming` (it goes to a confirming study); `try-instead` with the direction in words (the exploration "
         "goes on, with that as its next question); `not-interesting` with a reason (the exploration ends as a lead noted, which is not "
@@ -2054,11 +2128,15 @@ def cmd_ask_so_what(x: Exploration, a) -> None:
         q = yaml.safe_load(Path(a.file).read_text())
     except (OSError, yaml.YAMLError) as err:
         raise Refused(f"the question file cannot be read as YAML ({err})")
-    if not isinstance(q, dict) or set(q) != set(QUESTION_KEYS):
-        raise Refused("the question file has exactly these keys: " + ", ".join(QUESTION_KEYS))
+    if not isinstance(q, dict) or not set(QUESTION_KEYS) <= set(q) or set(q) - set(QUESTION_KEYS) - set(QUESTION_OPTIONAL):
+        raise Refused("the question file has these keys: " + ", ".join(QUESTION_KEYS) + ", and may have `options`: the ways on "
+                      "the lead sets out for the person, none chosen")
     short = [k for k in QUESTION_KEYS if not isinstance(q[k], str) or len(q[k].split()) < 5]
     if short:
         raise Refused("each part of the question is a sentence or more, in words: " + ", ".join(short))
+    if "options" in q and (not isinstance(q["options"], list) or len(q["options"]) < 2
+                           or any(not isinstance(o, str) or len(o.split()) < 3 for o in q["options"])):
+        raise Refused("`options` is a list of two or more ways on, each in words; leave the key out when the lead sets out none")
     lead = json.loads((x.d / "lead.json").read_text())
     n = count(ev, "so-what.asked") + 1
     out = x.d / "so-what"
@@ -3275,7 +3353,8 @@ def selftest() -> int:
         quiet(cmd_note, y, A(kind="missing", about="the A product", text="the flag is not described", evidence="receipts/LOOK-001.json"))
         ok("a note is a file and a log event, and says it comes from exploring",
            json.loads((y.d / "notes/NOTE-001.json").read_text())["way"] == WAY and last(y.events(), "note.raised")["data"]["text"])
-        lead = {"what_looks_true": "A follows B closely over the year, on changes.", "how_it_was_found": "By pairing the two records and scoring changes.",
+        lead = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A follows B closely over the year, on changes.", "how_it_was_found": "By pairing the two records and scoring changes.",
                 "evidence": ["LOOK-001"], "choices_that_would_change_it": [{"choice": "CHOICE-002", "how": "keeping all moves the gain"}],
                 "choices_that_would_not": [], "pitfalls": ["levels are on different datums"],
                 "proposed_plan": {"question": "Is the gain of A on B within five percent of one?", "quantity_estimated": "the gain",
@@ -3461,6 +3540,11 @@ def selftest() -> int:
         ok("`read` takes a page by its path below the wiki, and records that it was only skimmed",
            said(cmd_read, w, A(concept="gotchas/follow-datum.md", takes="nothing more", depth="skimmed")) == "" and last(w.events(), "knowledge.read")["data"]["depth"] == "skimmed")
         ok("`read` refuses a depth that is neither whole nor skimmed", "whole" in said(cmd_read, w, A(concept=listed_as, takes="x", depth="glanced")))
+        unlisted = bundle / "gotchas" / "units.md"
+        unlisted.write_text("---\ntype: dataset-gotcha\ntitle: \"Units of the toy record\"\nstatus: draft\n---\n\n# Units\n\nMetres.\n")
+        ok("`read` takes a page the search did not list, and records that it was not listed (found by the first real run)",
+           said(cmd_read, w, A(concept=str(unlisted), takes="the units")) == "" and last(w.events(), "knowledge.read")["data"]["listed"] is False
+           and [e["data"]["listed"] for e in w.events() if e["kind"] == "knowledge.read"][0] is True)
         quiet(cmd_choice, w, A(choice="fit a line with an intercept", alternative=["through the origin"], rests_on="the page read"))
         ok("a look runs once a page is recorded as read", look(w, ["{python}", sw]) == "")
         e = last(w.events(), "look.run")
@@ -3480,7 +3564,8 @@ def selftest() -> int:
         ok("a choice is logged with the looks that had run when it was written down",
            last(w.events(), "choice.recorded")["data"]["after_looks"] == 1 and last(w.events(), "choice.recorded")["data"]["after"] == "LOOK-001")
         quiet(cmd_note, w, A(kind="missing", about="the A product", text="no page says what the flag values mean", evidence=None))
-        wl = {"what_looks_true": "A looks as if it follows B with a gain of 1.4826 over the year.",
+        wl = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A looks as if it follows B with a gain of 1.4826 over the year.",
               "how_it_was_found": "By fitting one line to the twelve paired rows.", "evidence": ["LOOK-001"],
               "choices_that_would_change_it": [{"choice": "CHOICE-002", "how": "not tried"}],
               "choices_that_would_not": [{"choice": "CHOICE-001", "why": "the intercept is small"}], "pitfalls": [],
@@ -3499,6 +3584,24 @@ def selftest() -> int:
         ok("a lead that calls observations unflagged is refused, with the words to use",
            "flag's value" in lead_says(what_looks_true="A looks as if it follows B on the unflagged rows of the year."))
         ok("a lead with a key that is not a lead's is still refused", "not a key of a lead" in lead_says(conclusions="x"))
+        # the lead in a minute, at the top (found by the first real run: its lead ran to 4,700 words before the so what)
+        ok("a lead without a summary is refused", "`summary` is missing" in said(cmd_lead, w, A(file=str(
+            (lambda f: (f.write_text(yaml.safe_dump({k: v for k, v in wl.items() if k != "summary"})), f)[1])(wf)))))
+        ok("a summary without what it cannot settle is refused", "exactly these keys" in lead_says(summary={k: v for k, v in wl["summary"].items() if k != "cannot_settle"}))
+        ok("a summary over 150 words is refused", "under 150 words" in lead_says(summary={**wl["summary"], "how_strong": "weak " * 150}))
+        ok("a summary is checked like the rest: a number in it that no look printed is refused",
+           "1.4827" in lead_says(summary={**wl["summary"], "looks_true": "A looks as if it follows B with a gain of 1.4827."}))
+        # constants and counts in method text, and numbers the plan quotes (found by the same run: 1.96 was refused)
+        def loose(**change) -> list:  # the number check alone, without recording a version
+            return unbacked_numbers(w, {**wl, **change}, w.events())
+        ok("a listed constant (1.96) and a count with a thousands comma pass in the method's words without a receipt",
+           loose(how_it_was_found="By fitting one line to the paired rows, with 1.96 standard errors and 5,000 draws.") == [])
+        ok("an unprinted result number is still refused in the method's words, and a listed constant where the lead says what looks true",
+           "0.8123" in lead_says(how_it_was_found="By fitting one line, with a slope of 0.8123 dropped.")
+           and "1.96" in lead_says(what_looks_true="A looks as if it follows B, with a z of 1.96 over the year."))
+        ok("a plan sentence that names a look quotes it: a number that look did not print is refused, one it printed passes",
+           "1.4827 (in the proposed plan" in lead_says(proposed_plan={**wl["proposed_plan"], "hard_cases": "a gain of 1.4827 as in LOOK-001."})
+           and loose(proposed_plan={**wl["proposed_plan"], "hard_cases": "a gain of 1.4826 as in LOOK-001. A gain of 0.8123 is proposed here."}) == [])
         ok("a lead that shows a figure no look drew is refused",
            "no logged look drew" in lead_says(figures=[{"file": "figures/other.svg", "shows": "something"}]))
         ok("a lead may quote a number from a page that was read, may say what does not hold, and may show a figure a look drew",
@@ -3525,6 +3628,10 @@ def selftest() -> int:
            "confidence interval" in said(cmd_correct, w, A(old="over the year", new="over the year, with a sampling interval", why="x")))
         quiet(cmd_correct, w, A(old="looks as if it follows B", new="looks as if it rises and falls with B", why="'follows' was too loose"))
         got = json.loads((w.d / "lead.json").read_text())
+        ok("the summary stands at the top of lead.md, before the question", (lambda md: md.index("## In short") < md.index("**The question.**"))(
+            (w.d / "lead.md").read_text()))
+        ok("the lead says which page was read though the search did not list it",
+           "units.md`: NOT SIGNED (status draft) (read, though the search did not list it)" in (w.d / "lead.md").read_text())
         ok("a one-phrase correction of wording does not cost a lead version, and the lead shows the old and the new words",
            got["version"] == 1 and count(w.events(), "lead.recorded") == 1 and len(w.events()) == n_events + 1
            and "rises and falls with B" in got["what_looks_true"] and "Corrections of wording" in (w.d / "lead.md").read_text()
@@ -3727,7 +3834,8 @@ def selftest() -> int:
                                       "--kind", "missing", "--about", "a", "--text", "b"], capture_output=True, text=True)
         ok("while a look holds the exploration log, a command that would write to it is refused and does not wait",
            waiting.returncode == 2 and "log is held" in waiting.stderr and not count(r.events(), "note.raised"))
-        rl = {"what_looks_true": "A follows B closely over the year, on changes, across 12 rows.", "how_it_was_found": "By pairing the two records and counting rows.",
+        rl = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A follows B closely over the year, on changes, across 12 rows.", "how_it_was_found": "By pairing the two records and counting rows.",
               "evidence": ["LOOK-001"], "choices_that_would_change_it": [], "choices_that_would_not": [], "pitfalls": [],
               "proposed_plan": {"question": "Is the gain of A on B within five percent of one?", "quantity_estimated": "the gain",
                                 "difference_that_matters": "five percent", "rule_sketch": "interval inside the band"}}
@@ -3801,10 +3909,21 @@ def selftest() -> int:
         ok("a so what before the lead is reviewed is refused, and so is the question",
            "has not been reviewed" in so_what(sw) and "has not been reviewed" in said(cmd_ask_so_what, sw, A(file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
         quiet(cmd_review, sw, RA(sw, by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        asked_q = yaml.safe_load(qf.read_text())
+        qf.write_text(yaml.safe_dump({**asked_q, "options": "test one idea"}))
+        ok("the question's options are a list of ways on, in words", "`options` is a list" in said(
+            cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
+        qf.write_text(yaml.safe_dump({**asked_q, "options": ["test the gain on next year's data", "look at the low-stage readings first"],
+                                      "mood": "words that are no part of the question"}))
+        ok("a key that is not a question's is still refused", "may have `options`" in said(
+            cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
+        qf.write_text(yaml.safe_dump({**asked_q, "options": ["test the gain on next year's data", "look at the low-stage readings first"]}))
         quiet(cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json")))
         ok("an agent drafts the question for the person: what the lead shows, why it might matter, what would make it unremarkable",
            (sw.d / "so-what" / "QUESTION-001.md").is_file() and "What would make it unremarkable" in (sw.d / "so-what" / "QUESTION-001.md").read_text()
            and last(sw.events(), "so-what.asked")["actor"] == "agent:tester-coordinating")
+        ok("the question shows the options the lead sets out, none chosen (found by the first real run: they had no key of their own)",
+           "b. look at the low-stage readings first" in (sw.d / "so-what" / "QUESTION-001.md").read_text())
         ok("an agent cannot record the answer, by any route: not under its own name, not as practice, not as the platform without a comment",
            "a person's answer" in so_what(sw, by="agent:tester-coordinating") and "a person's answer" in so_what(sw, by="agent:tester-review")
            and "platform's name" in said(cmd_so_what, sw, A(by="agent:tester-coordinating", record_comment=str(tmp / "none.json")))
@@ -4302,7 +4421,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("reviewer", cmd_reviewer, by, (["--reviewer"], {"required": True, "help": "the name the review will come under, such as agent:review-01"}))
     add("review", cmd_review, by, (["--verdict"], {"required": True, "help": " or ".join(VERDICTS)}), (["--file"], {"required": True}),
         (["--read-lead"], {"default": None, "dest": "read_lead", "help": "the sha256 of the lead.json the reviewer read; `status` prints it"}))
-    add("ask-so-what", cmd_ask_so_what, by, (["--file"], {"required": True, "help": "the question (YAML): " + ", ".join(QUESTION_KEYS)}),
+    add("ask-so-what", cmd_ask_so_what, by, (["--file"], {"required": True, "help": "the question (YAML): " + ", ".join(QUESTION_KEYS) + ", and `options` if the lead sets some out"}),
         (["--read-lead"], {"required": True, "dest": "read_lead", "help": "the sha256 of the lead.json the question is about"}))
     add("so-what", cmd_so_what, by, (["--answer"], {"default": None, "help": ", ".join(SO_WHAT)}),
         (["--direction"], {"default": None, "help": "for try-instead: the direction, in words"}),

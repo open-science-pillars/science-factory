@@ -42,7 +42,7 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
    - what it **rules out**: something the question as asked would have you do that the page refuses;
    - what it **warns about**: a pitfall that makes a wrong answer look right.
 
-   Inside an exploration record each with `uv run tools/explore.py read --exploration <dir> --by <you> --model <your model> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole. The lead lists what was read, what was skimmed and what was listed and not read.
+   Inside an exploration record each with `uv run tools/explore.py read --exploration <dir> --by <you> --model <your model> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole (`whole` is the default). A page the list did not print, one a listed page leans on, is recorded the same way by its file; the lead says the search did not list it. The lead lists what was read, what was skimmed and what was listed and not read.
 
 5. **Say what is missing.** If the question needs something the knowledge does not have, that is a note (`explore.py note --kind missing`, or `sf.py note`), not something to fill in from memory.
 

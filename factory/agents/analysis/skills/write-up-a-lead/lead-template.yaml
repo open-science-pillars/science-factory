@@ -2,8 +2,14 @@
 #   uv run tools/explore.py lead --exploration <x> --by <you> --model <your model> --file <x>/lead.yaml
 # The tool adds the count of looks and of the comparisons they declared, the full record of each choice and how many
 # looks had run when it was written down, the order of looks and choices, what was read and what was set aside.
-# Every decimal number in the words below (the proposed plan apart) must be printed, whole, by a look under `evidence`,
-# or stand in a knowledge page recorded as read. Quote numbers as printed.
+# Every decimal number in the words below must be printed, whole, by a look under `evidence`, or stand in a knowledge
+# page recorded as read. Quote numbers as printed. In the method's words (how it was found, the choices, the pitfalls)
+# a listed constant (1.645, 1.96, 2.576, 0.05, 0.01, 0.95, 0.99) and a count (5,000 draws) need no receipt. In the
+# proposed plan, a sentence that names a look quotes it and is checked against that look; any other plan sentence proposes.
+summary:                      # the lead in a minute, at the top of lead.md, for the person's so what: under 150 words in all
+  looks_true: "What looks true, in a sentence or two, with its main number."
+  how_strong: "How strong the evidence is: how many looks, on what, and what it leans on."
+  cannot_settle: "What it cannot settle, however it turns out."
 what_looks_true: >
   A short paragraph with numbers, units, counts, place and period. "Looks", not "is".
 how_it_was_found: >

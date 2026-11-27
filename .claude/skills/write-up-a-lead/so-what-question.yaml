@@ -7,3 +7,6 @@ why_it_might_matter: >
   WHAT WOULD CHANGE FOR THE SCIENTIST, OR IN THE FIELD, IF IT HOLDS.
 what_would_make_it_unremarkable: >
   WHAT A PERSON WHO KNOWS THE DATA MIGHT ALREADY KNOW THAT MAKES THIS EXPECTED, KNOWN OR TRIVIAL.
+# options:                    # optional: the ways on the lead sets out for the person, none chosen; leave it out when there are none
+#   - "TEST ONE IDEA ON THE FRESH DATA, AND WHAT THAT WOULD SETTLE"
+#   - "LOOK FURTHER FIRST, AND AT WHAT"
