@@ -2843,6 +2843,98 @@ def conds_text(conds: list) -> str:
     return " and ".join(f"{c['field']} {c['op']} {c['value']}" for c in conds)
 
 
+def explorations_of(study: Study, plan: dict | None, ev: list) -> list:
+    """The explorations a study comes from, however it was started: the one its hand-over names; one whose folder holds the
+    proposal of the fresh data the plan names, or whose start set that proposal aside, byte for byte; and one whose working
+    files are files the study binds. Looked for beside the study, in the workspace's `explorations/` folder, and up from
+    the proposal. Each as {"dir", "how"}."""
+    found = {}
+
+    def is_exploration(d: Path) -> bool:
+        return (d / "exploration-log.jsonl").is_file()
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    came = ((start or {}).get("data") or {}).get("from_exploration")
+    if came and came.get("path_from_study"):
+        d = Path(os.path.normpath(study.d / came["path_from_study"]))
+        if is_exploration(d):
+            found[str(d.resolve())] = "the study was started from its hand-over"
+    held = ((plan or {}).get("data") or {}).get("held_out") or {}
+    prop = study.path(held["fresh_data"]).resolve() if held.get("fresh_data") else None
+    candidates = []
+    for base in {study.d.parent, study.d.parent.parent / "explorations", study.d.parent.parent}:
+        with contextlib.suppress(OSError):
+            candidates += [d for d in sorted(base.iterdir()) if d.is_dir() and is_exploration(d)]
+    if prop is not None:
+        for up in list(prop.parents)[:4]:
+            if is_exploration(up):
+                found.setdefault(str(up.resolve()), f"the plan's proposal of the fresh data ({held['fresh_data']}) is in its folder")
+                candidates.append(up)
+    binds = set((study.code_hashes(plan).values()) if plan else ()) | {w["sha256"] for w in (release_of(ev) or {}).get("working") or []}
+    prop_sha = sha_file(prop) if prop is not None and prop.is_file() else None
+    for d in dict.fromkeys(c.resolve() for c in candidates):
+        try:
+            first = Study._parse((d / "exploration-log.jsonl").read_text())[0]
+        except (OSError, IndexError, Refused):
+            continue
+        sa = (first.get("data") or {}).get("set_aside") or {}
+        if prop_sha and (sa.get("fresh_data") or {}).get("sha256") == prop_sha:
+            found.setdefault(str(d), "its start set aside the proposal of the fresh data the plan names")
+        mine = {b.get("sha256") for b in sa.get("bound") or []}
+        for place in (sa.get("working") or {}).get("places") or []:
+            q = Path(os.path.normpath(d / place))
+            if q.is_file():
+                mine.add(sha_file(q))
+        if binds & {m for m in mine if m}:
+            found.setdefault(str(d), "the study binds working data that it explored")
+    return [{"dir": k, "how": v} for k, v in found.items()]
+
+
+def so_what_for_study(study: Study, plan: dict | None, ev: list, needs_confirmed: bool) -> tuple:
+    """(why not, what to show at the lock): a study that comes from an exploration, however it was started, needs the person's
+    `worth-confirming` on that exploration's latest reviewed lead. A comment is that only on the platform's answer asked now; a
+    so what typed at a command line (practice) is taken only where `needs_confirmed` is false (a practice lock), and is marked."""
+    problems, lines = [], []
+    links = explorations_of(study, plan, ev)
+    if not links:
+        return problems, lines
+    ex = explore_tool()
+    by_data = [x for x in links if x["how"] == "the study binds working data that it explored"]
+    named = [x for x in links if x not in by_data]  # the hand-over, or the proposal: each of these needs the person's word
+    held_back = []
+    for link in links:
+        x = ex.Exploration(Path(link["dir"]))
+        try:
+            xev = x.events()
+        except Refused as r:
+            problems.append(f"the exploration {Path(link['dir']).name} ({link['how']}) has a log that cannot be read: {r}")
+            continue
+        said = ex.so_what_now(xev)
+        asked = ex.so_what_ask_now(x, said) if said else None
+        st = ex.so_what_standing(xev, said, asked) if said else None
+        words = ex.so_what_in_words(xev, said, asked)
+        lines.append(f"{Path(link['dir']).name} ({link['how']}): {words}")
+        name = Path(link["dir"]).name
+        if said is None:
+            problems.append(f"this study comes from the exploration {name} ({link['how']}), and no person has said its latest reviewed lead is "
+                            "worth confirming")
+        elif said["data"]["answer"] != "worth-confirming":
+            problems.append(f"this study comes from the exploration {name} ({link['how']}), and the person's so what on its latest reviewed lead is "
+                            f"{words}, not worth-confirming: a lead a person did not call worth confirming is not confirmed")
+        elif st == ex.COMMENT_FOUND and needs_confirmed:
+            problems.append(f"this study comes from the exploration {name} ({link['how']}), and its so what is a comment the platform did not "
+                            "confirm when asked now: " + "; ".join((asked or {}).get("problems") or ["no answer"])[:300])
+        elif st == PRACTICE and needs_confirmed:
+            problems.append(f"this study comes from the exploration {name} ({link['how']}), and its so what was typed at a command line "
+                            "(practice): held-out data on a real lock is opened only on a person's so what the platform confirms")
+        else:
+            continue
+        if link in by_data:
+            held_back.append(problems.pop())
+    if named or len(held_back) < len(by_data):
+        held_back = []  # named explorations each need the person's word; for data alone one exploration's is enough. Every one is shown
+    return problems + held_back, lines
+
+
 def refuse_unbound(factory, what: str) -> None:
     """Refuse `what` when anything under the definition or the tools is bound by nothing: bytecode (Python would load it in
     place of the source the checksum binds), a file in tools/ that is not a tool, a symlink."""
@@ -2865,6 +2957,9 @@ def lock_evidence(study: Study, a) -> dict:
     plan = checked_plan(study)
     ev = study.events()
     note_held_out(study, plan, ev)
+    wanting, so_whats = so_what_for_study(study, plan, ev, needs_confirmed=False)
+    if wanting:
+        raise Refused("the lock is refused: " + "; ".join(wanting) + ". Nothing was recorded")
     lines = []
     say = lines.append
     code, psha = study.code_hashes(plan), study.plan_sha()
@@ -3019,6 +3114,9 @@ def lock_evidence(study: Study, a) -> dict:
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
             "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed", "to_be_drawn_at_the_lock")} if fresh else None,
             "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
+    for line in so_whats:
+        say(f"the exploration this study comes from, and its person's so what, asked now: {line}")
+    data["so_whats"] = so_whats
     return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh, "figures": figures}
 
 
@@ -3089,12 +3187,17 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
             "Models the log records so far: " + ("; ".join(f"{k} {', '.join(m)}" for k, m in sorted(d["models_recorded"].items())) or "no agent has written to it") + ".", "",
             "## Open notes", ""] + ([f"- {n}" for n in notes] or ["None."])
     out += ["", "## The exploration that led here, and what its reviewer said", ""]
+    for line in d.get("so_whats") or []:
+        out += [f"**The exploration and the person's so what, asked now.** {line}", ""]
     if came["how_it_was_found"] or came["review_of_the_lead"]:
         out += ["How many things were tried: " + str(came["how_it_was_found"] or "the request does not say."), "",
                 "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), "",
                 "A person's so what on the lead (is it worth confirming?): " + str(came["so_what"] or "the request does not say; ask before you approve."), ""]
+    elif d.get("so_whats"):
+        out += ["This study's request carries no hand-over from that exploration: read its log for how many things were tried before it.", ""]
     else:
-        out += ["This study's request carries no hand-over from an exploration, so nothing is known here about what was tried before it.", ""]
+        out += ["This study's request carries no hand-over from an exploration, and no exploration in the workspace set aside its proposal "
+                "or explored the data it binds, so nothing is known here about what was tried before it.", ""]
     out += ["Reviews recorded in this study's own log so far: " + ("; ".join(f"{e['actor']} {e['data']['verdict']}" for e in reviews) or "none (a study is reviewed after its opening)") + ".", "",
             "## Everything the lock prints", "", "```"] + got["lines"] + ["```"]
     return out
@@ -3605,6 +3708,9 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
             print("OPENING WITHOUT VERIFYING THE PEOPLE. The lock of this study is a merge found with git on this machine; nobody has "
                   f"confirmed with the platform that people approved it. Reason given: {waived['reason']}. This is in the study log. "
                   "The study stays at people not verified, and is not signed, until `sf.py verify-acts` succeeds", file=sys.stderr)
+    wanting, _so_whats = so_what_for_study(study, plan, ev, needs_confirmed=route_of(lock) == PULL_REQUEST)
+    if wanting:
+        raise Refused("the held-out data is not opened: " + "; ".join(wanting) + ". Nothing was opened and the opening is not used up")
     drawn = random_draw_at_the_opening(study, plan, lock, checked if route_of(lock) == PULL_REQUEST else None, waived)
     n = len(started) + 1
     prior = earlier_openings(study, plan, spec, ev)
@@ -3615,7 +3721,8 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
         "test": test, "n": n, "plan_sha": study.plan_sha(), "code": code, "env": env_stamp(study, plan),
         "lock_route": route_of(lock), "lock_standing": standing_of(ev, lock, checked if route_of(lock) == PULL_REQUEST else None),
         **({"lock_asked": {"how": via_words(checked), "stand_in": bool(checked.get("stand_in_for_the_platform"))}} if route_of(lock) == PULL_REQUEST else {}),
-        **({"opened_without_verification": waived} if waived else {}), **({"random_draw": drawn} if drawn else {}), "definition_sha": here["sha256"],
+        **({"opened_without_verification": waived} if waived else {}), **({"random_draw": drawn} if drawn else {}),
+        **({"so_whats_asked_now": _so_whats} if _so_whats else {}), "definition_sha": here["sha256"],
         "lock_committed": bool(in_git), "earlier_openings_of_this_window": prior, "listing": sorted(before),
         "uv_environments": study.uv_environments() if uses_uv(plan) else {}})
     key = subject_key(plan, spec)

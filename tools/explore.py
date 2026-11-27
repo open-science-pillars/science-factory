@@ -3534,6 +3534,11 @@ def selftest() -> int:
            study.events()[0]["data"]["from_exploration"]["id"] == y.started()["data"]["id"] and len(whole["logs"]) == 2
            and any(w["actor"].startswith("agent:tester-analysis") for r in whole["rows"] if r["work"] == "exploring" for w in r["who"]))
         ok("check-study waits for the plan", any("no analysis plan yet" in q for q in study_problems(y, study.d)))
+        loose_so, _lines = sf.so_what_for_study(study, None, study.events(), needs_confirmed=False)
+        firm_so, lines_so = sf.so_what_for_study(study, None, study.events(), needs_confirmed=True)
+        ok("a study from a hand-over carries its exploration's so what: a typed (practice) worth-confirming is taken for a practice lock, and "
+           "named, and refused for the opening on a real lock, which needs a so what the platform confirms",
+           loose_so == [] and any("typed at a command line (practice)" in q for q in firm_so) and any("worth-confirming" in ln for ln in lines_so))
 
         def plan(window: dict, pair: dict | None = None) -> None:
             study.plan_path.write_text(yaml.safe_dump({
@@ -4184,6 +4189,30 @@ def selftest() -> int:
         ok("not-interesting ends the exploration as a lead noted, with the reason, and nothing is handed over",
            last(no.events(), "exploration.ended")["data"]["outcome"] == "lead-noted" and "shared source" in last(no.events(), "exploration.ended")["data"]["summary"]
            and "has not ended as a lead" in said(cmd_hand_over, no, A(by="agent:tester-coordinating", study_id="STUDY-NO", local_practice=True)))
+        # A4-05: a study started with no hand-over, whose plan names a proposal in the folder of an exploration the person called not interesting
+        a4meta = tmp / "a4-05-metadata.json"
+        a4meta.write_text(json.dumps({"subject": {"record": "a4-05"}, "items": [
+            {"id": f"S{i}-{y}", "site": f"S{i}", "start": f"{y}-01-01", "end": f"{y}-12-31", "count": 5} for i in range(1, 5) for y in (2024, 2025)]}))
+        quiet(fdt.cmd_propose, fdt.A(metadata=str(a4meta), what="the year 2025", why="it comes after", unfair="a change in 2025",
+                                     studies=str(work / "studies"), out=str(no.d / "fresh-data.yaml"), kind="later-period", from_="2025-01-01"))
+        a405 = json.loads(json.dumps(sf.PLAN))
+        a405["data"]["held_out"].update(pair="a4-05", fresh_data=os.path.relpath(no.d / "fresh-data.yaml", work / "studies" / "STUDY-A405"))
+        s405 = sf._fresh(work / "studies", "STUDY-A405", plan=a405, start=A(id="STUDY-A405", question=sf.PLAN["question"], by="agent:tester-coordinating"))
+        quiet(sf.cmd_test, s405, A(what="known-answers", by="agent:tester-analysis"))
+        quiet(sf.cmd_test, s405, A(what="working-data", by="agent:tester-analysis"))
+        at_request = said(sf.cmd_request_lock, s405, A(by="agent:tester-coordinating"))
+        at_lock = said(sf.cmd_lock, s405, A(by="human:throwaway-placeholder", evidence="https://example.invalid/a4", local_practice=True))
+        ok("A4-05: a study started without the hand-over, whose plan names a proposal in the folder of an exploration whose person said "
+           "not-interesting, is refused at the lock request and at the lock, which name the exploration and the so what",
+           "E-SO-WHAT-NO" in at_request and "not-interesting" in at_request and "not worth-confirming" in at_request
+           and "not-interesting" in at_lock and not s405.last("lock.recorded") and not s405.last("lock.requested"))
+        via = os.path.relpath(no.d / "fresh-data.yaml", work / "studies" / "STUDY-A405").replace("explorations/", "explorations/./")
+        a405["data"]["held_out"]["fresh_data"] = via.replace("E-SO-WHAT-NO", "../explorations/E-SO-WHAT-NO", 1)
+        s405.plan_path.write_text(yaml.safe_dump(a405, sort_keys=False))
+        quiet(sf.cmd_held_out_change, s405, A(by="agent:tester-coordinating", reason="the same proposal, named another way"))
+        quiet(sf.cmd_test, s405, A(what="known-answers", by="agent:tester-analysis"))
+        quiet(sf.cmd_test, s405, A(what="working-data", by="agent:tester-analysis"))
+        ok("A4-05: the same proposal named by another spelling of its path is the same link", "not-interesting" in said(sf.cmd_request_lock, s405, A(by="agent:tester-coordinating")))
         # the platform route: a comment on the tracking issue, recorded by the job that follows it, verified by asking the platform
         pc = fresh("E-SO-WHAT-PR", subject="reach_id=R42,gauge=G42")
         known(pc)
