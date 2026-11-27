@@ -661,7 +661,7 @@ def selftest() -> int:
        not blocked("review", "Read", file_path=f"{x}/lead.md") and not blocked("review", "Read", file_path="examples/w/record/review/02.answer.md"))
     ok("the analysis role may read its own account, and a review handed back to it",
        not blocked("analysis", "Read", file_path="examples/w/record/analysis/01.answer.md") and not blocked("analysis", "Read", file_path=f"{x}/verdicts/REVIEW-001.md"))
-    # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) --------------------
+    # ---- what an independent attack found (docs/reviews/README.md, R1) --------------------
     status = f"uv run tools/explore.py status --exploration {x}"
     review = f"uv run tools/explore.py review --exploration {x} --by agent:review-smuggled --verdict no-holes-found --file r.md"
     lock = "uv run tools/sf.py lock --study s --by human:someone --evidence https://example.org/pull/1"

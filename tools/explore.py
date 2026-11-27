@@ -278,7 +278,7 @@ LEAD_STATUS = "a lead, not a finding: found by exploring, tested on nothing, and
 BANNER = ("**Exploring.** This is a lead, not a finding. It was found by looking at data, every choice in it was made "
           "after looking, and it has been tested on nothing. It cannot be signed. To become a finding it goes through "
           "a confirming study on the data that was set aside.")
-HOW = {  # the ways to hold data out that docs/TWO-WAYS-OF-WORKING.md lists, and what each has to name
+HOW = {  # the ways to hold data out (docs/HOW-IT-WORKS.md lists them), and what each has to name
     "a later period": "window",
     "a period of contrasting conditions": "window",
     "sites never opened": "sites",
@@ -2779,7 +2779,7 @@ def selftest() -> int:
         sm = script(m, "method.py", "print('m')\n")
         quiet(cmd_end, m, A(outcome="method", summary="a method that pairs passes", file=sm))
         ok("an exploration can end as a method, bound by checksum", last(m.events(), "exploration.ended")["data"]["method"]["sha256"] == sf.sha_file(m.d / sm))
-        # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) ----------------
+        # ---- what an independent attack found (docs/reviews/README.md, R1) ----------------
         # B1: set-aside data reached through a folder, a pattern, a tilde, a key=value word, a variable, a built path
         k = fresh("E-7", subject="reach_id=R11,gauge=G11")
         known(k)

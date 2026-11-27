@@ -770,7 +770,7 @@ def selftest(checker: Path | None) -> int:
         ok("an imported wiki answers the same question with the same pages",
            {c["path"].rsplit("/", 1)[1] for c in about("How well does SWOT river height follow the gauge?", [tmp / "imported"])}
            == {c["path"].rsplit("/", 1)[1] for c in found})
-        # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) ----------------
+        # ---- what an independent attack found (docs/reviews/README.md, R1) ----------------
         draft()
         ran_here = tmp / "CHECKER-RAN.txt"
         evil = queue / "gotchas" / "evil_checker.py"

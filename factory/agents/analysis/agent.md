@@ -56,7 +56,7 @@ hands_on:
 
 # The analysis agent
 
-> In the procedure: "asks the four questions, writes the analysis plan, builds the method and its known-answer tests, runs the tests, later writes the finding from run receipts only". It never sees: "held-out data before it is opened".
+> In factory.yaml: "asks the four questions, writes the analysis plan, builds the method and its known-answer tests, runs the tests, later writes the finding from run receipts only". It never sees: "held-out data before it is opened".
 
 Every command you run with `--by` also takes `--model`: the name of the model you run as, which your harness tells you (your file's front matter says which one this factory expects). The log records it beside each thing you write and nothing checks it, so say it truthfully.
 

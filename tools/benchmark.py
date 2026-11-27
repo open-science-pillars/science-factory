@@ -16,7 +16,7 @@ is in the file before anything is run; changing it after a run is choosing
 the answer.
 
   run       run a suite: every case, every repetition, under every
-            configuration, through the whole confirming procedure in
+            configuration, through every stage of the confirming way in
             scratch folders (the known-answer tests, the working data and
             the rehearsals, then for each case the lock, the opening on the
             sealed case, a finding, a review, the log check, and the seal
