@@ -4616,9 +4616,9 @@ def _selftest_figures(tmp: Path, check) -> None:
           set(manifest["figures"]) == {"exploration-figures/LOOK-002-residual.svg", "figures/known-answers.svg"} and not request_problems(study, "lock", FACTORY))
     (study.d / "figures" / "known-answers.svg").write_text("<svg>another picture</svg>")
     check("a figure changed after the request is a difference the check names, and the lock is refused until the step runs again",
-          any("figures" in q for q in request_problems(study, "lock", FACTORY)) and "not the picture that was kept" in _refusal(cmd_lock, study, A(by="human:tester", evidence=URL)))
+          any("figures" in q for q in request_problems(study, "lock", FACTORY)) and "not the picture that was kept" in _refusal(cmd_lock, study, A(by="human:throwaway-placeholder", evidence=URL)))
     cmd_test(study, A(what="known-answers", by="agent:analysis"))
-    cmd_lock(study, A(by="human:tester", evidence=URL))
+    cmd_lock(study, A(by="human:throwaway-placeholder", evidence=URL))
     cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
     check("the opening records the figure its test declares", study.last("opening.finished")["data"]["figures"][0]["file"] == "figures/held-out.svg")
     (tmp / "f-finding.md").write_text(PRACTICE_WORDS + "\n\na finding drafted from receipts\n")
@@ -4629,12 +4629,12 @@ def _selftest_figures(tmp: Path, check) -> None:
     attached = (study.d / study.last("finding.attached")["data"]["file"]).read_text()
     check("the finding carries who did each step, from the log, with the agents' declared models and what the log cannot show",
           "## Who did what, from the logs" in attached and "agent:analysis (an AI agent, the analysis role, model selftest-model as declared)" in attached
-          and "human:tester (a person, by the name typed)" in attached and "What the logs cannot show" in attached
+          and "human:throwaway-placeholder (a person, by the name typed)" in attached and "What the logs cannot show" in attached
           and sha_file(study.d / study.last("finding.attached")["data"]["file"]) == study.last("finding.attached")["data"]["sha"])
     cmd_contribution(study, A(factory=str(FACTORY)))
     table = (study.d / "contribution.md").read_text()
     check("the contribution statement of a study is a paragraph and a table by kind of work, with counts",
-          table.startswith("# Who did what: F1") and "| the lock | human:tester (a person, by the name typed) | 1 |" in table
+          table.startswith("# Who did what: F1") and "| the lock | human:throwaway-placeholder (a person, by the name typed) | 1 |" in table
           and "| writing the finding | agent:analysis (an AI agent, the analysis role, model selftest-model as declared) | 1 |" in table
           and "Contributions, from the logs." in table and "The request names nobody as having asked" in table)
     sig = (study.d / "signature-request" / "EVIDENCE.md").read_text()
@@ -4671,7 +4671,7 @@ def _selftest_overclaiming(tmp: Path, check) -> None:
     check("the list is a file the factory edits: a phrase added there is flagged",
           any(f["phrase"].lower() == "game-changing" for f in overclaiming_flags("A game-changing result.", overclaiming_listing(edited, "study")[1], False, "x")))
     study = _fresh(tmp, "over-1")
-    _to_lock(study)
+    _to_lock(study, by="human:throwaway-placeholder")
     cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
     (tmp / "over-finding.md").write_text(PRACTICE_WORDS + "\n\nThe gain clearly sits inside the band, a remarkable result.\n")
     out = io.StringIO()
@@ -4711,7 +4711,7 @@ def _selftest_fit(tmp: Path, check) -> None:
     check("a fit note is recorded with its verdict and shown in status, as advice",
           study.last("fit.noted")["data"]["verdict"] == "fit-with-a-person-steering" and "fit-with-a-person-steering" in stage_of(study, FACTORY)["fit"]
           and "blocks nothing" in study.last("fit.noted")["data"]["is"])
-    _to_lock(study)
+    _to_lock(study, by="human:throwaway-placeholder")
     study2 = _fresh(tmp, "fit-2")
     cmd_test(study2, A(what="known-answers", by="agent:analysis"))
     check("a fit note once work has started is refused, and the work goes on without one",

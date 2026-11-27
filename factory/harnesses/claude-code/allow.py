@@ -597,7 +597,7 @@ def selftest() -> int:
     ok("no role may record a person's so what on a lead, typed or as the platform",
        all(blocked(r, "Bash", command=f"uv run tools/explore.py so-what --exploration {x} --by {who} --answer worth-confirming {how}")
            for r in ("coordinating", "analysis", "review", "curating")
-           for who, how in ((f"agent:{r}", "--local-practice"), ("human:someone", "--local-practice"), ("platform:github", "--record-comment c.json"))))
+           for who, how in ((f"agent:{r}", "--local-practice"), ("human:throwaway-placeholder", "--local-practice"), ("platform:github", "--record-comment c.json"))))
     ok("the coordinating role may draft the question a person is asked about a reviewed lead",
        not blocked("coordinating", "Bash", command=f"uv run tools/explore.py ask-so-what --exploration {x} --by agent:coordinating --model claude-sonnet-5-5 --file q.yaml --read-lead {'a' * 64}"))
     ok("review may record a review", not blocked("review", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:review --verdict holes-found --file r.md"))

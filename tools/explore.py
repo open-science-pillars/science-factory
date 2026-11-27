@@ -3679,7 +3679,7 @@ def selftest() -> int:
         uses = json.loads(json.dumps(sf.PLAN))
         uses["code"] = uses["code"] + [str(mdir / "rows.py")]
         uses["data"]["held_out"]["pair"] = "uses-a-promoted-method"
-        ps = sf._fresh(work / "studies", "STUDY-USES-METHOD", plan=uses)
+        ps = sf._fresh(work / "studies", "STUDY-USES-METHOD", plan=uses, start=A(id="STUDY-USES-METHOD", question=sf.PLAN["question"], by="agent:tester-coordinating"))
         ok("a plan that uses a promoted method without running its tests as a rehearsal fails the plan check",
            any("promoted method `rows-counted`" in q for q in sf.check_plan(ps.plan(), ps)))
         uses["rehearsals"] = [{"id": "method-rows-counted", "why": "the promoted method's own known-answer tests, in this study",
