@@ -7,7 +7,7 @@ A factory is defined as code: `factory/`, rooted at `factory.yaml`, says which a
 **The repository where your science lives holds its own copy of `tools/`, `factory/` and, with the built-in method, `methods/` and `examples/stand-alone/system-trial/`** (the shipped benchmarks name that plan; drop both if you drop it). The workflow runs the tools from there, the lock binds them there, and the verification reads the repository name there.
 
 1. **Get the tools.** Clone this repository, run the README's three commands, and note the commit.
-2. **Copy and name the definition.** Copy those four folders into your repository. In `factory/factory.yaml` set `name`, `alias`, `version`, the `home` block, and `repository:` under both acts to your owner/name on GitHub.
+2. **Copy and name the definition.** Copy those four folders into your repository. In `factory/factory.yaml` set `name`, `alias`, a new `version`, the `home` block, and `repository:` under both acts to your owner/name on GitHub. That changes the acts by people, so record it with `sf.py log-change`, which names them by checksum ([FIRST-STUDY.md](FIRST-STUDY.md) shows the commands).
 3. **Validate it**, from your repository: `uv run tools/check_factory.py`. Put that and `uv run tools/check_factory.py --summary git:HEAD^:factory factory` in your checks.
 4. **Protect the branch** and install the two acts, once, by the checklist in [factory/harnesses/github/README.md](../factory/harnesses/github/README.md), which also makes the labels and the Project board.
 5. **Run the system trial** ([FIRST-STUDY.md](FIRST-STUDY.md)). One right verdict on a kind case is a first sign, not proof; the blind test (below) is the wider measure.

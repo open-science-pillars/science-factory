@@ -21,12 +21,18 @@ cp -r science-factory/tools science-factory/factory science-factory/methods my-s
 mkdir -p my-science/examples/stand-alone
 cp -r science-factory/examples/stand-alone/system-trial my-science/examples/stand-alone/
 cd my-science
-sed 's|example-org/example-studies|OWNER/REPO|' factory/factory.yaml > factory.yaml.new
+sed -e 's|example-org/example-studies|OWNER/REPO|' -e 's|^version: 0\.16\.0 |version: 0.16.1 |' \
+  factory/factory.yaml > factory.yaml.new
 mv factory.yaml.new factory/factory.yaml
+uv run tools/sf.py log-change --study studies/SETUP --by human:YOUR-ID --log factory/change-log.jsonl \
+  --problem "the definition names the example repository" \
+  --change "repository: under both acts names OWNER/REPO, as version 0.16.1" \
+  --rationale "the acts are verified on the repository where the studies live" \
+  --predicted "check_factory.py says VALID"
 uv run tools/check_factory.py
 ```
 
-Put your repository's owner/name for `OWNER/REPO` in both lines (the trial's plan is copied because the shipped benchmarks name it). Expect `check-factory: VALID`; commit these by a pull request before the first study.
+Put your repository's owner/name for `OWNER/REPO` in all three places, and your id for `YOUR-ID` (the trial's plan is copied because the shipped benchmarks name it). Naming the repository changes the acts by people, so the validator wants a new version and a change-log record that names the acts; `log-change` writes it. Expect `check-factory: VALID`; commit these, `studies/SETUP/` included, by a pull request before the first study.
 
 In every shell you use for the study:
 
