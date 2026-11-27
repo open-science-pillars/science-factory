@@ -6,7 +6,7 @@ A confirming study tests one claim, stated in advance, once, on fresh data. Your
 
 ## What you need
 
-- **A repository of your own on GitHub**, the one where the science lives, here called `my-science`, cloned beside a clone of this repository in one folder. It holds its own copy of `tools/`, `factory/` and `methods/` (one layout for every study; [CREATE-A-FACTORY.md](CREATE-A-FACTORY.md) says why).
+- **A repository of your own on GitHub**, the one where the science lives, here called `my-science`, cloned beside a clone of this repository in one folder. It holds its own copy of `tools/`, `factory/`, `methods/` and the system trial's plan (one layout for every study; [CREATE-A-FACTORY.md](CREATE-A-FACTORY.md) says why).
 - **The checklist done once**, in [factory/harnesses/github/README.md](../factory/harnesses/github/README.md): the workflow copied, code owners, the branch protected, the check `request-check` required.
 - **A tracking issue** in that repository, opened from the request form or blank. The two log fingerprints are posted there.
 - **A read token** for the opening and the verification: a fine-grained token for this one repository, with read access to Contents and Pull requests, given as `GH_TOKEN` for those commands only.
@@ -18,20 +18,22 @@ A confirming study tests one claim, stated in advance, once, on fresh data. Your
 git clone https://github.com/open-science-pillars/science-factory
 git clone https://github.com/OWNER/REPO my-science
 cp -r science-factory/tools science-factory/factory science-factory/methods my-science/
+mkdir -p my-science/examples/stand-alone
+cp -r science-factory/examples/stand-alone/system-trial my-science/examples/stand-alone/
 cd my-science
 sed 's|example-org/example-studies|OWNER/REPO|' factory/factory.yaml > factory.yaml.new
 mv factory.yaml.new factory/factory.yaml
 uv run tools/check_factory.py
 ```
 
-Put your repository's owner/name in place of `OWNER/REPO` in both lines. The validator ends with `check-factory: VALID`. Commit these files by a pull request, as the checklist says, before the first study.
+Put your repository's owner/name in place of `OWNER/REPO` in both lines. The system trial's plan is copied too, because the shipped benchmarks name it. The validator ends with `check-factory: VALID`. Commit these files by a pull request, as the checklist says, before the first study.
 
 In every shell you use for the study:
 
 ```
 sf() { uv run tools/sf.py "$@"; }
 st() { uv run methods/gain/system_trial.py "$@"; }
-T=../science-factory/examples/stand-alone/system-trial
+T=examples/stand-alone/system-trial
 W=studies/TRIAL-1
 C=factory/change-log.jsonl
 D=$(mktemp -d)
