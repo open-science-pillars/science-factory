@@ -31,7 +31,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **working data**: anything you or your group have already looked at.
 - **metadata**: what may be read before the lock because it cannot move the answer: dates, places, versions, counts, flags.
 - **proposal of the fresh data**: the file `tools/fresh_data.py propose` writes: which kind, exactly what, why it suits, what would make it unfair, how large a test it allows.
-- **random set aside**: fresh data the tool draws from the metadata with a seed it makes; nobody chooses the members.
+- **random set aside**: fresh data the tool draws from the items the metadata lists, at the opening, from the lock's merge commit; nobody chooses the members.
 - **withheld values**: what nobody reads before the opening.
 - **subject** (`pair` in a plan): what the data is about, as key and value; the records match on it.
 - **window**: the period a study holds out, from one date to another.

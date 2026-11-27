@@ -78,7 +78,7 @@ git push -u origin trial-1
 
 Read the pull request: the evidence summary the check posts on it (also in `$W/lock-request/EVIDENCE.md`). It shows the question, each rule with each criterion and the rate measured beside it, the fresh data (for a system trial, a blind case made at the opening), what is held out and every change to it, every figure (the exploration's, and any a test or rehearsal declares under `figures:` in the plan) as a picture with its caption, the code by checksum, the definition and the models it declares, and the open notes. Look at each figure yourself: a table can agree with a claim that a picture shows is wrong. Approve and merge. Nothing is typed.
 
-The workflow's `record` job then writes the lock into the study log on `main`, has GitHub asked, and prints a log fingerprint of the form `SEQ:HASH`: post it on the tracking issue. `sf status --study $W` gives the lock's standing; it must be `verified` before the opening.
+The workflow's `record` job then writes the lock into the study log on `main`, has GitHub asked, and prints a log fingerprint of the form `SEQ:HASH`: post it on the tracking issue. `GH_TOKEN=YOUR-READ-TOKEN sf status --study $W` gives the lock's standing, asked of GitHub then (without the token it can say no more than `merge found, people not verified`); it must be `verified` before the opening.
 
 ## 3. Agent: the opening, the write-up, the review
 
@@ -128,21 +128,21 @@ The verdict prints the gain that was put in, what the factory said, and `right`,
 ```
 sf resolve --study $W --by agent:curating --model $M --note NOTE-001 --disposition declined \
   --comment "raised on purpose; nothing to route"
-sf scorecard --study $W --anchor $LOCK --anchor $OPEN
+GH_TOKEN=YOUR-READ-TOKEN sf scorecard --study $W --anchor $LOCK --anchor $OPEN
 sf log-change --study $W --by agent:coordinating --model $M --log $C \
   --problem "the factory has not run end to end with a person's lock and signature" \
   --change "The system trial: TRIAL-1 through every stage." \
   --rationale "No run has gone past the lock." \
   --predicted "A firm outcome that the sealed answer confirms, and every check passing." \
   --observed "The verdict was right and every check passed."
-sf close --study $W --by agent:coordinating --model $M --outcome system-trial-accepted \
+GH_TOKEN=YOUR-READ-TOKEN sf close --study $W --by agent:coordinating --model $M --outcome system-trial-accepted \
   --anchor $LOCK --anchor $OPEN
 git add -A
 git commit -m "TRIAL-1: the verdict and the close"
 git push -u origin trial-1-close
 ```
 
-Done when `sf status --study $W` says `closed`, the verdict is `right`, and a third pull request with this commit is merged. `sf contribution --study $W` then writes who did each step, from the logs, as a paragraph you can paste into a paper's contribution section; the finding already carries it from the moment it was attached. Write `--observed` in your own words if something else happened.
+Done when `sf status --study $W` says `closed` (the close asked GitHub about both acts, with the token), the verdict is `right`, and a third pull request with this commit is merged. `sf contribution --study $W` then writes who did each step, from the logs, as a paragraph you can paste into a paper's contribution section; the finding already carries it from the moment it was attached. Write `--observed` in your own words if something else happened.
 
 **When the verdict is not `right`.** About one trial in eight comes back inconclusive, which cannot be `right`. Close the second pull request unmerged, have the agent write the request again with `--decision declined`, merge that, and close with `--outcome system-trial-declined`. Then run a second trial beside it, as `TRIAL-2`, with new branch names. A `WRONG` verdict is a defect in the factory: raise a note before the close.
 
@@ -156,4 +156,4 @@ uv run tools/fresh_data.py propose --metadata YOUR-METADATA.yaml --kind later-pe
   --by agent:analysis --model $M --out studies/STUDY-1-fresh-data.yaml --studies studies
 ```
 
-and the plan names it under `data.held_out` as `fresh_data: ../STUDY-1-fresh-data.yaml`. A study that came from an exploration names the copy in its hand-over instead ([FIRST-EXPLORATION.md](FIRST-EXPLORATION.md)). The other kinds are `--kind next-release --release NAME`, `--kind another-site --sites A,B` and `--kind random --fraction 0.2`; for a random set aside the tool draws the members and keeps the seed apart. The next release is proposed before the study starts and given to the start with the data as it stands, `sf start ... --fresh-data studies/STUDY-1-fresh-data.yaml --working-data <the file>`, so the cut-off and the file's checksum are bound from the first event; a study from a hand-over takes both from the exploration's start. The opening then refuses a working file changed since the lock, says `waiting` with the cut-off and the periods the plan needs until the release can be out, and does not analyse fresh data with any date on or before the cut-off. Rehearse the fetch so that it keeps only the release's own rows: an opening refused for an old date is used up. At the lock, the evidence summary shows the proposal in words under "The fresh data that will check the idea, and why it was chosen", with the seed revealed for a random draw, and approving the pull request approves that choice. The review agent checks the choice is fair before you are asked.
+and the plan names it under `data.held_out` as `fresh_data: ../STUDY-1-fresh-data.yaml`. A study that came from an exploration names the copy in its hand-over instead ([FIRST-EXPLORATION.md](FIRST-EXPLORATION.md)). The other kinds are `--kind next-release --release NAME`, `--kind another-site --sites A,B` and `--kind random --fraction 0.2`; for a random set aside the tool draws nothing yet: the opening draws the members from the lock's merge commit. The next release is proposed before the study starts and given to the start with the data as it stands, `sf start ... --fresh-data studies/STUDY-1-fresh-data.yaml --working-data <the file>`, so the cut-off and the file's checksum are bound from the first event; a study from a hand-over takes both from the exploration's start. The opening then refuses a working file changed since the lock, says `waiting` with the cut-off and the periods the plan needs until the release can be out, and does not analyse fresh data with any date on or before the cut-off. Rehearse the fetch so that it keeps only the release's own rows: an opening refused for an old date is used up. At the lock, the evidence summary shows the proposal in words under "The fresh data that will check the idea, and why it was chosen", with a random draw said to be made at the opening, and approving the pull request approves that choice. The review agent checks the choice is fair before you are asked.

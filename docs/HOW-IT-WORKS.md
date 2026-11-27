@@ -16,7 +16,7 @@ You do not have to bring "held-out data". Tell the factory what you have already
 | keep a random part unopened | a random hold-out | many similar items, nothing to wait for | the items sit close in time or space to the ones explored |
 | score the forecasts later | prospective testing | predictions | the forecast is revised after it is issued |
 
-A random set aside is drawn by the tool from a seed it makes, so nobody chooses the members. It is the weakest of these: neighbouring sites and times share their errors, so a random part of one record checks less than it seems.
+A random set aside is drawn at the opening, from the merge commit GitHub creates when a person merges the lock request, so nobody chooses the members, and an exploration cannot set one aside. It is the weakest of these: neighbouring sites and times share their errors, so a random part of one record checks less than it seems.
 
 ![The fresh data is proposed by an agent from metadata only, checked by the review agent, and approved by people at the lock; only then is it opened, once.](diagrams/fresh-data.svg)
 
