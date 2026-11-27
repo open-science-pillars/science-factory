@@ -554,6 +554,275 @@ def past_cut_off(text: str, cut: str) -> list:
     return sorted(out)
 
 
+# ---- one reader of the dates of the rows of a data file, for a release set aside (A4-07, A4-08) ----------------------
+# Under a release set aside, the fence, the start and the opening read a data file row by row. A row's date comes from a
+# column (or a key) named like a time, from the year, month, day or day-of-year columns together, or from any cell that
+# reads as a whole date. The forms read: a day as year, month and day with a hyphen, a slash or a point, or run together
+# as eight digits; a month as year and month, or six digits in a date column; a year in a year column; a day of the year
+# (2025-015, or a year and a doy column); an ISO week (2025-W03-2); day or month first with the year last, read both
+# ways; a month by its English name, with or without a day (Jan 2025, 15 January 2025, 2025 Jan 15); a timestamp with a
+# time and a time zone (read in its own zone and in UTC, and a row is taken at whichever of the two days counts against
+# it); in a date column, a decimal year (2025.0417), and seconds or milliseconds since 1970. A tabular file (CSV, TSV,
+# JSON rows) in which any row is dated, or any column is named like a time, has every row dated, or it is refused: a
+# row the reader cannot date may be a row of the release. Other text is read for the dates it holds, as before.
+DATE_COLUMN_WORDS = ("date", "time", "epoch", "unix", "timestamp", "period", "when", "yyyymm", "doy", "day_of_year", "dayofyear", "decimal_year")
+DATE_COLUMN_NAMES = set(TIME_KEYS) | {"ts", "t_s", "seconds", "ms", "year", "yr", "month", "mon", "mo", "day", "dy", "dom"}
+ISO_WHEN = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,]\d+)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$", re.I)
+MONTH_NAME = r"(" + "|".join(MONTHS) + r")[a-z]*\.?"
+NAMED_MONTH = [re.compile(rf"^{MONTH_NAME}[\s,.-]*(\d{{4}})$", re.I), re.compile(rf"^(\d{{4}})[\s,.-]*{MONTH_NAME}$", re.I)]
+
+
+def date_column(name) -> bool:
+    n = re.sub(r"[^a-z0-9_]", "_", str(name or "").strip().casefold())
+    return n in DATE_COLUMN_NAMES or any(w in n for w in DATE_COLUMN_WORDS)
+
+
+def span_words(a: dt.date, b: dt.date) -> str:
+    """A span of days as it would be written: a day, a month (2026-08), a year, or the first and last days."""
+    if a == b:
+        return a.isoformat()
+    if a.day == 1 and (a.year, a.month) == (b.year, b.month) and (b + dt.timedelta(days=1)).day == 1:
+        return a.isoformat()[:7]
+    if (a.month, a.day, b.month, b.day) == (1, 1, 12, 31) and a.year == b.year:
+        return str(a.year)
+    return f"{a.isoformat()} to {b.isoformat()}"
+
+
+def _month(y: int, m: int) -> tuple:
+    first = dt.date(y, m, 1)
+    return first, (dt.date(y + (m == 12), m % 12 + 1, 1) - dt.timedelta(days=1))
+
+
+def read_date(value, column=None) -> tuple | None:
+    """(the first day, the last day) a cell stands for, or None when it is no date this reader knows. `column` is the name
+    of the cell's column or key: numbers are read as times only in a date column."""
+    import unicodedata
+    named = date_column(column) if column is not None else False
+    col = re.sub(r"[^a-z0-9_]", "_", str(column or "").strip().casefold())
+    try:
+        if isinstance(value, bool) or value is None:
+            return None
+        if isinstance(value, (int, float)):
+            if value != value or not named:
+                return None
+            if isinstance(value, int) or float(value).is_integer():
+                n = int(value)
+                if col in ("year", "yr") and 1000 <= n <= 2999:
+                    return dt.date(n, 1, 1), dt.date(n, 12, 31)
+                if 18000101 <= n <= 22001231:
+                    d = dt.date(n // 10000, n // 100 % 100, n % 100)
+                    return d, d
+                if 180001 <= n <= 220012 and 1 <= n % 100 <= 12:
+                    return _month(n // 100, n % 100)
+            if 1800 <= value <= 2200 and not float(value).is_integer():  # a decimal year
+                y = int(value)
+                d = dt.date(y, 1, 1) + dt.timedelta(days=int((value - y) * (366 if y % 4 == 0 and (y % 100 or y % 400 == 0) else 365)))
+                return d, d
+            s = value / 1000 if value >= 1e11 else value
+            if 3e8 <= s <= 8e9:
+                d = dt.datetime.fromtimestamp(s, dt.timezone.utc).date()
+                return d, d
+            return None
+        text = unicodedata.normalize("NFKC", str(value)).translate(HYPHENS).strip().strip('"').strip()
+        if not text or len(text) > 64:
+            return None
+        if re.fullmatch(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?", text):
+            num = float(text)
+            if re.fullmatch(r"\d{8}", text) and 18000101 <= int(text) <= 22001231:
+                d = dt.date(int(text[:4]), int(text[4:6]), int(text[6:]))
+                return d, d
+            return read_date(int(num) if num.is_integer() and "." not in text else num, column) if named else None
+        m = ISO_WHEN.match(text)
+        if m:
+            y, mo, d, h, mi = (int(m.group(i)) for i in range(1, 6))
+            local = dt.datetime(y, mo, d, h, mi, int(m.group(6) or 0))
+            zone = m.group(7)
+            if zone and zone.upper() != "Z":
+                sign = 1 if zone[0] == "+" else -1
+                digits = zone[1:].replace(":", "")
+                off = dt.timedelta(hours=int(digits[:2]), minutes=int(digits[2:4] or 0))
+                utc = (local - sign * off).date()
+            else:
+                utc = local.date()
+            return min(local.date(), utc), max(local.date(), utc)
+        m = re.fullmatch(r"(\d{4})\s?[-/.]\s?(\d{1,2})\s?[-/.]\s?(\d{1,2})", text)
+        if m:
+            d = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return d, d
+        m = re.fullmatch(r"(\d{4})[-/.](\d{1,2})", text)
+        if m and 1 <= int(m.group(2)) <= 12:
+            return _month(int(m.group(1)), int(m.group(2)))
+        m = re.fullmatch(r"(\d{4})-?(\d{3})", text) if "-" in text or named else None
+        if m and 1 <= int(m.group(2)) <= 366:
+            d = dt.date(int(m.group(1)), 1, 1) + dt.timedelta(days=int(m.group(2)) - 1)
+            return d, d
+        m = re.fullmatch(r"(\d{4})-?W(\d{2})(?:-?(\d))?", text, re.I)
+        if m:
+            first = dt.date.fromisocalendar(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1))
+            return first, (first if m.group(3) else first + dt.timedelta(days=6))
+        m = re.fullmatch(r"(\d{1,2})\s?[-/.]\s?(\d{1,2})\s?[-/.]\s?(\d{4})", text)
+        if m:
+            ways = []
+            for mo, d in ((int(m.group(2)), int(m.group(1))), (int(m.group(1)), int(m.group(2)))):
+                with contextlib.suppress(ValueError):
+                    ways.append(dt.date(int(m.group(3)), mo, d))
+            return (min(ways), max(ways)) if ways else None
+        for pat in NAMED_MONTH:
+            m = pat.fullmatch(text)
+            if m:
+                g = m.groups()
+                y, name = (int(g[1]), g[0]) if g[0][:1].isalpha() else (int(g[0]), g[1])
+                return _month(y, MONTHS.index(name[:3].lower()) + 1)
+        found = dates_in(text) if NAMED.fullmatch(text) or YMD.fullmatch(text) else []
+        if found:
+            return min(found), max(found)
+    except (ValueError, OverflowError, OSError):
+        return None
+    return None
+
+
+def _row_date(cells: dict) -> list:
+    """Every (first, last) a row holds: from its year, month, day or day-of-year columns together, from each date column,
+    and from any other cell that reads as a whole date in words or digits that are not a plain number."""
+    norm = {re.sub(r"[^a-z0-9_]", "_", str(k).strip().casefold()): v for k, v in cells.items()}
+
+    def num(k):
+        v = norm.get(k)
+        try:
+            return int(float(str(v).strip())) if v is not None and str(v).strip() != "" else None
+        except ValueError:
+            return None
+    out = []
+    y = num("year") if "year" in norm else num("yr")
+    mo = next((num(k) for k in ("month", "mon", "mo") if k in norm), None)
+    day = next((num(k) for k in ("day", "dy", "dom") if k in norm), None)
+    doy = next((num(k) for k in ("doy", "day_of_year", "dayofyear") if k in norm), None)
+    with contextlib.suppress(ValueError, TypeError, OverflowError):
+        if y and mo and day:
+            d = dt.date(y, mo, day)
+            out.append((d, d))
+        elif y and mo:
+            out.append(_month(y, mo))
+        elif y and doy:
+            d = dt.date(y, 1, 1) + dt.timedelta(days=doy - 1)
+            out.append((d, d))
+    composite = {"year", "yr", "month", "mon", "mo", "day", "dy", "dom", "doy", "day_of_year", "dayofyear"}
+    for k, v in cells.items():
+        kk = re.sub(r"[^a-z0-9_]", "_", str(k).strip().casefold())
+        if out and kk in composite:
+            continue
+        got = read_date(v, k) if date_column(k) else (read_date(v) if isinstance(v, str) else None)
+        if got:
+            out.append(got)
+    return out
+
+
+def dated_rows(f: Path) -> dict | None:
+    """The rows of a tabular data file and the dates each holds: {"rows", "dated": [(row, first, last)], "undated": [rows],
+    "dated_columns": bool}. None for a file that is not tabular (other text is read by `past_cut_off`)."""
+    import csv
+    import io
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return None
+    rows = []
+    if f.suffix.lower() == ".json":
+        try:
+            obj = json.loads(text)
+        except ValueError:
+            return None
+        dated_keys = [False]
+
+        def walk(o):
+            if isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+                rows.extend(o)
+                dated_keys[0] = dated_keys[0] or any(date_column(k) for x in o for k in x)
+                for x in o:
+                    for v in x.values():
+                        walk(v)
+            elif isinstance(o, list) and o and all(isinstance(x, list) for x in o):
+                rows.extend({str(i): c for i, c in enumerate(x)} for x in o)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+            elif isinstance(o, dict):
+                keyed = [k for k, v in o.items() if isinstance(v, (dict, list)) and read_date(str(k))]
+                if len(keyed) >= 2 or (keyed and len(o) == len(keyed)):  # rows kept under their dates: the keys are the dates
+                    rows.extend({"date": k} for k in keyed)
+                for v in o.values():
+                    walk(v)
+        walk(obj)
+        if not rows:
+            return None
+        return _rows_report(rows, dated_keys[0])
+    if f.suffix.lower() not in (".csv", ".tsv", ".txt", ".dat", ".psv", "") or "\x00" in text[:4096]:
+        return None
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(lines) < 2:
+        return None
+    try:
+        dialect = csv.Sniffer().sniff("\n".join(lines[:20]), delimiters=",\t;|")
+    except csv.Error:
+        if f.suffix.lower() not in (".csv", ".tsv"):
+            return None
+        dialect = csv.excel_tab if f.suffix.lower() == ".tsv" else csv.excel
+    table = list(csv.reader(io.StringIO("\n".join(lines)), dialect))
+    width = max(len(r) for r in table)
+    if width < 2 and f.suffix.lower() not in (".csv", ".tsv"):
+        return None
+    head = table[0]
+    header = any(c.strip() and not re.fullmatch(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?", c.strip()) and read_date(c) is None for c in head)
+    names = [c.strip() or str(i) for i, c in enumerate(head)] if header else [str(i) for i in range(width)]
+    body = table[1:] if header else table
+    rows = [{names[i] if i < len(names) else str(i): c for i, c in enumerate(r)} for r in body]
+    return _rows_report(rows, header and any(date_column(n) for n in names))
+
+
+def _rows_report(rows: list, dated_columns: bool) -> dict:
+    out = {"rows": len(rows), "dated": [], "undated": [], "dated_columns": bool(dated_columns)}
+    for i, r in enumerate(rows):
+        got = _row_date(r)
+        if got:
+            out["dated"].append((i + 1, min(a for a, _b in got), max(b for _a, b in got)))
+        else:
+            out["undated"].append(i + 1)
+    return out
+
+
+def release_problems_in_file(f: Path, cut: str) -> tuple:
+    """(the dates past the cut-off, the rows it cannot date) of one file, read row by row where it is tabular. Rows it cannot
+    date are counted only in a file that is dated data: some row dated, or a column named like a time."""
+    rep = dated_rows(f)
+    if rep is None:
+        return past_cut_off_text(f, cut), []
+    cutd = dt.date.fromisoformat(cut) if cut else dt.date.min
+    later = sorted({span_words(a, b) for _i, a, b in rep["dated"] if b > cutd})
+    undated = rep["undated"] if (rep["dated"] or rep["dated_columns"]) else []
+    return later, undated
+
+
+def past_cut_off_text(f: Path, cut: str) -> list:
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return []
+    out = set(past_cut_off(text, cut))
+    import unicodedata
+    norm = unicodedata.normalize("NFKC", text).translate(HYPHENS)
+    for m in re.finditer(rf"(?<![0-9A-Za-z]){MONTH_NAME}[\s,.-]*(\d{{4}})(?!\d)", norm, re.I):
+        with contextlib.suppress(ValueError):
+            first, _last = _month(int(m.group(2)), MONTHS.index(m.group(1)[:3].lower()) + 1)
+            if first.isoformat() > cut:
+                out.add(first.isoformat()[:7])
+    for m in re.finditer(r"(?<![0-9A-Za-z])(\d{4})-(\d{3})(?![0-9])", norm):
+        with contextlib.suppress(ValueError):
+            d = dt.date(int(m.group(1)), 1, 1) + dt.timedelta(days=int(m.group(2)) - 1)
+            if 1 <= int(m.group(2)) <= 366 and d.isoformat() > cut:
+                out.add(d.isoformat())
+    return sorted(out)
+
+
 def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
     """The same, read the way the fence reads a JSON data file: a time under a declared time key anywhere, or under any key
     inside a list of rows, is a time of the data; a single date at the top of the file (when it was retrieved) is not."""
@@ -579,16 +848,14 @@ def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
 
 
 def past_cut_off_in_file(f: Path, cut: str, keys: set) -> list:
-    try:
-        text = f.read_text(errors="replace")
-    except OSError:
-        return []
+    """The dates past a release's cut-off that a file holds, row by row where it is tabular (`release_problems_in_file`),
+    together with what the JSON reading of time keys finds; a row it cannot date is reported as such."""
+    later, undated = release_problems_in_file(f, cut)
+    out = set(later)
     if f.suffix.lower() == ".json":
-        try:
-            return past_cut_off_in_json(json.loads(text), cut, keys)
-        except ValueError:
-            pass
-    return past_cut_off(text, cut)
+        with contextlib.suppress(OSError, ValueError):
+            out.update(past_cut_off_in_json(json.loads(f.read_text(errors="replace")), cut, keys))
+    return sorted(out) + ([f"{len(undated)} row(s) with no date the tool can read (row {', '.join(map(str, undated[:3]))})"] if undated else [])
 
 
 def bound_files(places: list) -> list:
@@ -624,10 +891,18 @@ def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
             elif sf.sha_file(real) != bound[str(real)]:
                 out.append(f"`{tok}` has changed since the exploration started (its sha256 is not the one bound at the start): the "
                            f"release set aside after {cut} may have arrived in it")
-        later = past_cut_off_in_file(real, cut, {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})
+        later, undated = release_problems_in_file(real, cut)
+        if real.suffix.lower() == ".json":
+            with contextlib.suppress(OSError, ValueError):
+                later = sorted(set(later) | set(past_cut_off_in_json(json.loads(real.read_text(errors="replace")), cut,
+                                                                      {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})))
         if later:
             out.append(f"`{tok}` holds a date past the cut-off of the release set aside ({cut}): {', '.join(later[:3])}"
                        + (f", and {len(later) - 3} more" if len(later) > 3 else ""))
+        if undated:
+            out.append(f"`{tok}` is dated data with {len(undated)} row(s) whose date the tool cannot read (row "
+                       f"{', '.join(map(str, undated[:3]))}): under a release set aside after {cut}, a row the tool cannot date may be a "
+                       "row of the release, so the file is not given to a look")
     return out
 
 
@@ -1095,6 +1370,10 @@ def cmd_start(x: Exploration, a) -> None:
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
     studies = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
+    if studies.resolve() != (x.d.parent.parent / "studies").resolve():
+        raise Refused(f"`--studies {a.studies}` names a record other than the workspace's own ({x.d.parent.parent / 'studies'}): what an "
+                      "exploration explored and set aside goes on the record the studies of the workspace read, so a record of the "
+                      "caller's choosing would hide it from them (A4-09). Nothing was started")
     if (studies / x.d.name).exists():
         raise Refused(f"a study directory named {x.d.name} exists beside the record; an exploration and a study do not share a name")
     record = studies / "openings.jsonl"
@@ -1130,6 +1409,20 @@ def cmd_start(x: Exploration, a) -> None:
         if any(Path(p).resolve() == q or Path(p).resolve().is_relative_to(q) or q.is_relative_to(Path(p).resolve()) for p in paths):
             raise Refused(f"`--working-data {given}` is, holds or lies in a set-aside path: data that is set aside is not working data")
         places.append(os.path.relpath(q, x.d.resolve()))
+    mine = bound_files([Path(os.path.normpath(x.d.resolve() / q)) for q in places]) if places else []
+    for ln in record_lines(record):  # a release another exploration set aside is bound to the data, whatever the subject is called
+        c = (ln.get("set_aside") or {}).get("cut_off") if ln.get("kind") == "set-aside" else None
+        if not c:
+            continue
+        theirs = {str(Path(q)) for q in ln.get("working_files") or []}
+        if ln.get("subject") != key and not any(str(f) in theirs for f, _sha in mine):
+            continue
+        for f, _sha in mine:
+            later, undated = release_problems_in_file(f, c)
+            if later or undated:
+                raise Refused(f"{ln.get('exploration')} set aside the release after {c} of this data, and {f.name} holds "
+                              + (f"dates past it ({', '.join(later[:3])})" if later else f"{len(undated)} row(s) the tool cannot date")
+                              + ": what one exploration set aside, another does not explore, with or without a working window. Nothing was started")
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
@@ -1195,11 +1488,14 @@ def cmd_start(x: Exploration, a) -> None:
     if how != "nothing":
         lines.append({"way": WAY, "kind": "set-aside", "exploration": a.id, "exploration_dir": x.d.name, "subject": key,
                       "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases, **({"cut_off": cut} if cut else {})},
+                      **({"working_files": sorted(str(Path(os.path.normpath(x.d.resolve() / b["path"]))) for b in bound)} if cut else {}),
                       "at": e["at"], "started": mark})
     explored = {"way": WAY, "kind": "explored", "study": a.id, "dir": x.d.name, "test": WAY, "key": key,
                 "at": e["at"], "started": mark}
     if working:
         explored["window"] = {"start": working["start"], "end": working["end"]}
+    elif cut:  # what is explored is the data as it stands, up to the cut-off (A4-14): the release after it was not explored
+        explored["window"] = {"start": "0001-01-01", "end": cut}
     lines.append(explored)  # the study tool reads `key` and `window`: a study that holds this out is marked exploratory
     with record.open("a") as rec:
         for ln in lines:
@@ -2947,6 +3243,27 @@ def inline_dependencies(script: Path) -> list:
     return [str(d) for d in deps] if isinstance(deps, list) else []
 
 
+def not_working_data(x: "Exploration", sa: dict, placed: list) -> str | None:
+    """Why a look's inputs are not the exploration's working data as it stood, or None: under a release set aside, a working
+    file that is not the file the start bound, by checksum, and any input that holds a date past the cut-off or rows the
+    tool cannot date. A promoted method's cases are working data and never what was set aside (A4-07)."""
+    cut = sa.get("cut_off")
+    if not cut:
+        return None
+    bound = {str(Path(os.path.normpath(x.d / b["path"])).resolve()): b["sha256"] for b in sa.get("bound") or []}
+    places = working_places(x)
+    for f in placed:
+        if f.get("role") == "script":
+            continue
+        real = Path(os.path.normpath(x.d / f["from"])).resolve()
+        if any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d) and bound.get(str(real)) != f.get("sha256"):
+            return f"`{f['from']}` is not a working file the start bound, as it stood"
+        later, undated = release_problems_in_file(real, cut)
+        if later or undated:
+            return f"`{f['from']}` holds " + (f"dates past the cut-off {cut} ({', '.join(later[:2])})" if later else f"{len(undated)} row(s) the tool cannot date")
+    return None
+
+
 def cmd_promote(x: Exploration, a) -> None:
     """A look's script that proved useful becomes a method: copied under methods/<name>/, with the exploration's runs of it as its
     first known-answer cases, the agent's README, a test file the study tool can run, and where it came from. It is a change
@@ -2977,6 +3294,11 @@ def cmd_promote(x: Exploration, a) -> None:
         raise Refused("the README says, each in a sentence or more: " + ", ".join(missing))
     runs = [r for r in ev if r["kind"] == "look.run" and r["data"]["script_sha"] == e["data"]["script_sha"] and r["data"]["exit_code"] == 0
             and r["data"].get("ran_in")]
+    sa = start["data"]["set_aside"]
+    left_out = {r["data"]["id"]: why for r in runs for why in [not_working_data(x, sa, r["data"]["ran_in"].get("placed") or [])] if why}
+    if a.look in left_out:
+        raise Refused(f"{a.look} was given what is not the exploration's working data as it stood ({left_out[a.look]}); nothing is promoted")
+    runs = [r for r in runs if r["data"]["id"] not in left_out]
     dest.mkdir(parents=True)
     try:
         shutil.copyfile(script, dest / script.name)
@@ -3025,8 +3347,11 @@ def cmd_promote(x: Exploration, a) -> None:
         shutil.rmtree(dest, ignore_errors=True)
         raise
     x.add(a.by, "method.promoted", {"name": a.name, "folder": os.path.relpath(dest, x.d), "look": a.look, "cases": sorted(cases),
-                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json")})
-    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s). This is a change to the factory: "
+                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json"),
+                                    **({"left_out": left_out} if left_out else {})})
+    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s)"
+          + (f"; left out, because they were not given the working data as it stood: " + "; ".join(f"{k}: {v}" for k, v in sorted(left_out.items()))
+             if left_out else "") + ". This is a change to the factory: "
           f"record it with `sf.py log-change` naming methods/{a.name}, with a prediction, then run `check_factory.py`, which validates the method")
 
 

@@ -1472,8 +1472,16 @@ def earlier_openings(study: Study, plan: dict, spec: dict, ev: list) -> list:
     if is_system_trial(plan):
         return []
     key, window = subject_key(plan, spec), window_for(plan, spec)
-    return [{k: e.get(k) for k in ("study", "dir", "test", "window", "at")} for e in record_lines(study)
-            if not own_line(ev, e) and e.get("key") == key and windows_overlap(e.get("window"), window)]
+    lines = record_lines(study)
+    cuts = {ln.get("started"): (ln.get("set_aside") or {}).get("cut_off") for ln in lines if ln.get("kind") == "set-aside"}
+
+    def explored_window(e: dict):
+        """An exploration that set a release aside explored the data as it stood, up to its cut-off, and nothing after it (A4-14)."""
+        if e.get("kind") == "explored" and not e.get("window") and cuts.get(e.get("started")):
+            return {"start": "0001-01-01", "end": cuts[e["started"]]}
+        return e.get("window")
+    return [{k: e.get(k) for k in ("study", "dir", "test", "window", "at")} for e in lines
+            if not own_line(ev, e) and e.get("key") == key and windows_overlap(explored_window(e), window)]
 
 
 def record_problems(study: Study, ev: list) -> list:
@@ -1853,6 +1861,10 @@ def cmd_test(study: Study, a) -> None:
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
+    fenced = release_step_problems(study, plan, study.events())
+    if fenced:
+        raise Refused("under the release set aside, this test is refused: " + "; ".join(fenced[:4]) + ". A step is given no file past the "
+                      "cut-off, as a look is not. Nothing was run")
     spec = plan["tests"][a.what]
     untested = promoted_untested(study, plan)
     if untested:
@@ -1916,6 +1928,10 @@ def cmd_rehearse(study: Study, a) -> None:
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
+    fenced = release_step_problems(study, plan, study.events())
+    if fenced:
+        raise Refused("under the release set aside, this rehearsal is refused: " + "; ".join(fenced[:4]) + ". A step is given no file past "
+                      "the cut-off, as a look is not. Nothing was run")
     if not_set(reh):
         raise Refused(f"the plan passes {', '.join(not_set(reh))} to this rehearsal (`passes_environment`) and it is not set "
                       "in the environment; set it and run again. Nothing was run")
@@ -2096,7 +2112,8 @@ def explore_tool():
 # proposal of the next release that tools/fresh_data.py wrote from metadata. An agent never types them here.
 
 def _today() -> dt.date:
-    return dt.date.fromisoformat(TODAY) if TODAY else dt.date.today()
+    """Today in UTC (A4-13): the caller's time zone does not decide whether a period has ended."""
+    return dt.date.fromisoformat(TODAY) if TODAY else dt.datetime.now(dt.timezone.utc).date()
 
 
 TODAY = None  # set only by the self-test, to say what day it is
@@ -2182,6 +2199,55 @@ def release_at_start(study: Study, a, src: Path | None) -> dict | None:
             "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)}}
 
 
+def release_fences(study: Study, plan: dict | None, ev: list) -> list:
+    """Every release set aside that binds this study's data: its own (from its start), and any an exploration of the workspace
+    set aside of the same subject or of a file this study binds, from the record beside the studies. Each as {"cut_off", "by"}."""
+    out = []
+    rel = release_of(ev)
+    if rel:
+        out.append({"cut_off": rel["cut_off"], "by": "this study's own start"})
+    files = set()
+    if plan:
+        for k in study.code_hashes(plan):
+            if k != "(the study tool)":
+                with contextlib.suppress(Refused, OSError, ValueError):
+                    files.add(str(study.word(k, plan).resolve()))
+    key = None
+    with contextlib.suppress(KeyError, TypeError, AttributeError):
+        key = subject_key(plan, plan["tests"]["held-out"]) if plan else None
+    for ln in record_lines(study):
+        c = (ln.get("set_aside") or {}).get("cut_off") if ln.get("kind") == "set-aside" else None
+        if c and (set(ln.get("working_files") or []) & files or (key is not None and ln.get("subject") == key)):
+            out.append({"cut_off": c, "by": f"the exploration {ln.get('exploration')}"})
+    return out
+
+
+def release_step_problems(study: Study, plan: dict, ev: list) -> list:
+    """Why the study's own steps may not run under a release set aside (A4-10): the working data changed since the start, or a
+    file the plan binds (other than a Python script) holds a date past a cut-off, or rows the tool cannot date. A step is given
+    no file past the cut-off, as a look is not."""
+    fences = release_fences(study, plan, ev)
+    if not fences:
+        return []
+    out = []
+    rel = release_of(ev)
+    if rel:
+        out += ["the working data has changed since the study started: " + "; ".join(working_changed(study, rel["working"]))] if working_changed(study, rel["working"]) else []
+    ex = explore_tool()
+    for k in sorted(study.code_hashes(plan)):
+        if k == "(the study tool)":
+            continue
+        f = study.word(k, plan)
+        if not f.is_file() or f.suffix.lower() == ".py":
+            continue
+        for fence_ in fences:
+            later, undated = ex.release_problems_in_file(f, fence_["cut_off"])
+            if later or undated:
+                out.append(f"`{k}` holds " + (f"dates past the cut-off {fence_['cut_off']} of the release set aside by {fence_['by']} ({', '.join(later[:3])})"
+                                             if later else f"{len(undated)} row(s) whose date the tool cannot read, under the release set aside by {fence_['by']}"))
+    return out
+
+
 def release_of(ev: list) -> dict | None:
     start = next((e for e in ev if e["kind"] == "study.started"), None)
     return (start or {}).get("data", {}).get("release")
@@ -2257,28 +2323,42 @@ def release_waiting(rel: dict, window: dict) -> str | None:
 
 
 def release_dates(f: Path, rel: dict, window: dict) -> dict:
-    """What a fetched release holds, read the way the fence reads dates: its first and last dates, its checksum, and why
-    it is not the release the plan needs (a date on or before the cut-off, no date at all, or short of the window)."""
+    """What a fetched release holds, read the way the fence reads it, row by row where it is tabular: its first and last
+    dates, its checksum, and why it is not the release the plan needs (a row dated on or before the cut-off, a row whose date
+    cannot be read, no date at all, or short of the window). A timestamp is taken at whichever of its own day and its day in
+    UTC counts against it."""
     ex = explore_tool()
-    found = ex.past_cut_off_in_file(f, "", {k.casefold() for k in ex.TIME_KEYS})  # every date and month: each is after ""
-    span = {}
-    for d in found:
-        if len(d) == 7:
-            y, m = int(d[:4]), int(d[5:])
-            span[d] = (dt.date(y, m, 1), fresh_tool().add_period(dt.date(y, m, 1), "monthly", 1) - dt.timedelta(days=1))
-        else:
-            span[d] = (dt.date.fromisoformat(d), dt.date.fromisoformat(d))
+    rep = ex.dated_rows(f)
+    if rep is not None:
+        span = {f"row {i}": (a, b) for i, a, b in rep["dated"]}
+        unreadable = rep["undated"]
+    else:
+        found = ex.past_cut_off_text(f, "")
+        span, unreadable = {}, []
+        for d in found:
+            if len(d) == 7:
+                span[d] = ex._month(int(d[:4]), int(d[5:]))
+            else:
+                span[d] = (dt.date.fromisoformat(d), dt.date.fromisoformat(d))
     cut = dt.date.fromisoformat(rel["cut_off"])
-    early = sorted(d for d, (s, _e) in span.items() if s <= cut)
+    early = sorted({ex.span_words(a, b) for a, b in span.values() if a <= cut})
+    firsts = [a for a, _b in span.values()]
+    lasts = [b for _a, b in span.values()]
+    first_span = min(span.values(), key=lambda s: s[0]) if span else None
+    last_span = max(span.values(), key=lambda s: s[1]) if span else None
     out = {"release": rel["name"], "cut_off": rel["cut_off"], "sha256": sha_file(f), "dates_read": len(span),
-           "first": min(span, key=lambda d: span[d][0]) if span else None, "last": max(span, key=lambda d: span[d][1]) if span else None}
+           "rows_read_by_row": rep is not None, "first": ex.span_words(*first_span) if first_span else None,
+           "last": ex.span_words(*last_span) if last_span else None}
     problems = []
     if not span:
         problems.append("the tool reads no date in it, so it cannot say the data is the release after the cut-off")
+    if unreadable:
+        problems.append(f"{len(unreadable)} row(s) carry no date the tool can read (row {', '.join(map(str, unreadable[:3]))}): a row it cannot "
+                        "date may be a row from before the cut-off")
     if early:
         problems.append(f"it holds dates on or before the cut-off {rel['cut_off']}: " + ", ".join(early[:3])
                         + (f", and {len(early) - 3} more" if len(early) > 3 else "") + ". The fetch keeps only the release's own rows")
-    if span and max(e for _s, e in span.values()).isoformat() < window["end"]:
+    if lasts and max(lasts).isoformat() < window["end"]:
         problems.append(f"it reaches only to {out['last']}, and the plan needs data to {window['end']}: the release is not out in full")
     if problems:
         out["refused"] = problems
@@ -2960,6 +3040,9 @@ def lock_evidence(study: Study, a) -> dict:
     wanting, so_whats = so_what_for_study(study, plan, ev, needs_confirmed=False)
     if wanting:
         raise Refused("the lock is refused: " + "; ".join(wanting) + ". Nothing was recorded")
+    fenced = release_step_problems(study, plan, ev)
+    if fenced:
+        raise Refused("the lock cannot bind the release: " + "; ".join(fenced[:4]) + ". Nothing was recorded")
     lines = []
     say = lines.append
     code, psha = study.code_hashes(plan), study.plan_sha()
