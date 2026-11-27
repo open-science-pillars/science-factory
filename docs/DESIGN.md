@@ -1,6 +1,5 @@
 # The Science Factory: design
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-25 · the concept and the architecture in one document, revised after three rounds of red team and after the scientist review. Front door: README.md. Build plan: PLAN.md. Word list: WORDS.md. The attacks, the scientists' reading and what each changed: `reviews/`.**
 
 **Scope, added when the repository became the factory only.** This repository stands on its own and keeps no runs. The design was written inside a larger project, Open Science Pillars (OSP), and where it speaks of OSP's bundles, specification, signing tool, findings checker or roadmap it describes the setting the factory was designed for, as one example of an organization that keeps signed knowledge. Nothing the tools do depends on any of them. The first real study the design had in view compares a satellite record of river height with a river gauge; it belongs to the repository where that science lives, and what is said of it here is the worked example. Numbers that came from its practice run are marked historical, with the branch `records-2026-11` as their source.
 

@@ -1,6 +1,5 @@
 # Warp Factories and a science factory, compared
 
-**Open Science Pillars (a personal open-source project) · 2026-11-26 · a shortened version of a longer study, for readers who know one of the two and want to place the other.**
 
 [Warp Factories](https://docs.warp.dev/factories/) is a software factory: a product in which configured AI agents take a request from an issue or a chat thread to a pull request that a person merges, with the factory itself [defined as a tree of files](https://docs.warp.dev/factories/factory-as-code/). This page compares it with the science factory in this repository, from Warp's public documentation and examples as they stood in November 2026. Nothing of Warp's was run, and nothing here renders this repository's files for Warp. 
 

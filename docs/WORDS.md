@@ -1,6 +1,5 @@
 # The words, and what was simplified
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-25 · plain words and fewer moving parts, with nothing the system does taken away. Applied on 2026-11-25 in two passes: first to the documents, templates and messages, then to every name on disk, inside the files, in the study log and on the command line. A third review round then changed a few more names; they are in the last tables.**
 
 The package grew by accretion: a concept, a design with thirteen sections, a build plan, two reviews, twenty commands, and a vocabulary invented along the way (spine, broker, ledger, look, rung). A scientist does not need any of those words. This review does two things. It replaces the invented vocabulary with plain words, and it finds what can be merged or dropped from view without changing behavior.
 

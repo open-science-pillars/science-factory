@@ -1,6 +1,5 @@
 # What is enforced, and by what
 
-*Science Factory, part of Open Science Pillars. Written 2026-11-26, after three independent attacks on the tools.*
 
 This page sorts every protection the factory claims into three lists: what a tool enforces on any machine, what is enforced only where the kernel or a harness makes it so, and what people and the platform hold. A fourth, short list is what is only an instruction to an agent. Each line names the self-test that makes the attack, or the attack finding it answers (B, S and M are the first attack's findings, N the second's, A3 the third's; all are in `docs/reviews/ASSISTANTS-AND-EXPLORING.md`).
 

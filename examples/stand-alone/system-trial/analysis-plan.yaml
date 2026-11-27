@@ -10,7 +10,6 @@
 study: SYSTEM-TRIAL-BUILT-IN
 study_kind: system_trial    # its held-out data is made at its own opening; it closes only as system-trial-accepted or system-trial-declined
 question: "In the blind test case, is the gain that was put in within five percent of one?"
-claim_class: variability
 quantity_estimated: >
   The gain of one synthetic record against the other: the coefficient on
   the second record's elevation when the first record's elevation is

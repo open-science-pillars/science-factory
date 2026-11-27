@@ -1,0 +1,81 @@
+# The scientist's request as an issue form. Its lines are those of factory/templates/request.md, in the same order.
+# The issue becomes the study's tracking issue: the study tool binds a saved copy of its text by checksum
+# (`sf.py start --request request.md`), and the lock's and the signature's pull requests link back to it.
+name: Request
+description: Ask the science factory a question, in your own words and your own units.
+title: "Request: "
+labels: ["stage: ask"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        One page, in your own words. The analysis agent (an AI agent) turns it into a plan, and you see the plan
+        before anything is locked. Leave a box empty if you do not know. The agent asks you four questions about the
+        boxes marked "asked back", and then stops.
+  - type: textarea
+    id: what
+    attributes:
+      label: What I want to know
+      description: One to three sentences, as you would say it to a colleague. A suspicion is fine. "No idea yet, just look" asks for exploring.
+    validations:
+      required: true
+  - type: textarea
+    id: thing
+    attributes:
+      label: The thing
+      description: The product, record, budget, model or place this is about, with versions if you know them.
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: The decision or the paper this feeds.
+  - type: textarea
+    id: difference
+    attributes:
+      label: The difference that matters, and where it comes from (asked back)
+      description: The number that would change what you do, such as "within 10 cm, from our release rule". If nobody has stated one, say so.
+  - type: textarea
+    id: seen
+    attributes:
+      label: What I have already looked at (asked back)
+      description: Years, places, products and versions you or your group have plotted or fitted. Everything here is treated as already seen.
+  - type: textarea
+    id: unseen
+    attributes:
+      label: Data I have not looked at (leave empty if unsure)
+      description: >
+        A later period, a site you have not touched, a product you have never loaded, a release not yet out. You do
+        not have to find it: an agent proposes the fresh data for the check, with its reasons, and you approve it at the lock.
+  - type: textarea
+    id: answers
+    attributes:
+      label: What I will do with each answer (asked back)
+      value: |
+        - If it holds:
+        - If it does not:
+        - If it cannot tell:
+  - type: input
+    id: when
+    attributes:
+      label: By when (asked back)
+      description: A date, or none.
+  - type: textarea
+    id: fooled
+    attributes:
+      label: How I expect it to be fooled
+      description: The one thing about this data that trips people up. It becomes a hard case the method must survive.
+  - type: textarea
+    id: who
+    attributes:
+      label: Who is on it
+      description: Authors, and who should approve the plan with the steward at the lock (the repository's code owners say who may).
+  - type: textarea
+    id: back
+    attributes:
+      label: What I want back
+      description: A page, a plot, fields as files, a script to rerun, a memo for a manager.
+  - type: textarea
+    id: provider
+    attributes:
+      label: Anyone else's product involved?
+      description: If the answer says something about a named provider's product, it goes to you privately at once, and to the provider before any public reference.

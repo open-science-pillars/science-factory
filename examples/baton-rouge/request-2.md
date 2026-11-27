@@ -12,7 +12,7 @@
 
 **What I have already looked at.** Calendar 2024, the same fixture as before.
 
-**What could be held out.** Everything after 2024, as before.
+**Data I have not looked at.** Nothing after 2024, as before.
 
 **What I will do with each answer.**
 - If it holds: ask what it would take to test it.

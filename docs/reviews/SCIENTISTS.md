@@ -4,7 +4,6 @@
 
 *This review was written on 2026-11-25 in the package's earlier vocabulary and was put into the present words later the same day. Its findings, numbers and dispositions were meant to stay as they were. After the third review round a few sentences were corrected: the one about the word nobody said, which the rewording had emptied, was restored; the table of kinds was brought into line with the catalog; and sentences that called something done when it is convention or scheduled now say so. The original is not kept in this package. WORDS.md maps the earlier words to the present ones. README.md says where things stand now.*
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-25 · a review by the people who would ask it questions, how they would ask, what else they would use it for, and how their own workflows come in.**
 
 The rest of this package was written from the factory's side: stages, acts by people, study logs. This document turns the chair around. Three reviewers were each asked to stay in one role, read the package cold, and answer as that person would: a research hydrologist and oceanographer who runs a group and distrusts AI doing science; an applied scientist at a water and coastal agency who has to defend a decision to a board; and a postdoctoral modeler whose work is a 400 gigabyte pipeline on a cluster. They were language models playing roles, so this is a design review, not a user study, and the first real scientist to try it outranks all three. What they said was consistent enough to act on.
 

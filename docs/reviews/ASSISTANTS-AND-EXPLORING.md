@@ -2,7 +2,6 @@
 
 *History. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-26 · what was attacked and read, by whom, what each found, what changed, what remains.**
 
 **Said first, because it decides how to read the rest.** Seven things are recorded here, and they are not the same kind of evidence.
 

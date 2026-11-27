@@ -1,6 +1,5 @@
 # Define a science factory as code
 
-**Open Science Pillars (a personal open-source project) · 2026-11-26 · for the maintainer and the steward of a capability who want a factory of their own.**
 
 A science factory is defined as code: a folder of YAML and Markdown files, rooted at `factory.yaml`, that says which agents exist, which stages a study passes through and what ends each, what starts an agent, where a job computes, how the factory is measured, and what may never feed a change to it. A change to the factory is a pull request to that folder, and a tool says whether the folder is valid. This page says which files, what each key means, what a tool holds as against what is only instruction, and how to start.
 

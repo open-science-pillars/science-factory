@@ -1,6 +1,5 @@
 # Science Factory
 
-*Part of Open Science Pillars, a personal open-source project.*
 
 A science factory is a procedure and a set of tools for testing a scientific claim honestly: the plan is written down and locked before the data is opened (pre-registered, to those who use the word), with assistants (always AI agents) doing the labor of exploring, review and drafting knowledge, and an experiment they cannot argue with deciding what survives. This repository is the factory and nothing else. The factory is defined as code, a tree of files in `factory/` that a tool validates; the tools that read it run no language model in any check; and the reviews made of all of it are kept beside them. It stands on its own: nothing in it needs another repository, and it keeps no runs. No study has run to a finding yet.
 

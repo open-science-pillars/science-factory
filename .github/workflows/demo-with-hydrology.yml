@@ -1,7 +1,7 @@
 name: optional demo, with the hydrology repository beside this one
 
-# An optional demo, not a check of this repository. It shows the factory used with a pairing script, knowledge and a
-# knowledge checker that live in two other repositories of the same project. It runs when someone asks for it and
+# An optional demo, not a check of this repository. It shows the factory pointed at another repository: a pairing
+# script and knowledge kept in a hydrology repository, and a checker of the knowledge format kept in a third. It runs when someone asks for it and
 # once a week, never on a push or a pull request, so nothing here can hold up a change to the factory. In the long
 # run it belongs in the hydrology repository, as a check that repository makes of its own use of the factory; it is
 # kept here until that repository has one. It reads no kept record: every run below is made fresh.

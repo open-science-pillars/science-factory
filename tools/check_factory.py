@@ -333,7 +333,7 @@ ACT_REQUESTS = {"lock": "tools/sf.py request-lock", "signature": "tools/sf.py re
 STRINGS = [TEXT]
 FACTORY = {
     "schemaVersion!": TEXT, "name!": TEXT, "version!": TEXT, "description!": TEXT, "alias": TEXT, "product": TEXT, "by_products": STRINGS,
-    "capability": {"name!": TEXT, "repositories!": STRINGS, "borrows": [ANY], "stewards": TEXT, "holds": ("map", TEXT),
+    "home": {"name!": TEXT, "repositories!": STRINGS, "borrows": [ANY], "stewards": TEXT, "holds": ("map", TEXT),
                    "shared_across_factories": STRINGS, "not_yet_shared": TEXT},
     "agentDefaults!": {"harness!": TEXT, "model!": TEXT, "runner!": TEXT},
     "procedure!": {

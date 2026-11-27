@@ -1,6 +1,5 @@
 # Science Factory: the build plan
 
-**Open Science Pillars (OSP), a personal project (personal hat) · 2026-11-25 · revised after three rounds of red team, and again on 2026-11-26 when the repository became the factory only. The smallest thing that is the whole thing, in two parts.**
 
 ## The plan in one sentence
 
