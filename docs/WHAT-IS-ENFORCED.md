@@ -44,10 +44,10 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.10 | A study log rewritten and committed again fails the log check and blocks the opening. The merged request pins the log's head as it was at the request. |
 | 1.11 | Every command of the study tool, the exploring tool, the fresh-data tool and the knowledge tool refuses to run from inside a look or a step of a plan. |
 | 1.12 | A command of a plan, and a look, runs in a scratch copy that holds no log, with an environment the tool builds; the receipt lists the environment by name. A step that rewrites the plan or a log in its copy changes neither, and fails. |
-| 1.13 | A look is given the exploration's own files and the working data it declared at its start, and nothing else. A look that names a folder, a pattern, a tilde path, a variable or several paths in one word is refused. Every look is logged with its inputs and output by checksum. |
+| 1.13 | A look is given the exploration's own files and the working data it declared at its start, and nothing else. A look that names a folder, a pattern, a tilde path, a variable or several paths in one word is refused. Every look is logged with its inputs and output by checksum. A reviewer's variant of a look (`recheck --variant`) runs in its place on the same files, and is logged nowhere. |
 | 1.14 | As a second line, what a look would be given, prints or leaves is read for set-aside names and for dates in the window, in the forms `tools/explore.py` lists; a hit refuses the look or spoils the exploration. |
 | 1.15 | A review is recorded only for the lead the reviewer read, by checksum, from a reviewer named before the lead existed who did none of the work. |
-| 1.16 | A decimal number in a lead, in the forms the tool lists, was printed whole by a look the lead cites or stands in a page of a listed wiki. |
+| 1.16 | A decimal number in a lead, in the forms the tool lists, was printed whole by a look the lead cites or stands in a page of a listed wiki; in the lead's method words a listed constant (1.96 and a few more) or a count may stand without. A sentence of the proposed plan that names a look quotes only numbers that look printed; other plan numbers are proposals and are not checked. The summary at the top is checked like the rest. |
 | 1.17 | A draft's source is a file that exists, an https address with a host, or a doi. A draft carries no signature. |
 | 1.18 | An agent's event names its model (`--model`), or it is refused; an actor's name is matched whole; `platform:<host>` writes nothing but a merged act and its verification. |
 | 1.19 | Every tool restarts itself in a Python that reads no `PYTHON` variable, no user site, no start-up file and not its own folder. |
@@ -77,10 +77,10 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 10. `sf.py selftest`: the checks named "N13" (R3-05).
 11. `sf.py selftest`: "the mark a step's environment carries is enough on its own to refuse"; `explore.py selftest`: "the knowledge tool refuses inside a look too" (R1-04, R2-05).
 12. `sf.py selftest`: "a command of a plan runs in a scratch copy", "a step that rewrites the analysis plan" (R2-03).
-13. `explore.py selftest`: "a look that names a folder is refused", "N4, the structure" (R1-01, R2-04).
+13. `explore.py selftest`: "a look that names a folder is refused", "N4, the structure" (R1-01, R2-04), "a reviewer's variant of a look".
 14. `explore.py selftest`: "N4, the second line" (R2-04).
 15. `explore.py selftest`: checks named "N7" (R1-04, R2-07).
-16. `explore.py selftest`: "a number no look printed is refused in every form it can be written", checks named "N8" (R1-08, R2-08).
+16. `explore.py selftest`: "a number no look printed is refused in every form it can be written", checks named "N8" (R1-08, R2-08), "a listed constant (1.96)", "an unprinted result number is still refused", "a plan sentence that names a look quotes it", "a summary is checked like the rest".
 17. `knowledge.py selftest`: checks named "N12" (R1-10, R2-12).
 18. `sf.py selftest`, `explore.py selftest`: "an agent that names no model", "an actor with a line break after the name" (R2-14).
 19. `sf.py selftest`: "the tool's help is words, not its own source", "a file named like a standard module beside the study tool is not imported by it" (R2-09).
@@ -142,7 +142,7 @@ Nothing checks these. An agent is told, and the log shows afterwards what the to
 - That the agent proposing the fresh data opened no data file first; that a metadata file holds no values under the names the tool allows; that the reasons in a proposal are true; and that a confirmatory plan names a proposal at all (the lock request says so when it does not).
 - That an agent started outside its rendered file keeps to its role; that the reviewer is a separate agent with a fresh context, and was passed nothing the author said; that the analysis agent had not already read an answer to its question.
 - That the working data declared at the start of an exploration is working data. Where data is set aside by its dates alone and sits in a declared folder, only the reading of dates stands in the way (R3-04).
-- That a number written out in words in a lead is true; only the forms row 1.16 lists are checked.
+- That a number written out in words in a lead is true; only the forms row 1.16 lists are checked. That a number in the proposed plan's own sentence is a proposal and not a quote left without its look.
 - That an agent or a person with a shell stays out of the acceptance set of blind cases. That its seed is outside the repository is the part that is not instruction.
 - Everything, on a machine whose environment is hostile: code loaded when Python first starts runs before any check.
 
