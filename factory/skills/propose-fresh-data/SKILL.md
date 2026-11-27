@@ -20,15 +20,21 @@ The proposing tool reads one file in this form, JSON or YAML, and refuses any ot
 ```
 subject: {record: two-sensor}           # what the data is about: the keys a later plan's `pair` carries
 what: "what this list describes"        # optional
+files:                                  # optional: the files the items are in, by checksum
+  - {name: record-2024.json, sha256: <64 hexadecimal digits>, rows: 104}
 items:                                  # one entry for each item: a site, a granule, a month of passes
   - {id: S01-2024, site: S01, region: north, start: 2024-01-01, end: 2024-12-31, count: 52, release: v1}
 releases:                               # optional: releases that are announced and not out
   - {name: v2, date: 2027-03-01, expected_items: 20, expected_count: 900}
 ```
 
-An item may carry `id` (required), `site`, `region`, `start`, `end`, `time`, `date`, `release`, `version`, `count`, `lat`, `lon`, `name` and `note`. Take it from a catalogue, a granule listing, a site list or release notes. If the only description of the data is inside the data files, stop and ask the coordinating agent for a metadata file made by a person or a script you do not read the output of.
+An item may carry `id` (required), `site`, `region`, `series`, `start`, `end`, `time`, `date`, `release`, `version`, `count`, `lat`, `lon`, `name` and `note`; a release `name` (required), `date`, `cadence` (daily, weekly, monthly, quarterly, yearly), `after` (the last date of the data it follows), `per_period`, `expected_items`, `expected_count` and `note`. Take it from a catalogue, a granule listing, a site list or release notes. If the only description of the data is inside the data files, stop and ask the coordinating agent for a metadata file made by a person or a script you do not read the output of.
+
+**One long file, such as a monthly record that grows each month.** One item for the whole file makes every later period keep nothing. The coordinating agent writes the metadata at intake with `uv run tools/fresh_data.py describe --csv <the file> --date-column <its dates> --series-column <the column naming each series> --period year --subject <key=value> --what "<what it holds>" --release <the update's name> --cadence monthly --out <metadata.yaml>`: one item for each series and year (or month) with its count, the file by its sha256, and the release with its cadence. It keeps no other column. For example, a made-up file of two series, A from 1980 and B from 1990, both monthly to May 2006, gives items `{id: A-1980, series: A, start: 1980-01-01, end: 1980-12-31, count: 12}` and so on to `{id: A-2006, series: A, start: 2006-01-01, end: 2006-05-31, count: 5}`, and `releases: [{name: next-monthly-update, cadence: monthly, after: 2006-05-31}]`. From it, `--kind later-period --from 2001-01-01` keeps 2001 onward, if nobody has seen those years; `--kind next-release --release next-monthly-update --periods 24` keeps the 24 months after May 2006.
 
 ## 3. Choose the kind, and say why
+
+**First ask whether any existing data is unseen.** When the whole record is public and has been seen (by the scientist, in published work, or by you in training), no part of it is fresh, and a set aside of old data is a convenience, not a check. The honest answer is data not yet published: the next release. Propose it with `--periods N`, the number of future periods the check would wait for: the tool counts their observations from the release's cadence, and says that it cannot use the record's own variability, which is a measured value. Say how long the wait is.
 
 | Kind | `--kind` | Suits | Unfair when |
 |---|---|---|---|
@@ -48,7 +54,7 @@ uv run tools/fresh_data.py propose --metadata <the metadata file> --kind later-p
   --out <the exploration>/fresh-data.yaml --studies <the folder of studies>
 ```
 
-For the other kinds use `--release <name>`, `--sites <a,b>` or `--regions <r>`, or `--fraction <share>` for a random set aside. The tool counts the size of the test from the metadata (items and observations, fresh and working), adds a caution for the kind, says what it does not compute, and prints the arguments that set the data aside. For a random set aside the tool draws the members itself, from a seed it makes; you do not choose them, and you cannot. Every proposal goes on a record beside the studies, and the lock shows how many proposals that record holds for the subject, so run the tool once and keep what it gives.
+For the other kinds use `--release <name>` (a release the metadata declares; `--periods N` for its size), `--sites <a,b>` or `--regions <r>`, or `--fraction <share>` for a random set aside. A release binds the data as it stands: the proposal fixes the cut-off (the last date the metadata lists) and the files' checksums, the start binds the working data by checksum, and a look at a file that changed since, or that holds a date past the cut-off, is refused, because new rows of the same file carry no mark of the release. The tool counts the size of the test from the metadata (items and observations, fresh and working), adds a caution for the kind, says what it does not compute, and prints the arguments that set the data aside. For a random set aside the tool draws the members itself, from a seed it makes; you do not choose them, and you cannot. Every proposal goes on a record beside the studies, and the lock shows how many proposals that record holds for the subject, so run the tool once and keep what it gives.
 
 The tool does not compute the power of the plan's rules at that size. Say in `--why` whether the size is enough, as far as the knowledge tells you, and leave the measuring to the known-answer tests of the plan (for the built-in gain method, `methods/gain/known_answer_tests.py --passes <N>`).
 

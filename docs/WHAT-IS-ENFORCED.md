@@ -61,6 +61,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.27 | Leads, findings and their reviews are read for the phrases of `scorers/overclaiming-in-leads/phrases.yaml` and for numbers finer than their uncertainty (`confirms` unless the rules gave `supported`); each flag names the phrase and the line, at `lead`, `review` and `attach`, in status, on the scorecard and in the signature request. It warns, never blocks. |
 | 1.28 | A fit note is complete or refused, and refused once the first look or test has run; status, the hand-over and the lock request show it, or say there is none. It never blocks work. |
 | 1.29 | A method is promoted only from a look that passed, with its README's three parts, its runs as cases and every checksum; the validator refuses it changed or absent from the change log. A plan that binds one needs a rehearsal running its tests, and its tests, other rehearsals and lock wait until that rehearsal passed on the code as it stands. |
+| 1.30 | A new release set aside binds the data as it stands. Its proposal names a release the metadata declares and fixes the cut-off, the last date the metadata lists, with the files' checksums where the metadata gives them. The start needs the cut-off, refuses working data that holds a later date or is not the file the metadata described, and binds every working file by checksum. A look or a recheck given a working file that changed or was not there at the start, or any file holding a date or a month past the cut-off, is refused, and the refusal is logged; another exploration of the subject may not explore past it. |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -93,6 +94,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 27. `sf.py selftest`: the checks of `_selftest_overclaiming`; `explore.py selftest`: "a lead that claims more than an exploration can show"; `check_factory.py --selftest`: "an overclaiming check that names no list of phrases", "a list of phrases with a pattern that does not compile".
 28. `sf.py selftest`: the checks of `_selftest_fit`; `explore.py selftest`: "the coordinating agent's fit note is recorded at intake", "a fit note once the first look has run is refused".
 29. `explore.py selftest`: the checks under "a look that proved useful becomes a method"; `check_factory.py --selftest`: the cases named "a promoted method".
+30. `explore.py selftest`: "a new release set aside without a cut-off is refused" and the checks after it; `fresh_data.py selftest`: "a release the metadata does not declare is refused", "the next release fixes the cut-off".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 

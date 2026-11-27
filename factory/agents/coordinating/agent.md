@@ -25,6 +25,7 @@ may_call:
   - "tools/sf.py request-signature"
   - "tools/sf.py scorecard"
   - "tools/sf.py close"
+  - "tools/fresh_data.py describe"
   - "tools/fresh_data.py show"
   - "skill:note-the-fit"
   - "role:analysis"

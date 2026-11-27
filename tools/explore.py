@@ -520,6 +520,100 @@ def date_of_a_number(n) -> dt.date | None:
     return None
 
 
+# A month written as a year and a month (2026-08, 2026/08) is how a monthly record dates its rows, and no form above
+# reads it. It is read only against the cut-off of a release, never against a window.
+YEAR_MONTH = re.compile(r"(?<![0-9A-Za-z])(\d{4})[-/](\d{1,2})(?![0-9]|[-/.]\d)")
+
+
+def past_cut_off(text: str, cut: str) -> list:
+    """The dates and months a text holds that fall after a release's cut-off, in the forms `dates_in` reads and as a year
+    and a month: a month is past the cut-off when its first day is."""
+    import unicodedata
+    out = {d.isoformat() for d in dates_in(text) if d.isoformat() > cut}
+    for m in YEAR_MONTH.finditer(unicodedata.normalize("NFKC", text).translate(HYPHENS)):
+        y, mo = int(m.group(1)), int(m.group(2))
+        if 1000 <= y <= 2999 and 1 <= mo <= 12 and dt.date(y, mo, 1).isoformat() > cut:
+            out.add(f"{y:04d}-{mo:02d}")
+    return sorted(out)
+
+
+def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
+    """The same, read the way the fence reads a JSON data file: a time under a declared time key anywhere, or under any key
+    inside a list of rows, is a time of the data; a single date at the top of the file (when it was retrieved) is not."""
+    out = set()
+
+    def walk(o, key=None, in_rows=False):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(v, (dict, list)) and len(o) > 1:  # rows kept under their times: the keys are the times
+                    out.update(past_cut_off(str(k).strip()[:64], cut))
+                walk(v, k, in_rows)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, key, True)
+        elif isinstance(o, (int, float)) and not isinstance(o, bool) and key is not None and str(key).casefold() in keys:
+            d = date_of_a_number(o)
+            if d and d.isoformat() > cut:
+                out.add(d.isoformat())
+        elif isinstance(o, str) and key is not None and (str(key).casefold() in keys or in_rows):
+            out.update(past_cut_off(o.strip()[:64], cut))
+    walk(obj)
+    return sorted(out)
+
+
+def past_cut_off_in_file(f: Path, cut: str, keys: set) -> list:
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return []
+    if f.suffix.lower() == ".json":
+        try:
+            return past_cut_off_in_json(json.loads(text), cut, keys)
+        except ValueError:
+            pass
+    return past_cut_off(text, cut)
+
+
+def bound_files(places: list) -> list:
+    """Every file in the declared places of working data, as it stands: (the file, its sha256), files of folders included."""
+    out = []
+    for q in places:
+        q = Path(q)
+        if q.is_file():
+            out.append((q.resolve(), sf.sha_file(q)))
+        elif q.is_dir():
+            for base, dirs, files in os.walk(q):
+                dirs.sort()
+                out += [((Path(base) / n).resolve(), sf.sha_file(Path(base) / n)) for n in sorted(files) if (Path(base) / n).is_file()]
+    return out
+
+
+def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
+    """Why a look may not be given these files under a release set aside: the release binds the data as it stood at the
+    start. A working file whose checksum changed, or that was not there at the start, may hold the release; so may any
+    file that holds a date or a month past the cut-off. Each is refused before anything runs."""
+    cut = sa.get("cut_off")
+    if not cut:
+        return []
+    bound = {str(Path(os.path.normpath(x.d / b["path"])).resolve()): b["sha256"] for b in sa.get("bound") or []}
+    places = working_places(x)
+    out = []
+    for tok, f in files.items():
+        real = f.resolve()
+        if any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d):
+            if str(real) not in bound:
+                out.append(f"`{tok}` was not in the working data when the exploration started, and a release set aside after "
+                           f"{cut} may be in it")
+            elif sf.sha_file(real) != bound[str(real)]:
+                out.append(f"`{tok}` has changed since the exploration started (its sha256 is not the one bound at the start): the "
+                           f"release set aside after {cut} may have arrived in it")
+        later = past_cut_off_in_file(real, cut, {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})
+        if later:
+            out.append(f"`{tok}` holds a date past the cut-off of the release set aside ({cut}): {', '.join(later[:3])}"
+                       + (f", and {len(later) - 3} more" if len(later) > 3 else ""))
+    return out
+
+
 def tokens_of(sa: dict) -> list:
     return [str(x) for x in (sa.get("sites") or []) + (sa.get("releases") or []) if str(x).strip()]
 
@@ -952,18 +1046,34 @@ def cmd_start(x: Exploration, a) -> None:
                           "proposal with `--fresh-data`, and set aside exactly the members it drew")
     if window and working and sf.windows_overlap(core(working), core(window)):
         raise Refused("the working window and the set-aside window overlap: data that is explored cannot also be held out")
+    cut = str(getattr(a, "release_cut_off", None) or "").strip() or None
+    if cut and how != "a new release":
+        raise Refused("`--release-cut-off` is the last date of the data as it stands before a new release; it goes with `--how \"a new release\"`")
+    if cut and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", cut):
+        raise Refused("`--release-cut-off` is a date, YYYY-MM-DD")
     studies_here = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
-    fresh = None
+    fresh, prop = None, None
     if getattr(a, "fresh_data", None):
         if a.nothing_set_aside:
             raise Refused("`--fresh-data` names what is set aside, and `--nothing-set-aside` says nothing is; choose one")
         fpath = Path(os.path.abspath(a.fresh_data))
         prop, wrong = fresh_data_problems(fpath, studies_here, how, window, sites, releases)
+        if not wrong and prop and prop["kind"] == "next-release":
+            fixed = (prop.get("rule") or {}).get("cut_off")
+            if cut and fixed and cut != fixed:
+                wrong.append(f"the cut-off given ({cut}) is not the one the proposal fixed ({fixed})")
+            cut = cut or fixed
         if wrong:
             raise Refused("the proposal of the fresh data does not match this start: " + "; ".join(wrong) + ". Nothing was started")
         fresh = {"file": str(fpath), "sha256": sf.sha_file(fpath), "kind": prop["kind"], "kind_in_words": prop["kind_in_words"],
                  "proposed_by": (prop.get("proposed") or {}).get("by"), "proposed_at": (prop.get("proposed") or {}).get("at"),
                  "seed_sha256": (prop.get("draw") or {}).get("seed_sha256")}
+    if how == "a new release" and not cut:
+        raise Refused("a new release set aside binds the data as it stands: give the last date of the working data before the release "
+                      "(`--release-cut-off YYYY-MM-DD`, or a proposal that fixes it). A release that arrives as new rows of the same "
+                      "file carries no mark of its own, so without a cut-off nothing in the file would be set aside")
+    if cut and working and working["end"] > cut:
+        raise Refused(f"the working window runs to {working['end']}, past the cut-off of the release ({cut}): what is explored is the data as it stands")
     request = Path(a.request).resolve() if a.request else None
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
@@ -986,6 +1096,11 @@ def cmd_start(x: Exploration, a) -> None:
                               "the working window given here reaches into it: what one exploration set aside, another does not explore")
             if w != window and w not in others:
                 others.append(w)
+        if ln.get("kind") == "set-aside" and ln.get("subject") == key and (ln.get("set_aside") or {}).get("cut_off"):
+            c = ln["set_aside"]["cut_off"]
+            if working and working["end"] > c:
+                raise Refused(f"{ln.get('exploration')} set aside the release after {c} for this subject, and the working window given here "
+                              "runs past it: what one exploration set aside, another does not explore")
     paths = [os.path.abspath(p) for p in a.set_aside_path or []]
     places = []  # where the working data is, outside the exploration: the only outside files a look may be given
     for given in getattr(a, "working_data", None) or []:
@@ -1001,6 +1116,21 @@ def cmd_start(x: Exploration, a) -> None:
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
+    bound = []
+    if cut:  # the data as it stands, bound by checksum: a look given a working file that changed afterwards is refused
+        named = dict((prop or {}).get("rule", {}).get("files") or {})
+        for f, sha in bound_files([Path(os.path.normpath(x.d / q)) for q in places] if places else []):
+            later = past_cut_off_in_file(f, cut, {k.strip().casefold() for k in (a.time_keys or ",".join(TIME_KEYS)).split(",") if k.strip()})
+            if later:
+                raise Refused(f"the working data already holds dates past the cut-off of the release ({cut}) in {f.name}: "
+                              f"{', '.join(later[:3])}. The cut-off is the last date of the data as it stands; nothing was started")
+            if f.name in named and named[f.name] != sha:
+                raise Refused(f"{f.name} is not the file the metadata describes: its sha256 is {sha[:16]}, the metadata's {str(named[f.name])[:16]}. "
+                              "The release binds the data as the metadata saw it; nothing was started")
+            bound.append({"path": os.path.relpath(f, x.d.resolve()), "sha256": sha})
+        if named and not any(Path(b["path"]).name in named for b in bound):
+            raise Refused(f"the metadata the proposal was made from names {', '.join(sorted(named))}, and none is among the working data "
+                          "declared here (`--working-data`): the release binds the files the metadata describes; nothing was started")
     pages = []  # what was read before setting aside: knowledge pages only, never data
     for page in getattr(a, "boundary_from", None) or []:
         f = Path(os.path.abspath(page))
@@ -1022,6 +1152,8 @@ def cmd_start(x: Exploration, a) -> None:
           "working": {"description": a.working, "window": working, "places": places}}
     if gap:
         sa["in_neither"] = gap
+    if cut:
+        sa["cut_off"], sa["bound"] = cut, bound
     if fresh:
         sa["fresh_data"] = fresh
     if pages:
@@ -1045,7 +1177,7 @@ def cmd_start(x: Exploration, a) -> None:
     lines = []
     if how != "nothing":
         lines.append({"way": WAY, "kind": "set-aside", "exploration": a.id, "exploration_dir": x.d.name, "subject": key,
-                      "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases},
+                      "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases, **({"cut_off": cut} if cut else {})},
                       "at": e["at"], "started": mark})
     explored = {"way": WAY, "kind": "explored", "study": a.id, "dir": x.d.name, "test": WAY, "key": key,
                 "at": e["at"], "started": mark}
@@ -1060,6 +1192,7 @@ def cmd_start(x: Exploration, a) -> None:
     print(f"started {a.id} ({WAY}). Set aside: {how}"
           + (f", {'from ' + window['start'] + ' onward' if window.get('open_ended') else window['start'] + ' to ' + window['end']}" if window else "")
           + (f", sites {sites}" if sites else "") + (f", {releases}" if releases else "")
+          + (f", after the cut-off {cut}, with {len(bound)} working file(s) bound by checksum" if cut else "")
           + f". Written to {rel_record}. Next: `known` and `read`, then look.")
     if gap:
         print(f"Note: {gap['start']} to {gap['end']} is neither explored nor set aside. Nothing protects it: a later study "
@@ -1195,6 +1328,7 @@ def cmd_look(x: Exploration, a) -> None:
     for tok, f in files.items():  # the data a look is given; its own script, a Python file, may be a shared one from elsewhere
         if not (tok == script and script.endswith(".py")):
             problems += [q for q in [place_problem(x, tok, f)] if q]
+    problems += cut_off_problems(x, sa, files)
     if problems:
         x.add(a.by, "look.refused", {"argv": argv, "why": a.why, "refused_because": problems})
         raise Refused("this look names what was set aside, or names it in a way the tool cannot confine, so it is not run "
@@ -1314,6 +1448,10 @@ def cmd_recheck(x: Exploration, a) -> None:
             raise Refused(f"`{i['word']}` is not the file {d['id']} read; nothing is run")
     if set_aside_present(sa):
         raise Refused("set-aside data is in the workspace; nothing is run")
+    late = cut_off_problems(x, sa, {f["from"]: Path(os.path.normpath(x.d / f["from"])) for f in (d.get("ran_in") or {}).get("placed") or []}
+                            or {i["word"]: x.d / i["word"] for i in d["inputs"]})
+    if late:
+        raise Refused("nothing is run: " + "; ".join(late[:3]))
     head = f"[{WAY}: output of {d['id']}]\n"
     how_run = d.get("ran_in")
     if how_run:  # the look ran in a scratch folder: the same folder is built again from the same files, by checksum
@@ -1550,6 +1688,9 @@ def render_lead(lead: dict) -> str:
     w = sa.get("window")
     aside = (f"{sa['how']}: {w['start']} to {'onward (the window stays open)' if w.get('open_ended') else w['end']}" if w
              else f"{sa['how']}: {', '.join(sa.get('sites') or sa.get('releases') or []) or 'nothing'}")
+    if sa.get("cut_off"):
+        aside += (f", after the cut-off {sa['cut_off']} (the working data was bound by checksum at the start, {len(sa.get('bound') or [])} "
+                  "file(s), and a look at a file that changed or holds a later date is refused)")
     order = lead.get("order") or {"sequence": [], "choices": {}, "choices_recorded_after_looks": 0, "choices_in_all": 0}
     lines = [f"# Lead from {lead['exploration']} (exploring; version {lead['version']})", "", BANNER, "",
              f"**The question.** {lead['question']}", "",
@@ -2433,7 +2574,7 @@ def stage_of(x: Exploration) -> dict:
     counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
             "models_recorded": {"by_actor": sf.models_recorded(ev), "note": "declared by whoever called the tool; nothing proves which model answered"},
-            "set_aside": {k: start["set_aside"][k] for k in ("how", "window", "sites", "releases")},
+            "set_aside": {k: start["set_aside"].get(k) for k in ("how", "window", "sites", "releases", "cut_off")},
             "says": "nothing here is a finding; an exploration ends in a lead, a note, a method or a stop"}
 
 
@@ -2751,7 +2892,7 @@ def cmd_fingerprint(x: Exploration, a) -> None:
 class A:
     def __init__(self, **kw):
         defaults = dict(by="agent:tester-analysis", how="a later period", set_aside_window="2025-04-28:", working_window="2024-01-01:2024-12-31",
-                        set_aside_sites=None, set_aside_release=None, set_aside_path=None, nothing_set_aside=None, time_keys=None,
+                        set_aside_sites=None, set_aside_release=None, release_cut_off=None, set_aside_path=None, nothing_set_aside=None, time_keys=None,
                         subject="reach_id=R1,gauge=G1", working="calendar 2024", why="the next period, never read", studies=None,
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
@@ -3021,12 +3162,78 @@ def selftest() -> int:
         site_file.write_text(json.dumps({"gauge": "g7", "rows": []}))
         ok("a look that names a set-aside site is refused", "set aside" in look(xs, ["{python}", ss, "--gauge", "G7"]))
         ok("a look on a data file that holds a set-aside site is refused", "set aside" in look(xs, ["{python}", ss, str(site_file)]))
+        ok("a new release set aside without a cut-off is refused: a release that arrives as rows of the same file carries no mark",
+           "--release-cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-REL-0"), A(
+               request=str(req), id="E-REL-0", how="a new release", set_aside_window=None, set_aside_release=["PRODUCT_v3"], working_window=None,
+               subject="reach_id=R3,gauge=G3", working_data=[str(data)])) and not (work / "explorations" / "E-REL-0").exists())
         xr = fresh("E-REL", how="a new release", set_aside_window=None, set_aside_release=["PRODUCT_v3"], working_window=None,
-                   subject="reach_id=R3,gauge=G3")
+                   subject="reach_id=R3,gauge=G3", release_cut_off="2024-12-31")
         known(xr)
         sr = script(xr, "p.py", "print('ok')\n")
         ok("a look that names a set-aside release is refused", "set aside" in look(xr, ["{python}", sr, "--collection", "product_V3"]))
         ok("a look that names another release runs", look(xr, ["{python}", sr, "--collection", "PRODUCT_v2"]) == "")
+        # the release binds the data as it stands (found by the first real run: the next monthly update would have come in as
+        # plain dated rows of the same file, and any look could have read them)
+        ok("a month written as a year and a month is read against the cut-off, and a range of years is not a month",
+           past_cut_off("A,2024-12,1.0\nA,2025-01,1.1\n1970-2010 2025-02-03", "2024-12-31") == ["2025-01", "2025-02-03"]
+           and past_cut_off("A,2024-12,1.0 in 1970-2010", "2024-12-31") == [])
+        monthly = tmp / "monthly"
+        monthly.mkdir()
+        rows = "Source,Year,Mean\n" + "".join(f"A,2024-{m:02d},{m / 10}\n" for m in range(1, 13))
+        (monthly / "monthly.csv").write_text(rows)
+        rel = dict(how="a new release", set_aside_window=None, set_aside_release=["next-update"], working_window=None, subject="reach_id=R70,gauge=G70")
+        ok("a release whose cut-off is before what the working data holds is refused at the start: the data already goes past it",
+           "already holds dates past the cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-0"), A(
+               request=str(req), id="E-CUT-0", working_data=[str(monthly)], release_cut_off="2024-06-30", **rel)))
+        ok("and so is a working window that runs past the cut-off",
+           "past the cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-0"), A(
+               request=str(req), id="E-CUT-0", working_data=[str(monthly)], release_cut_off="2024-12-31", **{**rel, "working_window": "2024-01-01:2025-06-30"})))
+        xc = fresh("E-CUT", working_data=[str(monthly)], release_cut_off="2024-12-31", **rel)
+        known(xc)
+        sc = script(xc, "tail.py", "import sys\nprint(open(sys.argv[1]).read().splitlines()[-1])\n")
+        ok("the start binds every working file by checksum and records the cut-off",
+           xc.set_aside()["cut_off"] == "2024-12-31" and [b["sha256"] for b in xc.set_aside()["bound"]] == [sf.sha_file(monthly / "monthly.csv")])
+        ok("a look over the working data as it stood runs", look(xc, ["{python}", sc, str(monthly / "monthly.csv")]) == "")
+        (monthly / "monthly.csv").write_text(rows + "A,2025-01,9.9\nA,2025-02,9.8\n")  # the source publishes; the file is refreshed in place
+        before = len(xc.events())
+        got = look(xc, ["{python}", sc, str(monthly / "monthly.csv")])
+        ok("a look over a working file refreshed with months past the cut-off is refused, and the refusal is logged, not a breach",
+           "has changed since the exploration started" in got and "2025-01" in got and len(xc.events()) == before + 1
+           and xc.events()[-1]["kind"] == "look.refused" and not breached(xc.events()))
+        ok("a recheck over the refreshed file runs nothing", "nothing is run" in said(cmd_recheck, xc, A(look="LOOK-001")))
+        (xc.d / "looks" / "copy.csv").write_text((monthly / "monthly.csv").read_text())
+        ok("a copy of the refreshed file put in the exploration is refused too: it holds months past the cut-off",
+           "holds a date past the cut-off" in look(xc, ["{python}", sc, "looks/copy.csv"]))
+        (monthly / "monthly.csv").write_text(rows)
+        (monthly / "extra.csv").write_text("Source,Year,Mean\nA,2024-12,1.0\n")
+        ok("a file that was not in the working data at the start is refused, whatever its dates",
+           "was not in the working data when the exploration started" in look(xc, ["{python}", sc, str(monthly / "extra.csv")]))
+        (monthly / "extra.csv").unlink()
+        ok("another exploration of the same subject cannot explore past the cut-off of the release set aside",
+           "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-2"), A(
+               request=str(req), id="E-CUT-2", **{**rel, "set_aside_release": ["a-later-update"], "working_window": "2024-01-01:2025-06-30"},
+               release_cut_off="2025-06-30", working_data=[str(monthly)])))
+        rmeta = tmp / "fd-release.json"
+        rmeta.write_text(json.dumps({"subject": {"reach_id": "R71", "gauge": "G71"}, "files": [{"name": "monthly.csv", "sha256": sf.sha_file(monthly / "monthly.csv")}],
+                                     "items": [{"id": "A-2024", "series": "A", "start": "2024-01-01", "end": "2024-12-31", "count": 12}],
+                                     "releases": [{"name": "next-update", "cadence": "monthly"}]}))
+        rp_ = tmp / "proposals" / "release.yaml"
+        quiet(fdt.cmd_propose, fdt.A(metadata=str(rmeta), kind="next-release", release="next-update", what="w", why="y", unfair="u",
+                                     studies=str(fwork / "studies"), out=str(rp_)))
+        rstart = dict(request=str(req), how="a new release", set_aside_window=None, set_aside_release=["next-update"], working_window=None,
+                      subject="reach_id=R71,gauge=G71", fresh_data=str(rp_), studies=str(fwork / "studies"))
+        ok("a proposal of the next release fixes the cut-off from the metadata, and a start with another cut-off is refused",
+           fdt.load(rp_)["rule"]["cut_off"] == "2024-12-31" and "is not the one the proposal fixed" in said(
+               cmd_start, Exploration(fwork / "explorations" / "E-RP-0"), A(id="E-RP-0", working_data=[str(monthly)], release_cut_off="2024-11-30", **rstart)))
+        other = tmp / "other-monthly"
+        other.mkdir()
+        (other / "monthly.csv").write_text(rows.replace("A,2024-03,0.3", "A,2024-03,0.4"))
+        ok("a start whose working file is not the file the metadata described, by checksum, is refused",
+           "not the file the metadata describes" in said(cmd_start, Exploration(fwork / "explorations" / "E-RP-0"), A(id="E-RP-0", working_data=[str(other)], **rstart)))
+        xrp = Exploration(fwork / "explorations" / "E-RP")
+        quiet(cmd_start, xrp, A(id="E-RP", working_data=[str(monthly)], **rstart))
+        ok("with the proposal, the start takes the cut-off it fixed and binds the file the metadata described",
+           xrp.set_aside()["cut_off"] == "2024-12-31" and xrp.set_aside()["bound"][0]["sha256"] == sf.sha_file(monthly / "monthly.csv"))
         # a site is written many ways: the fence reads the ways people type it (found by the hydrologist's review)
         xu = fresh("E-USGS", how="sites never opened", set_aside_window=None, set_aside_sites="USGS-06935965,USGS-06909000", working_window=None,
                    subject="reach_id=R9,gauge=USGS-07374000")
@@ -4050,6 +4257,9 @@ def build_parser() -> argparse.ArgumentParser:
         (["--set-aside-window"], {"default": None, "help": "START:END, or START: for a window that stays open"}),
         (["--set-aside-sites"], {"default": None, "help": "site identifiers, separated by commas"}),
         (["--set-aside-release"], {"action": "append", "default": None, "help": "a release, collection or record name; repeatable"}),
+        (["--release-cut-off"], {"default": None, "dest": "release_cut_off",
+                                 "help": "with a new release: the last date of the data as it stands; the start binds the working data by "
+                                         "checksum and a look at a file that changed or holds a later date is refused"}),
         (["--set-aside-path"], {"action": "append", "default": None, "help": "where the set-aside data would land if fetched; repeatable"}),
         (["--nothing-set-aside"], {"default": None, "help": "the reason nothing can be set aside; such an exploration hands nothing over"}),
         (["--fresh-data"], {"default": None, "dest": "fresh_data",
