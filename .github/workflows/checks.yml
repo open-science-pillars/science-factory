@@ -34,7 +34,7 @@ jobs:
           fi
       # The judges: everything up to the point where a model is asked, and back from it. The self-test builds a
       # study that has been opened and checks that a judging packet holds nothing written after the opening.
-      - name: The scorers tool tests itself, the outcome firewall included
+      - name: The scorers tool tests itself, the outcome firewall and the judges' packets included
         run: uv run tools/scorers.py selftest
       - name: The study tool tests itself
         run: uv run tools/sf.py selftest
@@ -82,6 +82,8 @@ jobs:
           uv run factory/harnesses/github/verify_acts.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/describe_record.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
+      # The example also shows, in practice mode, a fit note, the overclaiming check, a person's so what, figures at the lock, a
+      # look promoted to a method in a scratch copy of the definition, and a contribution statement.
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
         run: uv run examples/stand-alone/run.py
       - name: The example left nothing in the repository

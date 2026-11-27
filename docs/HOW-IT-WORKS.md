@@ -96,6 +96,10 @@ None of this is new. Clinical trials finish the analysis plan before the data is
 | What ends it | a lead, a note, a method or a stop | a signed finding or a recorded no | a merged change |
 | What is scarce | attention | fresh data | time |
 
+## Where the person's part comes from
+
+Six pieces of this design come from a physicist's account of three months of science done with Claude, Schwartz's ["Claude-shaped science"](https://www.anthropic.com/research/claude-shaped-science) (Anthropic, October 2026), in our reading of it. He found the agents' results usually correct and scientifically unremarkable until an expert steered them: so every lead waits for a person's so what. He found that agents declare victory early and need rigid criteria for success, and that a person must look at the plots and distrust phrases like "good agreement": so the lock shows every figure, and the overclaiming check flags such words. The best work came from problems chosen to suit the agents: so a fit note comes first. The tools grew as they were used: so a look can become a method. And credit should not pretend that the person only typed: so a contribution statement is drawn from the logs, with what they cannot show. The mistakes in carrying these ideas over are ours.
+
 ## Sources
 
 - Nosek, Ebersole, DeHaven and Mellor, "The preregistration revolution", PNAS 2018: https://pmc.ncbi.nlm.nih.gov/articles/PMC5856500
@@ -105,5 +109,6 @@ None of this is new. Clinical trials finish the analysis plan before the data is
 - NASA Earthdata, data maturity levels: https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/data-maturity-levels
 - Dwork and others, "Generalization in adaptive data analysis and holdout reuse", 2015: https://arxiv.org/abs/1506.02629
 - "Registered Report for climate research", editorial, Nature Climate Change 2024: https://www.nature.com/articles/s41558-024-01932-4
+- Schwartz, "Claude-shaped science", Anthropic, October 2026: https://www.anthropic.com/research/claude-shaped-science
 - LangChain, "How to Build a Knowledge Factory for AI Agents": https://www.langchain.com/blog/knowledge-factory
 - Warp's documentation of factories, as compared in [WARP-COMPARISON.md](WARP-COMPARISON.md)
