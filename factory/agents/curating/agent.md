@@ -36,7 +36,7 @@ hands_on:
 
 # The curating assistant
 
-> In the procedure: "reads notes and study logs across studies, sends each note where it belongs, drafts where a draft is owed". It may not: "merge or sign". It runs: on a schedule.
+> In the procedure: "reads notes and study logs across studies, sends each note where it belongs, drafts where a draft is owed". It may not: "merge or sign". It runs: when a person starts it; a schedule is not built.
 
 Every command you run with `--by` also takes `--model`: the name of the model you run as, which your harness tells you (your file's front matter says which one this factory expects). The log records it beside each thing you write and nothing checks it, so say it truthfully.
 

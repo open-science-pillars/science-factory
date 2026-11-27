@@ -1,0 +1,11 @@
+# The `home` block of factory/factory.yaml, filled in for a hydrology repository
+# kept elsewhere. To run this demo as that repository's own factory, copy the
+# definition (the folder factory/) into the hydrology repository and put this
+# block in place of the built-in one in its factory.yaml.
+# The study tool does not read this block; it is for people.
+home:
+  name: "a hydrology repository"
+  repositories: [hydrology]                    # a factory that spans several repositories lists them all
+  borrows: [nasa-daac-knowledge]               # read by this factory, never written by it
+  stewards: "the repository's code owners"
+  holds: {studies: "studies/", record_of_openings: "studies/openings.jsonl", change_log: "factory/change-log.jsonl"}

@@ -1,6 +1,5 @@
 # Proposal: studies that keep watching, and choices that expire
 
-**Open Science Pillars (personal hat) · 2026-11-25 · proposed; nothing here is built.**
 
 This says which parts of the process plugin belong in the science factory, and under what names. The process plugin was designed in August and September 2026 as a layer with two ideas, decision records and standing hypotheses, and a companion bench of seeded experiments. It is read here from its design notes; its repositories are not in the organization.
 

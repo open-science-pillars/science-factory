@@ -1,6 +1,5 @@
 # Two ways of working: exploring and confirming
 
-**Open Science Pillars (personal hat) · 2026-11-25 · how scientists actually work, what the factory does for each way, and why the two are kept apart.**
 
 A scientist works in two ways, and most days in the first. **Exploring** is looking at data to find out what is there. **Confirming** is testing one claim that was stated before the data that tests it was seen. Methodologists call them hypothesis-generating and hypothesis-testing research. Both are real science. The trouble starts only when a result found the first way is reported as if it had come from the second.
 

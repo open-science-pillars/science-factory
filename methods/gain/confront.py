@@ -213,8 +213,8 @@ def main() -> int:
     if (a.inputs is None) == (a.batch is None):
         ap.error("give --inputs TREE.json, or --batch CASES.jsonl, and not both")
     if not a.executor.is_file():
-        print(f"confront: refused. The executor {a.executor} is not there; it ships with the capability it belongs to, so "
-              "check that capability out where the plan's roots point. Nothing was run", file=sys.stderr)
+        print(f"confront: refused. The executor {a.executor} is not there; it ships with the repository it belongs to, so "
+              "check that repository out where the plan's roots point. Nothing was run", file=sys.stderr)
         return 2
     if a.batch:
         return run_batch(a)

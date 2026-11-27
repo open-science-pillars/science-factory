@@ -331,7 +331,7 @@ REQUIRED_CRITERIA = {
 DIRECTION_OPS = {"at most": ("<=", "<"), "at least": (">=", ">")}
 
 # Every key the plan check accepts. A key outside these is refused, so a misspelled key cannot hide.
-PLAN_KEYS = ("study", "study_kind", "question", "claim_class", "quantity_estimated", "roots", "code", "data", "tests",
+PLAN_KEYS = ("study", "study_kind", "question", "quantity_estimated", "roots", "code", "data", "tests",
              "rehearsals", "rules", "openings_allowed", "planned_handling", "independence", "what_this_can_show",
              "overturn", "limitations", "scheduled_retest")
 PLAN_NEEDS = {
@@ -666,7 +666,7 @@ class Study:
         The commit history is the one record a workspace cannot quietly
         redo once it is pushed, so the opening and the log check lean on
         it. The tool takes any local commit; that the commit is a reviewed
-        one on a protected branch is the organization's to hold."""
+        one on a protected branch is for the repository's settings on GitHub to hold."""
         try:
             top = git("-C", str(self.d), "rev-parse", "--show-toplevel")
             if top is None or top.returncode != 0:
@@ -3129,15 +3129,14 @@ def cmd_note(study: Study, a) -> None:
 
 
 def cmd_curation_list(study: Study, a) -> None:
-    route = {"missing": "draft the concept at status draft and open a concept issue (the ingest loop); a validity "
-                        "domain is drafted by the seeder from sources the steward supplies",
-             "wrong": "amend the named concept by pull request; a signed concept stays stable and owes a signature "
-                      "until the steward re-signs (merge then sign)",
-             "stale": "re-verify the named concept against its source and move its stale_after",
+    route = {"missing": "draft the page at status draft in the queue of drafts; a person decides whether it joins the wiki",
+             "wrong": "amend the named page by pull request; a signed page keeps its signature only once the steward signs "
+                      "it again",
+             "stale": "check the named page against its source again and move its stale_after",
              "contradiction": "open a steward review; never resolve by editing either side",
              "method": "amend the recipe or the computation by pull request with the known-answer test evidence "
                        "attached; a signed recipe stays stable and owes a signature",
-             "dead-end": "draft a dead-end concept: the attempt, the failure, and what would reopen it"}
+             "dead-end": "draft a dead-end page: the attempt, the failure, and what would reopen it"}
     by_subject = {}
     resolved = {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"}
     for e in study.events():  # the study log says which notes exist; a file that vanished is still listed
@@ -3202,10 +3201,9 @@ def attached_finding(ev: list):
 
 
 def cmd_signature(study: Study, a) -> None:
-    """The steward's signature, in the study log. The signature itself is
-    the steward's verified event on the finding, made with the
-    organization's signing tool; this records that it happened, or that the
-    steward declined, on which finding (its path and checksum), and where."""
+    """The steward's signature, in the study log. In a real study the signature is the merge of the pull request that
+    carries the signature request; this records that it happened, or that the steward declined, on which finding (its
+    path and checksum), and where."""
     factory = Path(getattr(a, "factory", None) or FACTORY)
     if getattr(a, "record_merge", None):
         record_merged_act(study, a, "signature", factory)
