@@ -3259,6 +3259,11 @@ def act_harness(factory: Path, act: str) -> tuple:
     return harness_of(str((acts_declared(factory).get(act) or {}).get("harness") or ""))
 
 
+def run_verifier(argv: list, **kw) -> subprocess.CompletedProcess:
+    """The one place the program that asks the platform is started (a self-test watches it here, and starts nothing)."""
+    return subprocess.run(argv, **kw)
+
+
 def platform_answer(what: str, expect: dict, mod, block: dict) -> dict:
     """The platform's answer to one question (`act`: a lock or a signature; `comment`: a person's so what), from the one
     function that asks it, `platform_call` in the harness's verify_acts.py, run in a process of its own: a Python that
@@ -3289,7 +3294,7 @@ def platform_answer(what: str, expect: dict, mod, block: dict) -> dict:
         if os.environ.get(k):
             env[k] = os.environ[k]
     try:
-        done = subprocess.run([sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}", str(Path(mod.__file__).resolve()), "--ask"],
+        done = run_verifier([sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}", str(Path(mod.__file__).resolve()), "--ask"],
                               input=json.dumps({"what": what, "expect": expect, "proxy": block.get("proxy")}), capture_output=True, text=True,
                               env=env, cwd=tempfile.gettempdir(), timeout=900)
         got = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
@@ -5447,12 +5452,68 @@ def secrets_hex() -> str:
     return secrets.token_hex(32)
 
 
+def _plant_bytecode(source: Path, code: str) -> Path:
+    """Bytecode beside a source file, as the fourth attack's plant.py wrote it: `code` compiled under the source's name, with
+    the source's own time and size in its header, so that a loader that reads bytecode takes it in place of the source."""
+    from importlib._bootstrap_external import _code_to_timestamp_pyc
+    st = source.stat()
+    out = source.parent / "__pycache__" / f"{source.stem}.{sys.implementation.cache_tag}.pyc"  # where Python looks with no cache prefix
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(_code_to_timestamp_pyc(compile(code, str(source), "exec"), int(st.st_mtime), st.st_size))
+    return out
+
+
+def _selftest_bytecode(tmp: Path, check) -> None:
+    """A4-02: bytecode planted beside the verifier is never loaded, and is refused at the lock and the opening."""
+    person = "human:throwaway-placeholder"
+    planted = tmp / "a4-planted-definition"
+    shutil.copytree(FACTORY, planted)
+    verifier = planted / "harnesses" / "github" / "verify_acts.py"
+    pyc = _plant_bytecode(verifier, verifier.read_text() + '\nHOST = "attack4-marker-host"  # ATTACK4 MARKER\n'
+                                    'def verify(call, api, token, expect):\n    return {"result": VERIFIED, "problems": [], "told": {}, "asked": []}\n')
+    spec = _source_spec("sf_selftest_planted_verifier", verifier)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sys.modules.pop("sf_selftest_planted_verifier", None)
+    check("A4-02: bytecode planted beside the verifier with the source's own time and size is not what the tools load: a module is "
+          "compiled from its source text", pyc.is_file() and mod.HOST == "api.github.com" and "ATTACK4" not in json.dumps(mod.verify.__doc__ or ""))
+    asking = subprocess.run([sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}", "-c",
+                             "import sys; sys.path.insert(0, sys.argv[1]); import verify_acts; print(verify_acts.HOST)", str(verifier.parent)],
+                            capture_output=True, text=True, env={}, cwd=str(tmp))
+    check("A4-02: and a Python started the way the tools start the program that asks reads no bytecode either, even when the "
+          "module is imported by name from its folder", asking.stdout.strip() == "api.github.com")
+    study = _fresh(tmp, "a4-bytecode")
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    at_lock = _refusal(cmd_lock, study, A(by=person, evidence=URL, factory=str(planted), local_practice=True))
+    locked_with_bytecode = study.last("lock.recorded")
+    pyc.unlink()
+    pyc.parent.rmdir()
+    cmd_lock(study, A(by=person, evidence=URL, factory=str(planted), local_practice=True))
+    _plant_bytecode(verifier, verifier.read_text())
+    at_opening = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(planted), local_practice=True))
+    check("A4-02: a bytecode folder under the definition is refused at the lock and at the opening, by name, and nothing is opened or "
+          "used up", "harnesses/github/__pycache__: a bytecode folder" in at_lock and locked_with_bytecode is None
+          and "harnesses/github/__pycache__: a bytecode folder" in at_opening and not study.last("opening.started"))
+    shutil.rmtree(planted / "harnesses" / "github" / "__pycache__")
+    (planted / "harnesses" / "github" / "notes.txt").write_text("left here\n")
+    changed = _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", factory=str(planted), local_practice=True))
+    check("a file added to the definition after the lock changes its checksum and blocks the opening", "definition changed after the lock" in changed
+          and not study.last("opening.started"))
+    (planted / "harnesses" / "github" / "notes.txt").unlink()
+    here = definition_tool().tools_checksum(TOOL.parent)
+    lock_tools = study.last("lock.recorded")["data"]["definition"]["tools"]
+    check("the lock binds the tools beside the definition by checksum, every file of tools/", lock_tools == here and here["files"] == len(definition_tool().TOOL_FILES))
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating", factory=str(planted), local_practice=True))
+    check("with the planted bytecode removed, the study opens", study.last("opening.finished") is not None)
+
+
 def _selftest_fence_and_acts(tmp: Path, check) -> None:
     """The second independent attack on the tools, made here against the study tool, and the two acts by people as
     pull requests. Every study is in a throwaway folder; the only person's name typed is the placeholder."""
     import copy
     import time
-    global PLATFORM_CALL, FACTORY
+    global PLATFORM_CALL, FACTORY, STAND_INS_COUNT
     person = "human:throwaway-placeholder"
     kernel = bool(fence.landlock())
     have_git = bool(shutil.which("git"))
@@ -5953,6 +6014,102 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
             check("A3-1: and it does not close as a signed finding",
                   "awaiting verification, not signed" in _refusal(cmd_close, r3, A(by="agent:coordinating", outcome="finding-signed", cite=None, comment=None, anchor=posted3))
                   and not r3.last("study.closed"))
+            # ---- A4-01: a verification appended to the log by hand, as the fourth attack's forge_act.py did, moves nothing
+            for act_kind in ("lock.recorded", "signature.recorded"):
+                e = r3.last(act_kind)
+                r3.append("platform:github", "act.verification", {"act": act_kind.split(".")[0], "of": {"seq": e["seq"], "hash": e["hash"],
+                          "merge_commit": e["data"]["merge"]["commit"]}, "result": VERIFIED, "problems": [], "asked": [], "stand_in_for_the_platform": False,
+                          "api": "https://api.github.com", "told": {"approved_by": [{"login": "attack4-marker-nobody"}], "pull_request": {"author": "attack4-author"}},
+                          "note": "ATTACK4 MARKER: written by hand; no platform was asked"})
+            forged3 = check_log(r3, posted3)
+            card3 = json.loads(json.dumps(acts_report(r3)))
+            contrib3 = study_contribution(r3, FACTORY)["paragraph"]
+            check("A4-01: a verification of each act appended to the log by hand, with no network and no token, makes neither act verified: "
+                  "the log check, the finding's first line, status and the scorecard say merge found, the close as a signed finding is "
+                  "refused, and status says what the log claims only as verified when last checked, not re-checked now",
+                  forged3["status"] == AWAITING and forged3["acts"] == {"lock": MERGE_FOUND, "signature": MERGE_FOUND}
+                  and forged3["finding_first_line"].startswith("NOT SIGNED, AWAITING VERIFICATION")
+                  and card3["lock"]["standing"] == MERGE_FOUND and card3["signature"]["standing"] == MERGE_FOUND
+                  and "not re-checked now" in card3["signature"]["last_checked"] and "attack4-marker-nobody" not in json.dumps(card3)
+                  and "awaiting verification, not signed" in _refusal(cmd_close, r3, A(by="agent:coordinating", outcome="finding-signed", cite=None,
+                                                                                        comment=None, anchor=posted3)))
+            check("A4-15: the contribution statement shows the names handed to the tool with a merge as handed, with their standing, never as "
+                  "accounts that approved; and the hand-written verification is named as a note, crediting nobody",
+                  "names handed to the tool with the merge: octo-steward" in contrib3 and "not confirmed by the platform" in contrib3
+                  and "attack4-marker-nobody" not in contrib3 and "nobody named (accounts on" not in contrib3
+                  and "a note of what was asked and when" in contrib3)
+            # ---- A4-03, third route: the harness's own call replaced in this process, as open_with_stand_in.py did
+            mod3, _block3 = act_harness(FACTORY, "lock")
+            was_call, was_token, was_run = mod3.platform_call, mod3.token_from, globals()["run_verifier"]
+            called, ran = [], []
+            mod3.platform_call = lambda *w, **k: called.append(w) or {"status": 200, "body": {}}
+            mod3.token_from = lambda environ: ("SF_PLATFORM_TOKEN", "attack4-not-a-token")
+            globals()["run_verifier"] = lambda argv, **k: ran.append((argv, k.get("env"))) or subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+            kept_route = {k: os.environ.get(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HTTPS_PROXY", "SSL_CERT_FILE")}
+            for k in ("GH_TOKEN", "GITHUB_TOKEN"):
+                os.environ.pop(k, None)
+            os.environ["SF_PLATFORM_TOKEN"] = "attack4-not-a-token"
+            os.environ["HTTPS_PROXY"] = os.environ["SSL_CERT_FILE"] = "/tmp/attack4-a-route-of-the-environment"
+            PLATFORM_CALL = None
+            try:
+                replaced = verify_act(r3, r3.events(), r3.last("lock.recorded"), "lock", FACTORY)
+            finally:
+                mod3.platform_call, mod3.token_from = was_call, was_token
+                globals()["run_verifier"] = was_run
+                for k, v in kept_route.items():
+                    os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                PLATFORM_CALL = _dead_platform
+            asked_argv, asked_env = (ran[0] if ran else (None, None))
+            check("A4-03: the harness's own call replaced in this process is never called: the platform is asked by the verifier run in a "
+                  "process of its own, which reads no bytecode, with an environment that holds the token alone (no proxy, no certificate "
+                  "setting), and an answer it cannot read is `not checked`",
+                  called == [] and len(ran) == 1 and asked_argv[:6] == [sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}"]
+                  and asked_argv[-1] == "--ask" and asked_env == {"SF_PLATFORM_TOKEN": "attack4-not-a-token"}
+                  and replaced["result"] == NOT_CHECKED and replaced["stand_in_for_the_platform"] is False
+                  and {"HTTPS_PROXY", "SSL_CERT_FILE"} <= set(replaced["through"]))
+            # ---- A4-03, the first two routes: a loopback stand-in with its own certificate authority, reached through a proxy
+            tls = mod3._throwaway_tls(tmp / "a4-tls")
+            if tls:
+                proxy, seen, halt = mod3._loopback_tls_proxy(tls)
+                proxied = tmp / "a-proxied-definition"
+                shutil.copytree(FACTORY, proxied)
+                hy = proxied / "harnesses" / "github" / "harness.yaml"
+                hy.write_text(hy.read_text().replace("  api: https://api.github.com\n", f"  api: https://api.github.com\n  proxy: {proxy}\n", 1))
+                kept_route = {k: os.environ.get(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HTTPS_PROXY", "https_proxy", "SSL_CERT_FILE", "NO_PROXY", "no_proxy")}
+                for k in ("GH_TOKEN", "GITHUB_TOKEN", "NO_PROXY", "no_proxy"):
+                    os.environ.pop(k, None)
+                os.environ.update(SF_PLATFORM_TOKEN="attack4-not-a-token", HTTPS_PROXY=proxy, https_proxy=proxy, SSL_CERT_FILE=tls["ca"])
+                kept_factory, FACTORY, PLATFORM_CALL = FACTORY, proxied, None
+                try:
+                    said3 = _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(proxied)))
+                finally:
+                    FACTORY, PLATFORM_CALL = kept_factory, _dead_platform
+                    for k, v in kept_route.items():
+                        os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                    halt()
+                v3 = r3.last("act.verification")["data"]
+                check("A4-03: the fourth attack's stand-in for GitHub on the loopback address, with a throwaway certificate authority named by "
+                      "SSL_CERT_FILE and reached through HTTPS_PROXY, does not answer for the platform: through the one proxy the definition "
+                      "names, its certificate fails against the system's, nothing is asked of it, the answer is `not checked`, and the log says "
+                      "the host, the proxy, the certificate file and the environment's settings that were ignored",
+                      "not verified" in said3 and v3["result"] == NOT_CHECKED and v3["stand_in_for_the_platform"] is False and seen["requests"] == []
+                      and any(c.startswith("CONNECT api.github.com:443") for c in seen["connects"]) and "CERTIFICATE_VERIFY_FAILED" in json.dumps(v3["asked"])
+                      and v3["via"]["host"] == "api.github.com" and v3["via"]["proxy"] == proxy and v3["via"]["certificates"]["path"] != tls["ca"]
+                      and {"HTTPS_PROXY", "SSL_CERT_FILE"} <= set(v3["via"]["environment_ignored"])
+                      and stage_of(r3, FACTORY)["acts"]["lock"]["standing"] == MERGE_FOUND)
+            else:
+                check("A4-03: openssl is on this machine, so the fourth attack's stand-in can be built", False)
+            PLATFORM_CALL = _stand_in_platform(r3, "lock", merge3, head3)
+            STAND_INS_COUNT = False
+            try:
+                stood_in = ask_now(r3, r3.events(), r3.last("lock.recorded"), "lock")
+                refused_stand_in = acts_report(r3)["lock"]["standing"]
+            finally:
+                STAND_INS_COUNT = True
+                PLATFORM_CALL = _dead_platform
+            check("A4-03: an answer from a stand-in set in this process says so, and outside the self-tests it is no verification: the act "
+                  "stays merge found", stood_in["result"] == VERIFIED and stood_in["stand_in_for_the_platform"] is True
+                  and refused_stand_in == MERGE_FOUND and "a stand-in" in via_words(stood_in))
             PLATFORM_CALL = _either(_stand_in_platform(r3, "lock", merge3, head3),
                                     _stand_in_platform(r3, "signature", smerge3, shead3, number=8, case="the approver is a bot"))
             half = _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY)))
@@ -7362,6 +7519,8 @@ def selftest() -> int:
         _selftest_fit(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_release(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_bytecode(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())
