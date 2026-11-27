@@ -43,7 +43,7 @@ When a lead is to become a finding that others rely on, it is tested once on the
 | 1. Ask | You write a request in your own words (`factory/templates/request.md`, or the issue form on GitHub). The analysis agent asks four questions back, and the study starts with the request bound to it by checksum. |
 | 2. Plan | The analysis agent searches the wiki for anything that already answers or limits the question, reads only metadata, proposes the fresh data, and writes the analysis plan: what is estimated, on which data, and what result counts for or against the idea. |
 | 3. Test on known answers | The plan check, the known-answer tests (synthetic data with the truth put in, including cases where the idea is false and cases right at the smallest difference you care about), the working data and the rehearsals of the opening, repeated freely. |
-| The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words. |
+| The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words and every figure the work drew, for them to look at themselves. |
 | 4. Check once, on fresh data | The tool fetches the fresh data and runs the locked analysis on it, once. It will not do so for the agent that ran the tests. |
 | 5. Review, sign and learn | The finding is written from the run's own records. A review agent that did none of the study checks every number. The steward signs the finding, or records the decision not to, by a second pull request. Notes go into the wiki through a queue of drafts, and what should change goes into the definition. |
 

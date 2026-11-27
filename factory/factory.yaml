@@ -175,6 +175,7 @@ procedure:
       opening_needs: verified                  # the held-out data is opened only on a lock the platform has confirmed
       opening_without_verification: refused    # or allowed-with-a-reason: then, with no network, a person may type `open-held-out --people-not-verified REASON`, which is logged
       shows: [the question, the plan's rules and each criterion with its measured rate, "the proposal of the fresh data in words, the held-out block in words, and every change to it",
+              "every figure the exploration's looks and the plan's tests and rehearsals drew, as a picture with its caption, bound by checksum",
               the known-answer tests and the receipts, the bound code by checksum, the definition by checksum and the models it declares,
               open notes, what the reviewer of the lead said, how many things were tried in the exploration that led here]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
@@ -188,7 +189,7 @@ procedure:
       approvals: 1
       repository: example-org/example-studies
       merge_methods: [merge]
-      shows: [the question, what the opening showed under the locked rules, the finding that would be signed, the review's verdict and its file,
+      shows: [the question, what the opening showed under the locked rules, "every figure the opening drew, as a picture with its caption, bound by checksum", the finding that would be signed, the review's verdict and its file,
               the lock this rests on, problems and remarks from the log check]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
       not_held_by_the_tool: "who approved, and that the approver is the steward: the platform says who approved when `sf.py verify-acts` asks it, and the repository's code owners say who the steward is. Until it is verified the signature stands as `merge found, people not verified` and the study is awaiting verification, not signed"

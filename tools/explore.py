@@ -2186,6 +2186,19 @@ def cmd_hand_over(x: Exploration, a) -> None:
     study_dir = os.path.relpath(x.record().parent / a.study_id, x.d)
     command = ["uv", "run", "tools/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
                "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating agent>", "--model", "<the model it runs as>"]
+    figs = []
+    (out / "figures").mkdir(exist_ok=True)
+    for e in ev:  # every figure a look kept, by checksum, with the look's own reason as its caption: the lock shows them all
+        if e["kind"] == "look.run":
+            for fig in e["data"].get("figures") or []:
+                src_fig = x.d / fig["file"]
+                if sf.sha_file(src_fig) != fig["sha256"]:
+                    raise Refused(f"the figure {fig['file']} of {e['data']['id']} is not the picture the look kept; nothing is handed over")
+                name = f"{e['data']['id']}-{Path(fig['file']).name}"
+                shutil.copyfile(src_fig, out / "figures" / name)
+                figs.append({"file": f"figures/{name}", "sha256": fig["sha256"], "look": e["data"]["id"],
+                             "caption": " ".join(str(e["data"].get("why") or "").split())[:300]})
+    write_json(out / "figures.json", {"kind": "the exploration's figures, for the lock", "figures": figs})
     sha = write_json(out / "hand-over.json", {
         "kind": "hand-over", "from": start["data"]["id"], "for": "sf.py start", "study_id": a.study_id,
         "study_directory_from_exploration": study_dir, "question": stub["question"],
@@ -3329,6 +3342,9 @@ def selftest() -> int:
         sw = fresh("E-SO-WHAT", subject="reach_id=R40,gauge=G40")
         known(sw)
         ssw = script(sw, "rows.py", "import json, sys\nd = json.load(open(sys.argv[1]))\nprint('rows', len(d['rows']))\n")
+        sfig = script(sw, "draw.py", "from pathlib import Path\nPath('figures').mkdir(exist_ok=True)\n"
+                                     "Path('figures/a-on-b.svg').write_text('<svg xmlns=\"http://www.w3.org/2000/svg\"/>')\nprint('drawn')\n")
+        look(sw, ["{python}", sfig], why="a picture of A against B, every row")
         look(sw, ["{python}", ssw, str(data)])
         swf = sw.d / "lead.yaml"
         swf.write_text(yaml.safe_dump(rl))
@@ -3376,6 +3392,10 @@ def selftest() -> int:
         quiet(cmd_end, sw, A(outcome="lead", summary="A follows B on changes; a person says it is worth confirming"))
         quiet(cmd_hand_over, sw, A(by="agent:tester-coordinating", study_id="STUDY-SO-WHAT", local_practice=True))
         swho = (sw.d / "hand-over/request.md").read_text()
+        figs = json.loads((sw.d / "hand-over/figures.json").read_text())["figures"]
+        ok("the hand-over carries every figure the looks kept, by checksum, with the reason of the look that drew it as its caption",
+           figs == [{"file": "figures/LOOK-001-a-on-b.svg", "sha256": sf.sha_file(sw.d / "figures/a-on-b.svg"), "look": "LOOK-001",
+                     "caption": "a picture of A against B, every row"}] and (sw.d / "hand-over/figures/LOOK-001-a-on-b.svg").is_file())
         ok("the hand-over carries the so what, who gave it and its standing, and the log checks out",
            "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "standing: practice" in swho
            and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])

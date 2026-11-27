@@ -59,6 +59,7 @@ jobs:
           --repo head --tools base/tools --factory base/factory
           --event "$GITHUB_EVENT_PATH" --reviews "$RUNNER_TEMP/reviews.json"
           --summary-out "$RUNNER_TEMP/summary.md"
+          --image-base "https://github.com/${{ github.repository }}/raw/${{ github.event.pull_request.head.sha }}"
       - name: Show the evidence summary on the pull request
         if: always()
         env:

@@ -93,6 +93,9 @@ tests:
               "--out", "{study}/receipts/working-data.json"]
     receipt: receipts/working-data.json   # this receipt must carry every field a rule reads, as a number
     # writes: [working/generated.json]   optional, on any test and any rehearsal: other files inside the study
+    # figures:                           optional, on any test and any rehearsal: pictures the step draws, which the lock
+    #   - {file: figures/coverage.svg, shows: "how often each rule was right, case by case"}   (or the signature, for
+    #                                    the held-out test) shows with the caption and binds; a declared figure not drawn fails the step
     #   that this step's own command writes. The tool removes them before each run and keeps them out of the
     #   locked code. A file you supply (a fixture, parameters) is not listed here: it is locked with the code.
   # The test on held-out data. It is run only by `sf.py open-held-out`, once, after the lock.

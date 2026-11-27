@@ -75,7 +75,7 @@ What to expect: `started TRIAL-1`; `change recorded under ...`; `plan check: the
 
 ## 2. You: read, approve, merge. That is the lock.
 
-Read the pull request: the evidence summary the check posts on it (also in `$W/lock-request/EVIDENCE.md`). It shows the question, each rule with each criterion and the rate measured beside it, the fresh data (for a system trial, a blind case made at the opening), what is held out and every change to it, the code by checksum, the definition and the models it declares, and the open notes. Approve and merge. Nothing is typed.
+Read the pull request: the evidence summary the check posts on it (also in `$W/lock-request/EVIDENCE.md`). It shows the question, each rule with each criterion and the rate measured beside it, the fresh data (for a system trial, a blind case made at the opening), what is held out and every change to it, every figure (the exploration's, and any a test or rehearsal declares under `figures:` in the plan) as a picture with its caption, the code by checksum, the definition and the models it declares, and the open notes. Look at each figure yourself: a table can agree with a claim that a picture shows is wrong. Approve and merge. Nothing is typed.
 
 The workflow's `record` job then writes the lock into the study log on `main`, has GitHub asked, and prints a log fingerprint of the form `SEQ:HASH`: post it on the tracking issue. `sf status --study $W` gives the lock's standing; it must be `verified` before the opening.
 
@@ -111,7 +111,7 @@ The log check prints `confirmatory study, ready for the steward's signature`. Op
 
 ## 4. You: decide, then reveal the answer
 
-Read the second pull request: the outcome under the locked rules, the write-up that would be signed, and the review. For a system trial, signed means "I accept this trial if the sealed answer shows the factory was right". Approve and merge it; that is the signature, and the workflow records and verifies it. Then:
+Read the second pull request: the outcome under the locked rules, the figures the opening drew, the write-up that would be signed, and the review. For a system trial, signed means "I accept this trial if the sealed answer shows the factory was right". Approve and merge it; that is the signature, and the workflow records and verifies it. Then:
 
 ```
 git switch main

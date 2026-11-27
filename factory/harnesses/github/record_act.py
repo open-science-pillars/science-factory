@@ -167,6 +167,13 @@ def selftest(only: str | None = None) -> int:
             good = run(event(), fixture("reviews.approved.json", APPROVED_SHA=head))
             ok("approved at its head by somebody other than the author, with a manifest that matches the files, the request passes",
                good[0] == 0 and "every check passed" in said(good) and "octo-steward" in said(good), V)
+            base_url = "https://github.com/example-org/example-studies/raw/" + head
+            shown = check.with_images("![a picture](../exploration-figures/LOOK-003-residual.svg)\n![away](https://example.org/x.png)\n![out](../../../../x.svg)",
+                                      base_url, "studies/S1/lock-request")
+            ok("the evidence summary on the pull request points each figure at the head of the pull request, so a reviewer sees it in the "
+               "comment; a link elsewhere, or out of the repository, is left alone",
+               f"]({base_url}/studies/S1/exploration-figures/LOOK-003-residual.svg)" in shown and "](https://example.org/x.png)" in shown
+               and "](../../../../x.svg)" in shown, V)
             bots = run(event(), fixture("reviews.bot-only.json", APPROVED_SHA=head))
             ok("an approval by a bot or an app is not an approval by a person, whatever its login looks like",
                bots[0] == 1 and "nobody but the author" in said(bots), V)

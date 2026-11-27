@@ -274,7 +274,7 @@ HARNESS_PERSON = "human:blind-test-harness"  # the one named exception: the blin
 NOT_PART_OF_THE_WORK = ("review.verdict", "note.raised", "note.resolved", "change.recorded")
 # Paths inside a study that no plan may name as something a step writes: the tool or people write them
 PROTECTED = ("study-log.jsonl", "analysis-plan.yaml", "scorecard.json", "curation-list.json", "request.md")
-PROTECTED_FOLDERS = ("notes", "verdicts", "finding", "request")
+PROTECTED_FOLDERS = ("notes", "verdicts", "finding", "request", "exploration-figures", "lock-request", "signature-request")
 ACT_FOLDERS = ("lock-request", "signature-request")  # what a person's act is asked for with; written by the tool only
 
 # The criteria every decision rule must meet on the known-answer tests before the lock. The names are fields the
@@ -307,8 +307,9 @@ PLAN_NEEDS = {
 STUDY_KINDS = ("confirmatory", "system_trial")
 DATA_KEYS = ("working", "held_out")
 HELD_OUT_KEYS = ("window", "pair", "withheld_values", "path", "observation_metadata", "why_this_window", "metadata_note", "fresh_data")
-TEST_KEYS = ("command", "receipt", "fetch", "data", "window", "pair", "writes", "passes_environment")
-REHEARSAL_KEYS = ("id", "why", "steps", "receipt", "writes", "needs", "passes_environment")
+TEST_KEYS = ("command", "receipt", "fetch", "data", "window", "pair", "writes", "passes_environment", "figures")
+REHEARSAL_KEYS = ("id", "why", "steps", "receipt", "writes", "needs", "passes_environment", "figures")
+PICTURES = (".svg", ".png", ".jpg", ".jpeg")  # what a step may declare as a figure: a picture a person looks at, at the lock or the signature
 # The launchers the tool knows. A command is one of them followed by a script file, then the script's own
 # arguments; the script is what the lock binds. Nothing else is run: not a shell, not a program that takes its
 # code as text.
@@ -682,11 +683,15 @@ class Study:
             add(spec.get("data"), f"tests.{t}.data")
             for w in spec.get("writes") or []:
                 add(w, f"tests.{t}.writes")
+            for fig in figures_declared(spec):
+                add(fig["file"], f"tests.{t}.figures")
         for i, reh in enumerate(plan.get("rehearsals") or []):
             reh = reh if isinstance(reh, dict) else {}
             add(reh.get("receipt"), f"rehearsals[{reh.get('id', i)}].receipt")
             for w in reh.get("writes") or []:
                 add(w, f"rehearsals[{reh.get('id', i)}].writes")
+            for fig in figures_declared(reh):
+                add(fig["file"], f"rehearsals[{reh.get('id', i)}].figures")
         return out
 
     @staticmethod
@@ -1109,6 +1114,7 @@ def _check_plan(plan, study: Study | None) -> list:
                              "go in `writes`")
         if "writes" in spec and not (isinstance(spec["writes"], list) and all(is_text(w) for w in spec["writes"])):
             p.append(f"`tests.{t}.writes`: a list of paths inside the study that this test's own commands write")
+        p += figures_problems(f"tests.{t}", spec)
         p += passes_problems(f"tests.{t}", spec)
     p += [f"`tests.{t}`: test {t} is not in the plan" for t in ("known-answers", "working-data", "held-out") if t not in tests]
 
@@ -1131,6 +1137,7 @@ def _check_plan(plan, study: Study | None) -> list:
             p.append(f"`rehearsals[{reh['id']}].receipt`: a path inside the study")
         if "writes" in reh and not (isinstance(reh["writes"], list) and all(is_text(w) for w in reh["writes"])):
             p.append(f"`rehearsals[{reh['id']}].writes`: a list of paths inside the study that this rehearsal's own steps write")
+        p += figures_problems(f"rehearsals[{reh['id']}]", reh)
         if "needs" in reh and not (isinstance(reh["needs"], list) and reh["needs"] and all(is_text(w) for w in reh["needs"])):
             p.append(f"`rehearsals[{reh['id']}].needs`: a list of files that must exist for this rehearsal to pass "
                      "(the tool itself looks for them and binds them)")
@@ -1227,11 +1234,15 @@ def output_problems(plan: dict, study: Study) -> list:
             claim(spec["data"], f"tests.{t}.data")
         for w in spec.get("writes") or []:
             claim(w, f"tests.{t}.writes")
+        for fig in figures_declared(spec):
+            claim(fig["file"], f"tests.{t}.figures")
     for reh in plan.get("rehearsals") or []:
         if reh.get("receipt"):
             claim(reh["receipt"], f"rehearsals[{reh['id']}].receipt")
         for w in reh.get("writes") or []:
             claim(w, f"rehearsals[{reh['id']}].writes")
+        for fig in figures_declared(reh):
+            claim(fig["file"], f"rehearsals[{reh['id']}].figures")
     held_out_paths = [plan["tests"][t].get("data") or held["path"] for t in HELD_OUT_TESTS if t in plan["tests"]]
     if len(held_out_paths) == 2 and (study.d / held_out_paths[0]).resolve() == (study.d / held_out_paths[1]).resolve():
         p.append("`tests.independent-site.data`: the two tests on held-out data would write the same data file; give the "
@@ -1438,12 +1449,64 @@ def cmd_start(study: Study, a) -> None:
                 raise Refused("the study already holds a different request.md; start with `--request` on that file, or remove it")
             shutil.copyfile(src, dest)
         data["request"] = {"file": dest.relative_to(study.d).as_posix(), "sha": sha_file(dest)}
+        figs = exploration_figures_beside(src)
+        if figs:  # a request from an exploration's hand-over brings the exploration's figures, bound here by checksum
+            (study.d / "exploration-figures").mkdir(exist_ok=True)
+            for f in figs:
+                shutil.copyfile(src.parent / f["file"], study.d / "exploration-figures" / Path(f["file"]).name)
+            data["exploration_figures"] = [{**f, "file": f"exploration-figures/{Path(f['file']).name}"} for f in figs]
     if asked_by:
         data["asked_by"] = asked_by
     for sub in ("receipts", "notes", "verdicts", "data"):
         (study.d / sub).mkdir(exist_ok=True)
     study.append(a.by, "study.started", data)
     print(f"started {a.id}" + (f" (request {data['request']['file']}, sha256 {data['request']['sha'][:12]})" if src else ""))
+
+
+def exploration_figures_beside(request: Path) -> list:
+    """The figures an exploration's hand-over put beside the request (hand-over/figures.json), each checked against
+    its checksum: [{file (from the hand-over folder), sha256, look, caption}]. Empty when the request is not a hand-over."""
+    listing = Path(request).parent / "figures.json"
+    if Path(request).name != "request.md" or not listing.is_file() or not (Path(request).parent / "hand-over.json").is_file():
+        return []
+    try:
+        figs = json.loads(listing.read_text())["figures"]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise Refused("the hand-over's figures.json cannot be read; hand the exploration over again")
+    for f in figs:
+        if not re.fullmatch(r"figures/[A-Za-z0-9][A-Za-z0-9_.-]*", str(f.get("file"))) or sha_file(Path(request).parent / f["file"]) != f.get("sha256"):
+            raise Refused(f"the hand-over's figure {f.get('file')} is not the picture the exploration kept (its checksum differs); hand it over again")
+    return figs
+
+
+def figures_for_the_lock(study: Study, plan: dict, ev: list, bound_events: list) -> list:
+    """Every figure the people locking are asked to look at: the exploration's (bound at the start), then each test's and
+    rehearsal's from the run the lock binds. Each {file, sha256, caption, by}; a picture changed since it was kept is refused."""
+    out = []
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    for f in (start["data"].get("exploration_figures") or []) if start else []:
+        out.append({"file": f["file"], "sha256": f["sha256"], "caption": f["caption"], "by": f"the exploration's {f['look']}"})
+    for e in bound_events:
+        who = TEST_NAMES.get(e["data"].get("test"), "") or f"the rehearsal {e['data'].get('id')}"
+        for f in e["data"].get("figures") or []:
+            out.append({"file": f["file"], "sha256": f["sha256"], "caption": f["shows"], "by": who})
+    for f in out:
+        if sha_file(study.d / f["file"]) != f["sha256"]:
+            raise Refused(f"the figure {f['file']} is not the picture that was kept when it was drawn (its checksum differs): a person "
+                          "is shown what the step drew, so run the step again")
+    return out
+
+
+def figures_in_words(figs: list, up: str = "../") -> list:
+    """The figures as Markdown a pull request shows: each picture, with its caption from the step that drew it."""
+    if not figs:
+        return ["No figure was drawn: neither the exploration's looks nor the plan's steps kept one. A number can agree with a claim "
+                "that a picture would show to be wrong; ask for a figure if one would help.", ""]
+    out = [f"Look at each figure yourself before you approve. Do not take the captions, or anyone's \"good agreement\", for it: "
+           f"{len(figs)} figure(s), each bound by checksum in the manifest.", ""]
+    for i, f in enumerate(figs, 1):
+        out += [f"![{f['caption']}]({up}{f['file']})", "", f"*Figure {i}, drawn by {f['by']} (sha256 {f['sha256'][:12]}): {f['caption']}*", ""]
+    return out
 
 
 def request_of(ev: list) -> dict | None:
@@ -1626,11 +1689,41 @@ def early_data(study: Study, plan: dict, ev: list) -> list:
     return out
 
 
+def figures_declared(step) -> list:
+    """The figures a test or a rehearsal declares, as {file, shows}: what a person will be asked to look at."""
+    figs = step.get("figures") if isinstance(step, dict) else None
+    return [f for f in figs if isinstance(f, dict) and is_text(f.get("file"))] if isinstance(figs, list) else []
+
+
+def figures_problems(where: str, step: dict) -> list:
+    if "figures" not in step:
+        return []
+    figs = step["figures"]
+    if not isinstance(figs, list) or not figs:
+        return [f"`{where}.figures`: a list of {{file: figures/name.svg, shows: what the picture shows, in words}}"]
+    p = []
+    for f in figs:
+        if not isinstance(f, dict) or set(f) != {"file", "shows"} or not is_text(f.get("file")) or len(str(f.get("shows") or "").split()) < 3:
+            p.append(f"`{where}.figures`: each entry is {{file: figures/name.svg, shows: what the picture shows, in words}}")
+        elif Path(str(f["file"])).suffix.lower() not in PICTURES:
+            p.append(f"`{where}.figures`: `{f['file']}` is not a picture a person can look at ({', '.join(PICTURES)})")
+    return p
+
+
+def figures_drawn(study: Study, step: dict) -> tuple:
+    """(the declared figures that exist, each {file, sha256, shows}; the declared figures that do not)."""
+    have, missing = [], []
+    for f in figures_declared(step):
+        sha = sha_file(study.path(f["file"]))
+        (have.append({"file": f["file"], "sha256": sha, "shows": " ".join(str(f["shows"]).split())}) if sha else missing.append(f["file"]))
+    return have, missing
+
+
 def clear_outputs(study: Study, step: dict) -> Path | None:
     """Remove what a step is about to write, so a pass is a receipt this run wrote and nothing left behind
     can steer it."""
     rp = study.path(step["receipt"]) if step.get("receipt") else None
-    for f in ([rp] if rp else []) + [study.path(w) for w in step.get("writes") or []]:
+    for f in ([rp] if rp else []) + [study.path(w) for w in step.get("writes") or []] + [study.path(g["file"]) for g in figures_declared(step)]:
         if f.is_file() or f.is_symlink():
             f.unlink()
     return rp
@@ -1680,7 +1773,10 @@ def cmd_test(study: Study, a) -> None:
     code, problem, identity = run_step(study, plan, [spec["command"]], passes)
     if code == 0 and not rp.is_file():
         code = 96  # exit 0 and no receipt is not a pass
-    study.append(a.by, "test.run", {"test": a.what, "exit": code, "plan_sha": study.plan_sha(),
+    drawn, undrawn = figures_drawn(study, spec)
+    if code == 0 and undrawn:
+        code, problem = 94, "the plan declares figures this test did not draw: " + ", ".join(undrawn)
+    study.append(a.by, "test.run", {"test": a.what, "exit": code, "plan_sha": study.plan_sha(), "figures": drawn,
                                     "code": identity, "receipt_sha": sha_file(rp), "problem": problem,
                                     "env": env_stamp(study, plan), "env_names": given_names(passes),
                                     "held_out_sha": held_out_block(plan)["sha"], "ran_in": how_it_ran(mark)})
@@ -1740,7 +1836,10 @@ def cmd_rehearse(study: Study, a) -> None:
             missing = ["no readable receipt"]
         if missing:
             code, problem = 95, "the rehearsal receipt lacks rule fields: " + ", ".join(missing)
-    study.append(a.by, "rehearsal.run", {"id": a.id, "exit": code, "plan_sha": study.plan_sha(),
+    drawn, undrawn = figures_drawn(study, reh)
+    if code == 0 and undrawn:
+        code, problem = 94, "the plan declares figures this rehearsal did not draw: " + ", ".join(undrawn)
+    study.append(a.by, "rehearsal.run", {"id": a.id, "exit": code, "plan_sha": study.plan_sha(), "figures": drawn,
                                          "code": identity, "receipt_sha": sha_file(rp) if rp else None,
                                          "problem": problem, "env": env_stamp(study, plan),
                                          "env_names": given_names(passes),
@@ -2143,6 +2242,12 @@ def manifest_now(study: Study, plan: dict, ev: list, factory: Path, act: str) ->
     if fresh is not None:  # the proposal and, for a random set aside, its seed: a change to either after the request shows
         f = study.path(fresh)
         out["fresh_data"] = {"file": fresh, "sha256": sha_file(f), "seed_sha256": sha_file(fresh_tool().seed_path(f))}
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    steps = [plan["tests"][t] for t in FREE_TESTS] + list(plan.get("rehearsals") or [])
+    if act != "lock":
+        steps += [plan["tests"][t] for t in HELD_OUT_TESTS if t in plan["tests"]]
+    out["figures"] = {**{f["file"]: sha_file(study.d / f["file"]) for f in ((start or {}).get("data") or {}).get("exploration_figures") or []},
+                      **{f["file"]: sha_file(study.path(f["file"])) for st in steps for f in figures_declared(st) if sha_file(study.path(f["file"]))}}
     if act == "lock":
         out["receipts"] = {t: sha_file(study.path(plan["tests"][t]["receipt"])) for t in FREE_TESTS}
         out["receipts"].update({f"rehearsal:{r['id']}": sha_file(study.path(r["receipt"])) for r in plan.get("rehearsals") or [] if r.get("receipt")})
@@ -2362,9 +2467,10 @@ def lock_evidence(study: Study, a) -> dict:
     code, psha = study.code_hashes(plan), study.plan_sha()
     if None in code.values():
         raise Refused("a file the plan names is missing: " + ", ".join(k for k, v in code.items() if v is None))
-    bound = {}
+    bound, ran = {}, []
     for t in FREE_TESTS:
         e = study.last("test.run", test=t)
+        ran.append(e)
         if not e or e["data"]["exit"] != 0:
             raise Refused(f"{TEST_NAMES[t]}: not passed yet")
         if e["data"]["plan_sha"] != psha or e["data"]["code"] != code:
@@ -2379,6 +2485,8 @@ def lock_evidence(study: Study, a) -> dict:
         if e["data"]["plan_sha"] != psha or e["data"]["code"] != code:
             raise Refused(f"rehearsal `{reh['id']}` passed on a different plan or different code; run it again")
         bound[f"rehearsal:{reh['id']}"] = e["data"]["receipt_sha"]
+        ran.append(e)
+    figures = figures_for_the_lock(study, plan, ev, ran)
     try:
         known = json.loads(study.path(plan["tests"]["known-answers"]["receipt"]).read_text())
         working = json.loads(study.path(plan["tests"]["working-data"]["receipt"]).read_text())
@@ -2492,8 +2600,9 @@ def lock_evidence(study: Study, a) -> dict:
             "uv_environments": environments,
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
-            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None}
-    return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh}
+            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None,
+            "figures": {f["file"]: f["sha256"] for f in figures}}
+    return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh, "figures": figures}
 
 
 def lock_summary(study: Study, got: dict, factory: Path) -> list:
@@ -2534,6 +2643,7 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
     out += ["", "## The known-answer tests, working data and rehearsals", "",
             f"{len(runs)} attempts are in the log, of which {sum(1 for e in runs if e['data']['exit'] != 0)} failed. The receipts this lock would bind:", ""]
     out += [f"- {name}: sha256 {sha}" for name, sha in sorted(d["receipts"].items())]
+    out += ["", "## The figures: look at each one yourself", ""] + figures_in_words(got["figures"])
     fenced = sorted({(e["data"].get("ran_in") or {}).get("confined") or "not recorded" for e in runs})
     out += ["", "How the plan's commands ran (the kernel fence, or a scratch folder only): " + ", ".join(fenced) + ".", "",
             "## The code this lock would bind", "", f"{len(d['code'])} files, each by sha256:", ""]
@@ -2985,6 +3095,7 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "receipt": spec["receipt"], "receipt_sha": sha_file(rp), "data": data_rel,
                                                 "data_sha": sha_file(data), "fetch_wrote": fetch_wrote,
                                                 "wrote": {w: sha_file(study.path(w)) for w in spec.get("writes") or []},
+                                                "figures": figures_drawn(study, spec)[0],
                                                 "env_names": given_names(passes), "ran_in": how_it_ran(mark),
                                                 "outcomes": outcomes, "method_declined": declined})
     print(f"held-out data opened ({a.test}, opening {n}); outcomes {outcomes}" + (f" (the method declined: {declined})" if declined else ""))
@@ -3227,6 +3338,13 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
            "## The question", "", str(plan["question"]).strip(), "",
            "## What the opening showed", "", f"The log check says: {rep['status']}.", ""]
     out += [f"- {t}: " + ", ".join(f"{rule} {o}" for rule, o in sorted(o_.items())) for t, o_ in sorted(rep["outcomes"].items())] or ["- no opening has a result"]
+    opened = [e for e in ev if e["kind"] == "opening.finished"]
+    figs = [{"file": f["file"], "sha256": f["sha256"], "caption": f["shows"], "by": f"the opening of {e['data']['test']} (opening {e['data']['n']})"}
+            for e in opened[-1:] for f in e["data"].get("figures") or []]
+    for f in figs:
+        if sha_file(study.d / f["file"]) != f["sha256"]:
+            raise Refused(f"the figure {f['file']} is not the picture the opening drew (its checksum differs); nothing is requested")
+    out += ["", "## The figures the opening drew: look at each one yourself", ""] + figures_in_words(figs)
     out += ["", "## The finding that would be signed", ""]
     if att:
         try:
@@ -3901,6 +4019,11 @@ def cmd_log_change(study: Study, a) -> None:
 # ---- selftest: the happy path and the attacks ---------------------------
 TOY = '''import hashlib, json, os, sys
 from pathlib import Path
+if "--figure" in sys.argv:  # a step that draws a picture for the people at the lock or the signature to look at
+    at = sys.argv.index("--figure")
+    Path(sys.argv[at + 1]).parent.mkdir(parents=True, exist_ok=True)
+    Path(sys.argv[at + 1]).write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>" + sys.argv[1] + "</text></svg>")
+    del sys.argv[at:at + 2]
 mode, out = sys.argv[1], sys.argv[2]
 here = Path(__file__).resolve().parent
 if mode == "known-answers":
@@ -4067,6 +4190,75 @@ def _refusal(fn, *args) -> str:
     except Refused as r:
         return str(r)
     return ""
+
+
+def _selftest_figures(tmp: Path, check) -> None:
+    """Figures at the lock and at the signature: the exploration's, brought by its hand-over and bound at the start, and the
+    ones the plan's steps declare, each shown as a picture with its caption and bound by checksum in the request."""
+    ho = tmp / "EXPLORATION-F" / "hand-over"
+    (ho / "figures").mkdir(parents=True)
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>residual</text></svg>")
+    (ho / "request.md").write_text("# Request\n\nIs the gain within ten percent of one?\n\n**How it was found.** Two looks.\n\n"
+                                   "**The review of the lead.** holes-found.\n\n**The so what.** worth-confirming, by human:throwaway-placeholder, "
+                                   "on lead version 1; standing: practice.\n")
+    (ho / "hand-over.json").write_text("{}\n")
+    listing = {"figures": [{"file": "figures/LOOK-002-residual.svg", "sha256": sha_file(ho / "figures" / "LOOK-002-residual.svg"),
+                            "look": "LOOK-002", "caption": "what is left of A after its line on B, coloured by flag"}]}
+    (ho / "figures.json").write_text(json.dumps(listing))
+    plan = copy_of(PLAN)
+    plan["tests"]["known-answers"]["command"] += ["--figure", "{study}/figures/known-answers.svg"]
+    plan["tests"]["known-answers"]["figures"] = [{"file": "figures/known-answers.svg", "shows": "how often each rule was right, case by case"}]
+    plan["tests"]["held-out"]["command"] += ["--figure", "{study}/figures/held-out.svg"]
+    plan["tests"]["held-out"]["figures"] = [{"file": "figures/held-out.svg", "shows": "the fresh data against the line the plan locked"}]
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg>changed</svg>")
+    check("a study is not started from a hand-over whose figure is not the picture the exploration kept",
+          "checksum differs" in _refusal(cmd_start, Study(tmp / "studies" / "F0"), A(id="F0", question=PLAN["question"], by="agent:coordinating", request=str(ho / "request.md"))))
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>residual</text></svg>")
+    study = _fresh(tmp / "studies", "F1", plan=plan, start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating", request=str(ho / "request.md")))
+    check("a study started from a hand-over keeps the exploration's figures, bound by checksum at the start",
+          (study.d / "exploration-figures" / "LOOK-002-residual.svg").is_file()
+          and study.events()[0]["data"]["exploration_figures"][0]["file"] == "exploration-figures/LOOK-002-residual.svg")
+    check("a plan's figure that is not a picture is refused by the plan check",
+          any("not a picture" in q for q in check_plan({**copy_of(plan), "tests": {**plan["tests"], "known-answers": {
+              **plan["tests"]["known-answers"], "figures": [{"file": "figures/k.txt", "shows": "how often each rule was right"}]}}}, study)))
+    undrawn = copy_of(plan)
+    undrawn["tests"]["working-data"]["figures"] = [{"file": "figures/never.svg", "shows": "a picture nobody draws"}]
+    lazy = _fresh(tmp / "studies", "F2", plan=undrawn)
+    check("a test that does not draw a figure its plan declares fails", "did not draw" in _refusal(cmd_test, lazy, A(what="working-data", by="agent:analysis")))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    check("a test that draws its declared figure records it by checksum", study.last("test.run", test="known-answers")["data"]["figures"][0]["sha256"]
+          == sha_file(study.d / "figures" / "known-answers.svg"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    text = (study.d / "lock-request" / "EVIDENCE.md").read_text()
+    manifest = json.loads((study.d / "lock-request" / "manifest.json").read_text())
+    check("the lock request shows every figure as a picture with its caption, the exploration's and the tests', and asks the person to look",
+          "## The figures: look at each one yourself" in text and "![what is left of A after its line on B, coloured by flag](../exploration-figures/LOOK-002-residual.svg)" in text
+          and "](../figures/known-answers.svg)" in text and "drawn by the exploration's LOOK-002" in text and "Look at each figure yourself" in text)
+    check("the lock request shows the person's so what that came with the hand-over",
+          "A person's so what on the lead (is it worth confirming?): worth-confirming, by human:throwaway-placeholder" in text)
+    check("the manifest binds the figures, so a picture changed after the request shows on the pull request's check",
+          set(manifest["figures"]) == {"exploration-figures/LOOK-002-residual.svg", "figures/known-answers.svg"} and not request_problems(study, "lock", FACTORY))
+    (study.d / "figures" / "known-answers.svg").write_text("<svg>another picture</svg>")
+    check("a figure changed after the request is a difference the check names, and the lock is refused until the step runs again",
+          any("figures" in q for q in request_problems(study, "lock", FACTORY)) and "not the picture that was kept" in _refusal(cmd_lock, study, A(by="human:tester", evidence=URL)))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_lock(study, A(by="human:tester", evidence=URL))
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
+    check("the opening records the figure its test declares", study.last("opening.finished")["data"]["figures"][0]["file"] == "figures/held-out.svg")
+    (tmp / "f-finding.md").write_text(PRACTICE_WORDS + "\n\na finding drafted from receipts\n")
+    cmd_attach(study, A(by="agent:analysis", file=str(tmp / "f-finding.md")))
+    (tmp / "f-v.md").write_text("APPROVE")
+    cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "f-v.md")))
+    cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=_posted(study), evidence=None, comment=None))
+    sig = (study.d / "signature-request" / "EVIDENCE.md").read_text()
+    check("the signature request shows the opening's figure with its caption and binds it",
+          "## The figures the opening drew: look at each one yourself" in sig and "](../figures/held-out.svg)" in sig
+          and "figures/held-out.svg" in json.loads((study.d / "signature-request" / "manifest.json").read_text())["figures"])
+
+
+def copy_of(obj):
+    return json.loads(json.dumps(obj))
 
 
 def _selftest_fresh_data(tmp: Path, check) -> None:
@@ -6030,6 +6222,8 @@ def selftest() -> int:
         _selftest_fence_and_acts(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_fresh_data(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_figures(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())

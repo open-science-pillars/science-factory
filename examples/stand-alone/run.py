@@ -260,6 +260,9 @@ def main() -> int:
              and stub["data"]["held_out"]["fresh_data"].endswith("hand-over/fresh-data.yaml"))
         study = studies / "STUDY-A"
         tool("sf.py", "start", "--study", study, "--id", "STUDY-A", "--question", hand["question"], "--request", x / "hand-over" / "request.md", "--by", coordinator)
+        step("a study started from the hand-over keeps the exploration's figures, each bound by checksum, for the lock to show",
+             (study / "exploration-figures" / "LOOK-003-residual.svg").read_bytes() == (x / "figures" / "residual.svg").read_bytes()
+             and json.loads((study / "study-log.jsonl").read_text().splitlines()[0])["data"]["exploration_figures"][0]["caption"].startswith("a picture"))
 
         def plan(window: dict) -> None:
             (study / "analysis-plan.yaml").write_text(yaml.safe_dump({
@@ -329,6 +332,11 @@ def main() -> int:
         trial_plan = yaml.safe_load((template / "analysis-plan.yaml").read_text())
         trial_plan["study"] = "STUDY-B"
         trial_plan["roots"] = {k: str((template / v).resolve()) for k, v in trial_plan["roots"].items()}  # the copy stands elsewhere
+        # a figure for the people at the lock to look at: the rehearsal case drawn by the skill's own plotting script
+        trial_plan["rehearsals"][0]["steps"].append(["{python}", plot, "{study}/rehearsal/rehearsal_case.json", "--rows", "satellite.rows", "--x", "time",
+                                                     "--y", "wse_m", "--color", "reach_q", "--out", "{study}/figures/rehearsal-case.svg"])
+        trial_plan["rehearsals"][0]["figures"] = [{"file": "figures/rehearsal-case.svg",
+                                                   "shows": "the rehearsal case's satellite elevations through its year, coloured by quality flag"}]
         (trial / "analysis-plan.yaml").write_text(yaml.safe_dump(trial_plan, sort_keys=False))
         S = ("--study", trial)
         tool("sf.py", "start", *S, "--id", "STUDY-B", "--question", trial_plan["question"], "--by", coordinator)
@@ -364,6 +372,9 @@ def main() -> int:
         # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
+        step("the lock request shows the rehearsal's figure as a picture with its caption, asks the person to look at it, and binds it",
+             "## The figures: look at each one yourself" in asked and "](../figures/rehearsal-case.svg)" in asked and "Look at each figure yourself" in asked
+             and "figures/rehearsal-case.svg" in json.loads((trial / "lock-request" / "manifest.json").read_text())["figures"])
         step("an agent can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
              "## The question" in asked and "## The fresh data that will check the idea, and why it was chosen" in asked
              and "a blind test case that the tool makes and seals at the opening" in asked

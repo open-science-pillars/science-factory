@@ -11,7 +11,7 @@ record and not a name typed on a machine that agents share. This program is the 
 pass. It is run by the workflow beside it (acts.workflow.yml) and can be run by hand:
 
   verify_request.py --repo CHECKOUT --event EVENT.json --reviews REVIEWS.json
-                    [--tools DIR] [--factory DIR] [--summary-out FILE]
+                    [--tools DIR] [--factory DIR] [--summary-out FILE] [--image-base URL]
 
   --repo      the pull request's head, checked out with its history
   --event     the platform's event payload for the pull request (a `pull_request` or `pull_request_review` event)
@@ -19,6 +19,9 @@ pass. It is run by the workflow beside it (acts.workflow.yml) and can be run by 
   --tools     the science factory's tools/ to check with (default: tools/ in --repo). The workflow gives the
               protected branch's, so that a pull request cannot bring its own check with it
   --factory   the definition to check against (default: factory/ beside --tools)
+  --image-base  the address the request's figures are served from at the head of the pull request (the workflow
+              gives https://github.com/OWNER/REPO/raw/HEAD_SHA): a figure the evidence summary links by a path
+              relative to its folder is shown in the comment from there, so a reviewer sees each picture
 
 What it checks, each said in plain words when it fails:
   1. the pull request targets the protected branch the definition names for the act;
@@ -46,6 +49,7 @@ sys.dont_write_bytecode = True
 import argparse  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
+import posixpath  # noqa: E402
 import re  # noqa: E402
 import subprocess  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -99,7 +103,25 @@ def declared(factory: Path) -> dict:
     return (spec.get("procedure") or {}).get("acts_by_people") or {}
 
 
-def verify(repo: Path, event: dict, reviews, tools: Path, factory: Path) -> tuple:
+IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+
+
+def with_images(text: str, base: str | None, folder: str) -> str:
+    """The evidence summary with each figure it links by a relative path pointed at `base`, so that a comment on the pull
+    request, which resolves no relative path, still shows the picture. A link that leaves the repository is left as it is."""
+    if not base:
+        return text
+
+    def at(m) -> str:
+        target = m.group(2)
+        if re.match(r"^[a-z]+:", target) or target.startswith("/"):
+            return m.group(0)
+        path = posixpath.normpath(posixpath.join(folder, target))
+        return m.group(0) if path.startswith("..") else f"![{m.group(1)}]({base.rstrip('/')}/{path})"
+    return IMAGE.sub(at, text)
+
+
+def verify(repo: Path, event: dict, reviews, tools: Path, factory: Path, image_base: str | None = None) -> tuple:
     """(exit code, the summary as Markdown lines)."""
     pr = event.get("pull_request") or {}
     try:
@@ -150,7 +172,8 @@ def verify(repo: Path, event: dict, reviews, tools: Path, factory: Path) -> tupl
         out += ["", "Approving now, by the platform's record: " + (", ".join(w["login"] for w in who) or "nobody but the author") + ".", ""]
         summary = repo / study / f"{act}-request" / "EVIDENCE.md"
         out += ["<details><summary>The evidence summary a person reads before approving</summary>", "",
-                summary.read_text() if summary.is_file() else "(the request has no EVIDENCE.md)", "", "</details>", ""]
+                with_images(summary.read_text(), image_base, f"{study}/{act}-request") if summary.is_file() else "(the request has no EVIDENCE.md)",
+                "", "</details>", ""]
     head_line = ["# Acts by people: " + ("ready to merge" if not failed else "not ready to merge"), "",
                  "Merging this pull request is the act itself. It is made by the people who approve and merge it here, on the "
                  "protected branch; this check only says whether what they are shown still matches the files.", ""]
@@ -176,6 +199,7 @@ def main() -> int:
     ap.add_argument("--tools", default=None)
     ap.add_argument("--factory", default=None)
     ap.add_argument("--summary-out", dest="summary_out", default=None)
+    ap.add_argument("--image-base", dest="image_base", default=None)
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -190,7 +214,7 @@ def main() -> int:
     except (OSError, ValueError) as e:
         print(f"verify_request: the event or the reviews could not be read ({e})", file=sys.stderr)
         return 2
-    code, lines = verify(repo, event, reviews, tools, factory)
+    code, lines = verify(repo, event, reviews, tools, factory, a.image_base)
     text = "\n".join(lines) + ("\n" if lines else "")
     if a.summary_out:
         Path(a.summary_out).write_text(text)
