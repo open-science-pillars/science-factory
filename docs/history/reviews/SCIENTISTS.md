@@ -1,5 +1,7 @@
 # The Science Factory from a scientist's chair
 
+*History: kept as written; the register of every finding and its disposition today is [docs/reviews/README.md](../../reviews/README.md).*
+
 *History. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
 
 *This review was written on 2026-11-25 in the package's earlier vocabulary and was put into the present words later the same day. Its findings, numbers and dispositions were meant to stay as they were. After the third review round a few sentences were corrected: the one about the word nobody said, which the rewording had emptied, was restored; the table of kinds was brought into line with the catalog; and sentences that called something done when it is convention or scheduled now say so. The original is not kept in this package. WORDS.md maps the earlier words to the present ones. README.md says where things stand now.*

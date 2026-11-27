@@ -2,7 +2,7 @@
 
 *History: the words and names this factory used before, for anyone reading an older record, review or commit. Today's words are in [docs/WORDS.md](../WORDS.md).*
 
-The factory changed its words three times on 2026-11-25 and 2026-11-26: once to plain words a scientist uses, once to put the names on disk in step with the words, and once to follow the layout of Warp Factories and the owner's vocabulary. The review files in `docs/reviews/` were written in between and keep the words of their day. The full layered list that stood here is in the git history of `docs/WORDS.md`.
+The factory changed its words three times on 2026-11-25 and 2026-11-26: once to plain words a scientist uses, once to put the names on disk in step with the words, and once to follow the layout of Warp Factories and the owner's vocabulary. The long review files, written in between, keep the words of their day; they are now in `docs/history/reviews/`. The full layered list that stood here is in the git history of `docs/WORDS.md`.
 
 ## The main renames
 
@@ -45,7 +45,8 @@ The factory changed its words three times on 2026-11-25 and 2026-11-26: once to 
 | `factory/procedure.yaml` | `factory/factory.yaml` |
 | `name: osp-science-factory`; the `capability` block | `name: science-factory`; the `home` block |
 | `docs/DESIGN.md`, `docs/PLAN.md`, `docs/TWO-WAYS-OF-WORKING.md` | `docs/HOW-IT-WORKS.md`, `docs/CREATE-A-FACTORY.md`, `docs/FIRST-STUDY.md`, `compute/README.md`; the old pages are in git history only |
-| `docs/reviews/ASSISTANTS-AND-EXPLORING.md` | `docs/reviews/AGENTS-AND-EXPLORING.md` |
+| `docs/reviews/ASSISTANTS-AND-EXPLORING.md`, then `docs/reviews/AGENTS-AND-EXPLORING.md` | `docs/history/reviews/AGENTS-AND-EXPLORING.md` |
+| `docs/reviews/RED-TEAM.md`, `docs/reviews/SCIENTISTS.md` | `docs/history/reviews/`; the register stays at `docs/reviews/README.md` |
 | `docs/roadmap-initiative.yaml` | removed: GitHub issues, milestones and a Project board take its place |
 
 ## Options and keys
