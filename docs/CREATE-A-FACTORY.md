@@ -4,10 +4,10 @@ A factory is defined as code: the folder `factory/`, rooted at `factory.yaml`, s
 
 ## Start in five steps
 
-One layout, for every real study: **the repository where your science lives holds its own copy of `tools/`, `factory/` and, if you use the built-in method, `methods/`.** The GitHub workflow runs the tools from there, the lock binds them from there, and the verification reads the repository name from that copy of the definition.
+One layout, for every real study: **the repository where your science lives holds its own copy of `tools/`, `factory/` and, if you use the built-in method, `methods/` and `examples/stand-alone/system-trial/`** (the shipped benchmarks name that plan; drop both benchmarks if you drop it). The GitHub workflow runs the tools from there, the lock binds them from there, and the verification reads the repository name from that copy of the definition.
 
 1. **Get the tools.** Clone this repository, run the three commands of the README to see that it works on your machine, and note the commit.
-2. **Copy and name the definition.** Copy `tools/`, `factory/` and `methods/` into your repository. In `factory/factory.yaml` set `name`, `alias`, `version`, the `home` block, and `repository:` under both acts to your repository's owner/name on GitHub.
+2. **Copy and name the definition.** Copy `tools/`, `factory/`, `methods/` and `examples/stand-alone/system-trial/` into your repository. In `factory/factory.yaml` set `name`, `alias`, `version`, the `home` block, and `repository:` under both acts to your repository's owner/name on GitHub.
 3. **Validate it**, from your repository: `uv run tools/check_factory.py`. Put that and `uv run tools/check_factory.py --summary git:HEAD^:factory factory` in your checks.
 4. **Protect the branch** and install the two acts by people, once, by the checklist in [factory/harnesses/github/README.md](../factory/harnesses/github/README.md). The same page says how to make the labels and the Project board.
 5. **Run the system trial** ([FIRST-STUDY.md](FIRST-STUDY.md)): every stage on a blind test case whose answer nobody knows until after the opening. One right verdict on a kind case is a first sign, not proof; the blind test of the system (below) is the wider measure.

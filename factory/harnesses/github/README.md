@@ -32,7 +32,7 @@ The signature goes the same way, with `sf.py request-signature --decision signed
 
 ## The checklist, done once for a repository
 
-1. Put copies of `tools/`, `factory/` and, for the built-in method, `methods/` in the repository where the studies live, by a pull request (`docs/CREATE-A-FACTORY.md`, "Start in five steps").
+1. Put copies of `tools/`, `factory/` and, for the built-in method, `methods/` and `examples/stand-alone/system-trial/` in the repository where the studies live, by a pull request (`docs/CREATE-A-FACTORY.md`, "Start in five steps").
 2. Copy `acts.workflow.yml` to `.github/workflows/acts.yml`. If the protected branch is not `main`, change `branches:` in the workflow and `protected_branch:` in `factory/factory.yaml` to the same name. Put the repository's owner/name in `repository:` of both acts.
 3. Copy `CODEOWNERS.template` to `.github/CODEOWNERS` with real logins or teams.
 4. Protect the branch: require a pull request before merging; require at least as many approvals as `approvals:` says; require review from code owners; dismiss stale approvals on new commits; require the status check `request-check`; require branches to be up to date; do not let administrators bypass; restrict who can push; no force pushes. Allow merge commits, and switch squash and rebase merging off (a squash merge is taken only if `merge_methods` lists `squash`; a rebase merge never).
