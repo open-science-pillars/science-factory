@@ -55,7 +55,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **access gate**: the step of the study tool that fetches the fresh data at the opening, and nothing else does.
 - **signature**: the steward's decision on the finding, by merging a second pull request.
 - **standing**: how an act stands: `practice`, `merge found, people not verified`, or `verified`.
-- **verification**: GitHub asked, by `sf.py verify-acts`, whether an act is a merge people approved.
+- **verification**: GitHub asked, wherever a standing is used or by `sf.py verify-acts`, whether an act is a merge people approved; a verification kept in the log is a note.
 - **awaiting verification**: a study whose signature is recorded and whose acts are not both verified; not signed.
 - **practice**: an act typed at a command line, for trying the tools; a practice study never closes as a signed finding.
 - **system trial**: a study of the factory itself, on a blind test case sealed at the opening.
