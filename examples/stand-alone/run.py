@@ -329,7 +329,8 @@ def main() -> int:
         verdict.write_text("label: checked\nreasoning: Written by the example's script to show the refusal; no judge read the packet.\n")
         step("a verdict under a model the scorer does not declare is refused, so nothing is recorded: no judge has judged this run",
              "is not this scorer's" in tool("scorers.py", "record", "--packet", packet, "--verdict", verdict, "--by", "agent:judge-a", expect=2)
-             and not (x / "judgements.jsonl").exists())
+             and not (x / "judgements.jsonl").exists() and not (packet.parent / "judgements.jsonl").exists()
+             and "`verdict.yaml`" in (packet / "JUDGE.md").read_text())
 
         # the confirming loop, as far as a tool can take it: a study through its tests, stopping before the lock
         trial = studies / "STUDY-B"
@@ -362,8 +363,10 @@ def main() -> int:
              and len(trial_status["models"]["remarks"]) == 2)
         plan_packet = work / "judging" / "plan-is-clear"
         tool("scorers.py", "packet", "--scorer", "plan-is-clear", "--study", trial, "--out", plan_packet)
-        step("a judging packet for the plan holds the plan and the receipts of its tests, and nothing was opened to make it",
-             {m["kind"] for m in json.loads((plan_packet / "packet.json").read_text())["material"]} == {"plan", "known-answer-tests"}
+        step("a judging packet for the plan holds the plan, the receipts of its tests and the method's code, names no place outside itself, "
+             "and nothing was opened to make it",
+             {m["kind"] for m in json.loads((plan_packet / "packet.json").read_text())["material"]} == {"plan", "known-answer-tests", "code"}
+             and str(work) not in (plan_packet / "packet.json").read_text() and str(ROOT) not in (plan_packet / "packet.json").read_text()
              and not json.loads((plan_packet / "packet.json").read_text())["run"]["held_out_data_opened"])
         step("the design set of blind cases can be listed, and the acceptance set gives nothing without its keeper's seed",
              "the idea is false" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "built-in-gain")

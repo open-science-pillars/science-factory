@@ -144,6 +144,7 @@ MATERIAL = {
     "request": "the scientist's request, as bound when the study or exploration started",
     "plan": "the analysis plan, as the lock bound it (or as it stands, in a study nothing has been opened in)",
     "known-answer-tests": "the receipts of the known-answer tests, the working data and the rehearsals, as run before any opening",
+    "code": "the code the plan binds (the method, its scripts and what they import), each file by the checksum a test, a rehearsal or the lock bound before any opening",
     "pre-lock-log": "the study log up to the first opening of held-out data: the start, the tests, the rehearsals, the lock",
     "exploration-log": "an exploration's log: what was set aside, every look, every choice",
     "lead": "an exploration's lead, as recorded",
@@ -1336,7 +1337,7 @@ def selftest() -> int:
              "every scorer declares what it reads")
         case("a scorer that reads a kind of material that is not on the list",
              lambda d: edit(d, "scorers/notes-curated/scorer.md", "reads: [pre-lock-log, post-opening-log]", "reads: [everything]"), "is not a kind of material")
-        case("a judge that reads the finding", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "reads: [request, plan, known-answer-tests]", "reads: [request, plan, finding]"),
+        case("a judge that reads the finding", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "reads: [request, plan, known-answer-tests, code]", "reads: [request, plan, finding]"),
              "a judge that reads finding")
         case("a judge that reads the opening's outcome",
              lambda d: edit(d, "scorers/review-finds-holes/scorer.md", "reads: [exploration-log, lead, review-before-opening]", "reads: [lead, review-before-opening, opening-outcome]"),

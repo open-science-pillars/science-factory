@@ -81,13 +81,13 @@ A runner is where a job computes: this machine, a cluster scheduler, a cloud bat
 
 ## Checks, judges, and the outcome firewall
 
-A scorer is one file in `scorers/`, of one of two kinds. A **check** names a test the study tool works out from the log (`sf.py scorecard`); every study gets every one, and one that cannot be judged yet says `pending`. Eight ship: `chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated`. A **judge** is a rubric for a model, with `labels`, a `passingScore`, a `samplingRate`, the `model` and the `agents` it scores. Three ship: `exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`. No judge has been run by a real model.
+A scorer is one file in `scorers/`, of one of two kinds. A **check** names a test the study tool works out from the log (`sf.py scorecard`); every study gets every one, and one that cannot be judged yet says `pending`. Eight ship: `chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated`. A **judge** is a rubric for a model, with `labels`, a `passingScore`, a `samplingRate`, the `model` and the `agents` it scores. Three ship: `exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`. In a first trial, real-model agents judging six packets by hand, two runs each, matched the key on five, and on the sixth found a fault in the case itself; the Claude Code path (`scorers.py judge`) has not run. A packet names no place outside itself, `JUDGE.md` asks for `verdict.yaml`, and `scorers.py record` reads that file, writes the verdict beside the packet and moves the answer out of it.
 
 Every scorer declares what it `reads`, from a fixed list split at the first opening of fresh data:
 
 | Written before any opening | Written from the first opening on |
 |---|---|
-| `request`, `plan`, `known-answer-tests`, `pre-lock-log`, `exploration-log`, `lead`, `review-before-opening`, `transcript-before-opening` | `opening-outcome`, `finding`, `post-opening-log`, `review-after-opening`, `transcript-after-opening` |
+| `request`, `plan`, `known-answer-tests`, `code`, `pre-lock-log`, `exploration-log`, `lead`, `review-before-opening`, `transcript-before-opening` | `opening-outcome`, `finding`, `post-opening-log`, `review-after-opening`, `transcript-after-opening` |
 
 **The firewall.** What a real opening showed must never reach anything that changes how the next opening is run, or the factory would drift toward agreeing with the claims it is given. So the validator refuses a judge that reads the right-hand column, `selfImprovement: true` on any scorer that reads it, and a benchmark case that is real fresh data. Outcomes may still be counted and shown to people, and they feed the knowledge loop. `tools/scorers.py` builds a judge's packet from exactly the declared material, each file by a checksum recorded before any opening.
 

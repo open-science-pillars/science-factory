@@ -52,7 +52,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.18 | An agent's event names its model (`--model`), or it is refused; an actor's name is matched whole; `platform:<host>` writes nothing but a merged act and its verification. |
 | 1.19 | Every tool restarts itself in a Python that reads no `PYTHON` variable, no user site, no start-up file and not its own folder. |
 | 1.20 | The validator refuses a definition with an unknown key, a dangling name, a judge that reads anything written after an opening, `selfImprovement: true` on a check that does, an act declared as a pull request without a harness, branch, approvals, repository or merge method, a rebase merge, and an unknown value for `opening_without_verification`. |
-| 1.21 | A judging packet holds the material its scorer declares, each file by a checksum recorded before any opening, and nothing written after an opening. |
+| 1.21 | A judging packet holds the material its scorer declares, each file by a checksum recorded before any opening (the plan's packet includes the code it binds), and nothing written after an opening; it names no folder or file outside itself. A verdict is recorded beside the packet, never in it, and the answer file leaves the packet once read. |
 | 1.22 | The acceptance set of blind cases gives nothing without its seed, which is not in the repository. |
 | 1.23 | Every command shown in an agent file, a skill or AGENTS.md parses under its tool's options as they are now, and passes `--model` where it acts as an agent. |
 | 1.24 | No exploration ends as a lead, and no lead is handed over, without a person's `worth-confirming` given after the latest review on the lead as it stands, by checksum; a new version, a correction or a later review undoes it. A so what is refused from an agent's name, refused typed unless it says practice, and taken from `platform:github` only from a comment by a user who belongs to the named repository, naming this exploration and this lead. A hand-over from a practice so what must say practice. |
@@ -81,7 +81,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 18. `sf.py selftest`, `explore.py selftest`: "an agent that names no model", "an actor with a line break after the name" (R2-14).
 19. `sf.py selftest`: "the tool's help is words, not its own source", "a file named like a standard module beside the study tool is not imported by it" (R2-09).
 20. `check_factory.py --selftest`: one case for each rule it names.
-21. `scorers.py selftest`: the firewall checks.
+21. `scorers.py selftest`: the firewall checks, "a packet names no place outside itself", "each run's verdict leaves the packet".
 22. `benchmark.py selftest`: the acceptance-case checks.
 23. `check_roles.py --selftest`: "a skill shows an agent's command without `--model`", "a skill shows a command with an option the tool does not have".
 24. `explore.py selftest`: the checks under "the person's so what on a reviewed lead"; `verify_acts.py --selftest`: the five checks named "a so what"; `check_factory.py --selftest`: "a definition with no so what", "an agent that may call the so what"; `allow.py --selftest`: "no role may record a person's so what".
@@ -140,4 +140,4 @@ Nothing checks these. An agent is told, and the log shows afterwards what the to
 
 ## What has never run
 
-GitHub: the workflow, the required check, the recording job and the `so-what` job against real events, and `verify-acts` and `verify-so-what` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher. A real model as one of the three judges. Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.
+GitHub: the workflow, the required check, the recording job and the `so-what` job against real events, and `verify-acts` and `verify-so-what` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher, and the judges' Claude Code path (a first trial ran the judges as agents reading packets by hand). Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.
