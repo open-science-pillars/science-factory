@@ -215,8 +215,8 @@ def selftest() -> int:
         agent = (tmp / ".claude/agents/review.md").read_text()
         results.append(("the review role gets no Write outside its pattern and no Agent tool", "tools: Read, Glob, Grep, mcp__openwiki__openwiki_search, mcp__openwiki__openwiki_read, Bash, Write, Edit, Skill\n" in agent and "Agent(" not in agent))
         coord = (tmp / ".claude/agents/coordinating.md").read_text()
-        results.append(("the coordinating role gets no Write, its one skill (the fit note), and may start the three other roles",
-                        "tools: Read, Glob, Grep, mcp__openwiki__openwiki_search, mcp__openwiki__openwiki_read, Bash, Skill, Agent(analysis, review, curating)\n" in coord))
+        results.append(("the coordinating role gets Write for the files of intake its file lists, its one skill (the fit note), and may start the three other roles",
+                        "tools: Read, Glob, Grep, mcp__openwiki__openwiki_search, mcp__openwiki__openwiki_read, Bash, Write, Edit, Skill, Agent(analysis, review, curating)\n" in coord))
         results.append(("every rendered role carries the hook that reads its role file",
                         all("allow.py\" --role " + p.stem in p.read_text() for p in (tmp / ".claude/agents").glob("*.md"))))
         results.append(("a rendered role carries the model its file declares, and one that declares none carries the default",

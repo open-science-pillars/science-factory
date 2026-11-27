@@ -3321,8 +3321,16 @@ FIT_KEYS = {"answer_is": ("exact", "checkable", "a judgement"), "data_at_hand": 
 FIT_WORK_STARTED = ("look.run", "test.run", "rehearsal.run")  # a fit note is written before any of these
 
 
+def fit_words(fit):
+    """A fit note as words: YAML reads an unquoted yes or no as true or false, and the note means the word."""
+    if not isinstance(fit, dict):
+        return fit
+    return {k: ({True: "yes", False: "no"}[v] if isinstance(v, bool) and k == "data_at_hand" else v) for k, v in fit.items()}
+
+
 def fit_problems(fit) -> list:
     """Why a fit note is not complete, in words. It is advice to a person: these are the parts it must have, and nothing more."""
+    fit = fit_words(fit)
     if not isinstance(fit, dict):
         return ["a fit note is a mapping with the keys " + ", ".join(FIT_KEYS)]
     p = [f"`{k}` is missing" for k in FIT_KEYS if k not in fit] + [f"`{k}` is not a key of a fit note" for k in fit if k not in FIT_KEYS]
@@ -3344,7 +3352,7 @@ def record_fit(log_owner, ev: list, by: str, file: str) -> dict:
         raise Refused(f"work has started ({started[0]['kind']} at event {started[0]['seq']}): a fit note is written at intake, before the first "
                       "look or test. It is advice to the person and never blocks the work, so the work goes on without it")
     try:
-        fit = yaml.safe_load(Path(file).read_text())
+        fit = fit_words(yaml.safe_load(Path(file).read_text()))
     except (OSError, yaml.YAMLError) as e:
         raise Refused(f"the fit note cannot be read as YAML ({e})")
     problems = fit_problems(fit)
@@ -4662,6 +4670,11 @@ def _selftest_overclaiming(tmp: Path, check) -> None:
     check("it flags a number stated more finely than the uncertainty beside it, on the line or in the receipt, and not one stated as finely as it allows",
           (7, "1.02811 ± 0.012") in said and (8, "1.02811") in said and not any(p == "1.028 ± 0.012" or p == "1.028" for _, p in said))
     check("it reads the author's words and not the section the tool adds", not any(n >= 9 for n, _ in said))
+    fixed = {(f["line"], f["phrase"].lower()) for f in overclaiming_flags(
+        "Gains are given to three significant figures.\nSignificant wave height is not a claim.\nThe rise is significant, to four significant digits.\n",
+        listing, False, "lead.md")}
+    check("`significant figures` and like fixed expressions are not flagged, and a claim of significance beside one still is (found by the first real run)",
+          fixed == {(3, "significant")})
     check("`confirms` is not flagged where the locked rules gave `supported`",
           (6, "confirms") not in {(f["line"], f["phrase"].lower()) for f in overclaiming_flags(text, listing, True, "finding.md")})
     edited = tmp / "factory-edited"
@@ -4706,6 +4719,12 @@ def _selftest_fit(tmp: Path, check) -> None:
         check(f"an incomplete fit note is refused ({words})", words in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
     f.write_text(yaml.safe_dump({k: v for k, v in good.items() if k != "taste_needed"}))
     check("a fit note that does not say what taste the work needs from a person is refused", "`taste_needed` is missing" in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
+    template = yaml.safe_load((FACTORY / "agents" / "coordinating" / "skills" / "note-the-fit" / "fit-template.yaml").read_text())
+    check("the fit template's own words are words its tool takes (found by the first real run: an unquoted `yes` is read as true)",
+          not [q for q in fit_problems(template) if any(f"`{k}` is one of" in q for k in ("answer_is", "data_at_hand", "mostly", "verdict"))])
+    f.write_text("data_at_hand: yes\n" + yaml.safe_dump({k: v for k, v in good.items() if k != "data_at_hand"}))
+    check("a fit note with `data_at_hand: yes` unquoted is taken, and recorded as the word", fit_problems(yaml.safe_load(f.read_text())) == []
+          and record_fit(study, study.events(), "agent:coordinating", str(f))["data_at_hand"] == "yes")
     f.write_text(yaml.safe_dump(good))
     cmd_fit(study, A(by="agent:coordinating", file=str(f)))
     check("a fit note is recorded with its verdict and shown in status, as advice",

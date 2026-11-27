@@ -61,6 +61,12 @@ REQUEST = re.compile(r"^(?P<study>(?:.*/)?[^/]+)/(?P<act>lock|signature)-request
 NOT_WITH_A_REQUEST = ("tools/", "factory/", ".github/")
 
 
+def uv_env() -> dict:
+    """The environment uv is called with: this one, without a setting of uv's own that is set and empty, which uv refuses
+    before it runs anything (UV_NATIVE_TLS=, found by the first real run of the factory)."""
+    return {k: v for k, v in os.environ.items() if not (k.startswith("UV_") and not v.strip())}
+
+
 def git(repo: Path, *words, text: bool = True):
     env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL") if k in os.environ}
     return subprocess.run(["git", "-C", str(repo), *words], capture_output=True, text=text, env=env, stdin=subprocess.DEVNULL)
@@ -145,7 +151,7 @@ def verify(repo: Path, event: dict, reviews, tools: Path, factory: Path, image_b
                        "it also changes " + ", ".join(beside[:5]) + ": a change to the tools, the definition or the workflows is a pull "
                        "request of its own, merged before the request is prepared"))
         done = subprocess.run(["uv", "run", "--quiet", str(tools / "sf.py"), "check-request", "--study", str(repo / study), "--act", act,
-                               "--factory", str(factory)], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                               "--factory", str(factory)], capture_output=True, text=True, stdin=subprocess.DEVNULL, env=uv_env())
         said = [ln for ln in (done.stderr + done.stdout).strip().splitlines() if not ln.startswith("warning: ")]
         checks.append(("the request's manifest matches the files at the head of the pull request", done.returncode == 0,
                        " ".join(said)[-900:] or "the study tool gave no answer"))

@@ -335,6 +335,7 @@ COMMENT = "comment"  # the route of a so what on the platform: a person's commen
 COMMENT_FOUND = "comment recorded, person not verified"  # what the job that recorded it was handed: all a clone can show
 SO_WHAT_STANDINGS = (sf.PRACTICE, COMMENT_FOUND, sf.VERIFIED)
 QUESTION_KEYS = ("what_the_lead_shows", "why_it_might_matter", "what_would_make_it_unremarkable")
+QUESTION_OPTIONAL = ("options",)  # the ways on the lead sets out for the person, none chosen
 VERDICTS = ("holes-found", "no-holes-found")
 DISPOSITIONS = ("drafted", "linked", "declined")
 FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in figures/ as a picture
@@ -355,8 +356,10 @@ SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32"
 CONFINED_BY_THE_KERNEL = "kernel"   # Landlock was applied and tried: the script could open the system's folders, its interpreter and its scratch folder, nothing else
 SCRATCH_ONLY = "scratch-only"       # no kernel fence here: the script ran in a scratch folder and could still open a path it built itself
 AFTER_END = ("note.resolved", "handed.over", "review.verdict", "so-what.verification", "method.promoted")
-LEAD_KEYS = ("what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
+LEAD_KEYS = ("summary", "what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
              "pitfalls", "proposed_plan")
+SUMMARY_KEYS = ("looks_true", "how_strong", "cannot_settle")  # the lead in a minute, at the top of lead.md, for the person's so what
+SUMMARY_WORDS = 150
 LEAD_OPTIONAL = ("what_does_not_hold", "open_explanations", "figures")
 # words that mislead the person the lead is for, and what to write in their place
 MISLEADING = (
@@ -518,6 +521,100 @@ def date_of_a_number(n) -> dt.date | None:
     except (ValueError, OverflowError, OSError):
         return None
     return None
+
+
+# A month written as a year and a month (2026-08, 2026/08) is how a monthly record dates its rows, and no form above
+# reads it. It is read only against the cut-off of a release, never against a window.
+YEAR_MONTH = re.compile(r"(?<![0-9A-Za-z])(\d{4})[-/](\d{1,2})(?![0-9]|[-/.]\d)")
+
+
+def past_cut_off(text: str, cut: str) -> list:
+    """The dates and months a text holds that fall after a release's cut-off, in the forms `dates_in` reads and as a year
+    and a month: a month is past the cut-off when its first day is."""
+    import unicodedata
+    out = {d.isoformat() for d in dates_in(text) if d.isoformat() > cut}
+    for m in YEAR_MONTH.finditer(unicodedata.normalize("NFKC", text).translate(HYPHENS)):
+        y, mo = int(m.group(1)), int(m.group(2))
+        if 1000 <= y <= 2999 and 1 <= mo <= 12 and dt.date(y, mo, 1).isoformat() > cut:
+            out.add(f"{y:04d}-{mo:02d}")
+    return sorted(out)
+
+
+def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
+    """The same, read the way the fence reads a JSON data file: a time under a declared time key anywhere, or under any key
+    inside a list of rows, is a time of the data; a single date at the top of the file (when it was retrieved) is not."""
+    out = set()
+
+    def walk(o, key=None, in_rows=False):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(v, (dict, list)) and len(o) > 1:  # rows kept under their times: the keys are the times
+                    out.update(past_cut_off(str(k).strip()[:64], cut))
+                walk(v, k, in_rows)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, key, True)
+        elif isinstance(o, (int, float)) and not isinstance(o, bool) and key is not None and str(key).casefold() in keys:
+            d = date_of_a_number(o)
+            if d and d.isoformat() > cut:
+                out.add(d.isoformat())
+        elif isinstance(o, str) and key is not None and (str(key).casefold() in keys or in_rows):
+            out.update(past_cut_off(o.strip()[:64], cut))
+    walk(obj)
+    return sorted(out)
+
+
+def past_cut_off_in_file(f: Path, cut: str, keys: set) -> list:
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return []
+    if f.suffix.lower() == ".json":
+        try:
+            return past_cut_off_in_json(json.loads(text), cut, keys)
+        except ValueError:
+            pass
+    return past_cut_off(text, cut)
+
+
+def bound_files(places: list) -> list:
+    """Every file in the declared places of working data, as it stands: (the file, its sha256), files of folders included."""
+    out = []
+    for q in places:
+        q = Path(q)
+        if q.is_file():
+            out.append((q.resolve(), sf.sha_file(q)))
+        elif q.is_dir():
+            for base, dirs, files in os.walk(q):
+                dirs.sort()
+                out += [((Path(base) / n).resolve(), sf.sha_file(Path(base) / n)) for n in sorted(files) if (Path(base) / n).is_file()]
+    return out
+
+
+def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
+    """Why a look may not be given these files under a release set aside: the release binds the data as it stood at the
+    start. A working file whose checksum changed, or that was not there at the start, may hold the release; so may any
+    file that holds a date or a month past the cut-off. Each is refused before anything runs."""
+    cut = sa.get("cut_off")
+    if not cut:
+        return []
+    bound = {str(Path(os.path.normpath(x.d / b["path"])).resolve()): b["sha256"] for b in sa.get("bound") or []}
+    places = working_places(x)
+    out = []
+    for tok, f in files.items():
+        real = f.resolve()
+        if any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d):
+            if str(real) not in bound:
+                out.append(f"`{tok}` was not in the working data when the exploration started, and a release set aside after "
+                           f"{cut} may be in it")
+            elif sf.sha_file(real) != bound[str(real)]:
+                out.append(f"`{tok}` has changed since the exploration started (its sha256 is not the one bound at the start): the "
+                           f"release set aside after {cut} may have arrived in it")
+        later = past_cut_off_in_file(real, cut, {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})
+        if later:
+            out.append(f"`{tok}` holds a date past the cut-off of the release set aside ({cut}): {', '.join(later[:3])}"
+                       + (f", and {len(later) - 3} more" if len(later) > 3 else ""))
+    return out
 
 
 def tokens_of(sa: dict) -> list:
@@ -952,18 +1049,34 @@ def cmd_start(x: Exploration, a) -> None:
                           "proposal with `--fresh-data`, and set aside exactly the members it drew")
     if window and working and sf.windows_overlap(core(working), core(window)):
         raise Refused("the working window and the set-aside window overlap: data that is explored cannot also be held out")
+    cut = str(getattr(a, "release_cut_off", None) or "").strip() or None
+    if cut and how != "a new release":
+        raise Refused("`--release-cut-off` is the last date of the data as it stands before a new release; it goes with `--how \"a new release\"`")
+    if cut and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", cut):
+        raise Refused("`--release-cut-off` is a date, YYYY-MM-DD")
     studies_here = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
-    fresh = None
+    fresh, prop = None, None
     if getattr(a, "fresh_data", None):
         if a.nothing_set_aside:
             raise Refused("`--fresh-data` names what is set aside, and `--nothing-set-aside` says nothing is; choose one")
         fpath = Path(os.path.abspath(a.fresh_data))
         prop, wrong = fresh_data_problems(fpath, studies_here, how, window, sites, releases)
+        if not wrong and prop and prop["kind"] == "next-release":
+            fixed = (prop.get("rule") or {}).get("cut_off")
+            if cut and fixed and cut != fixed:
+                wrong.append(f"the cut-off given ({cut}) is not the one the proposal fixed ({fixed})")
+            cut = cut or fixed
         if wrong:
             raise Refused("the proposal of the fresh data does not match this start: " + "; ".join(wrong) + ". Nothing was started")
         fresh = {"file": str(fpath), "sha256": sf.sha_file(fpath), "kind": prop["kind"], "kind_in_words": prop["kind_in_words"],
                  "proposed_by": (prop.get("proposed") or {}).get("by"), "proposed_at": (prop.get("proposed") or {}).get("at"),
                  "seed_sha256": (prop.get("draw") or {}).get("seed_sha256")}
+    if how == "a new release" and not cut:
+        raise Refused("a new release set aside binds the data as it stands: give the last date of the working data before the release "
+                      "(`--release-cut-off YYYY-MM-DD`, or a proposal that fixes it). A release that arrives as new rows of the same "
+                      "file carries no mark of its own, so without a cut-off nothing in the file would be set aside")
+    if cut and working and working["end"] > cut:
+        raise Refused(f"the working window runs to {working['end']}, past the cut-off of the release ({cut}): what is explored is the data as it stands")
     request = Path(a.request).resolve() if a.request else None
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
@@ -986,6 +1099,11 @@ def cmd_start(x: Exploration, a) -> None:
                               "the working window given here reaches into it: what one exploration set aside, another does not explore")
             if w != window and w not in others:
                 others.append(w)
+        if ln.get("kind") == "set-aside" and ln.get("subject") == key and (ln.get("set_aside") or {}).get("cut_off"):
+            c = ln["set_aside"]["cut_off"]
+            if working and working["end"] > c:
+                raise Refused(f"{ln.get('exploration')} set aside the release after {c} for this subject, and the working window given here "
+                              "runs past it: what one exploration set aside, another does not explore")
     paths = [os.path.abspath(p) for p in a.set_aside_path or []]
     places = []  # where the working data is, outside the exploration: the only outside files a look may be given
     for given in getattr(a, "working_data", None) or []:
@@ -1001,6 +1119,21 @@ def cmd_start(x: Exploration, a) -> None:
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
+    bound = []
+    if cut:  # the data as it stands, bound by checksum: a look given a working file that changed afterwards is refused
+        named = dict((prop or {}).get("rule", {}).get("files") or {})
+        for f, sha in bound_files([Path(os.path.normpath(x.d / q)) for q in places] if places else []):
+            later = past_cut_off_in_file(f, cut, {k.strip().casefold() for k in (a.time_keys or ",".join(TIME_KEYS)).split(",") if k.strip()})
+            if later:
+                raise Refused(f"the working data already holds dates past the cut-off of the release ({cut}) in {f.name}: "
+                              f"{', '.join(later[:3])}. The cut-off is the last date of the data as it stands; nothing was started")
+            if f.name in named and named[f.name] != sha:
+                raise Refused(f"{f.name} is not the file the metadata describes: its sha256 is {sha[:16]}, the metadata's {str(named[f.name])[:16]}. "
+                              "The release binds the data as the metadata saw it; nothing was started")
+            bound.append({"path": os.path.relpath(f, x.d.resolve()), "sha256": sha})
+        if named and not any(Path(b["path"]).name in named for b in bound):
+            raise Refused(f"the metadata the proposal was made from names {', '.join(sorted(named))}, and none is among the working data "
+                          "declared here (`--working-data`): the release binds the files the metadata describes; nothing was started")
     pages = []  # what was read before setting aside: knowledge pages only, never data
     for page in getattr(a, "boundary_from", None) or []:
         f = Path(os.path.abspath(page))
@@ -1022,6 +1155,8 @@ def cmd_start(x: Exploration, a) -> None:
           "working": {"description": a.working, "window": working, "places": places}}
     if gap:
         sa["in_neither"] = gap
+    if cut:
+        sa["cut_off"], sa["bound"] = cut, bound
     if fresh:
         sa["fresh_data"] = fresh
     if pages:
@@ -1045,7 +1180,7 @@ def cmd_start(x: Exploration, a) -> None:
     lines = []
     if how != "nothing":
         lines.append({"way": WAY, "kind": "set-aside", "exploration": a.id, "exploration_dir": x.d.name, "subject": key,
-                      "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases},
+                      "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases, **({"cut_off": cut} if cut else {})},
                       "at": e["at"], "started": mark})
     explored = {"way": WAY, "kind": "explored", "study": a.id, "dir": x.d.name, "test": WAY, "key": key,
                 "at": e["at"], "started": mark}
@@ -1060,6 +1195,7 @@ def cmd_start(x: Exploration, a) -> None:
     print(f"started {a.id} ({WAY}). Set aside: {how}"
           + (f", {'from ' + window['start'] + ' onward' if window.get('open_ended') else window['start'] + ' to ' + window['end']}" if window else "")
           + (f", sites {sites}" if sites else "") + (f", {releases}" if releases else "")
+          + (f", after the cut-off {cut}, with {len(bound)} working file(s) bound by checksum" if cut else "")
           + f". Written to {rel_record}. Next: `known` and `read`, then look.")
     if gap:
         print(f"Note: {gap['start']} to {gap['end']} is neither explored nor set aside. Nothing protects it: a later study "
@@ -1144,10 +1280,15 @@ def cmd_read(x: Exploration, a) -> None:
     fm, _body = k.front_matter(f)
     fm = fm or {}
     signed, by = k.signed_by(fm, _body)
-    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sf.sha_file(f), "status": k.status_of(fm, _body),
-                                   "signed": signed, "signed_by": by, "takes": a.takes, "depth": depth})
+    sha = sf.sha_file(f)
+    # A page the search did not list may be read too (one a listed page leans on, say): it is recorded, and the lead says
+    # that the search did not list it, so a reader can see the list was not the whole of the reading.
+    listed = any(c.get("sha256") == sha and Path(str(c.get("path"))).name == f.name
+                 for e in x.events() if e["kind"] == "knowledge.listed" for c in e["data"].get("concepts") or [])
+    x.add(a.by, "knowledge.read", {"path": os.path.relpath(f, x.d), "sha256": sha, "status": k.status_of(fm, _body),
+                                   "signed": signed, "signed_by": by, "takes": a.takes, "depth": depth, "listed": listed})
     print(f"read: {f.name} ({'signed by ' + ', '.join(by) if signed else 'NOT SIGNED, status ' + str(k.status_of(fm, _body))}), "
-          f"recorded ({WAY})")
+          f"recorded ({WAY})" + ("" if listed else "; the search did not list it, and the lead will say so"))
 
 
 def cmd_look(x: Exploration, a) -> None:
@@ -1195,6 +1336,7 @@ def cmd_look(x: Exploration, a) -> None:
     for tok, f in files.items():  # the data a look is given; its own script, a Python file, may be a shared one from elsewhere
         if not (tok == script and script.endswith(".py")):
             problems += [q for q in [place_problem(x, tok, f)] if q]
+    problems += cut_off_problems(x, sa, files)
     if problems:
         x.add(a.by, "look.refused", {"argv": argv, "why": a.why, "refused_because": problems})
         raise Refused("this look names what was set aside, or names it in a way the tool cannot confine, so it is not run "
@@ -1297,8 +1439,39 @@ def without_warnings(text: str) -> str:
     return "\n".join(ln for ln in text.splitlines() if not ln.startswith("warning: "))
 
 
+def run_variant(x: Exploration, sa: dict, d: dict, receipt: dict, variant: str) -> None:
+    """A reviewer's variant of a logged look: its own script in the look's place, in the same scratch folder with the same
+    files by checksum and the same fence, logged nowhere. The reviewer lists each one in the review with what it showed."""
+    how_run = d.get("ran_in")
+    if not how_run:
+        raise Refused(f"{d['id']} was logged before looks ran in a scratch folder: a variant runs only in a look's scratch folder")
+    f = Path(os.path.normpath(x.d / variant))
+    if not (f.is_file() and not f.is_symlink() and f.suffix == ".py" and f.parent == x.d / "review"):
+        raise Refused("`--variant` is a Python script the reviewer wrote in the exploration's review/ folder")
+    problems = text_problems(f.read_text(errors="replace"), sa, f"the variant `{variant}`")
+    problems += cut_off_problems(x, sa, {variant: f})
+    for g in how_run["placed"]:
+        if g["role"] != "script" and sf.sha_file(Path(os.path.normpath(x.d / g["from"]))) != g["sha256"]:
+            problems.append(f"`{g['from']}` is not the file {d['id']} was given")
+    if problems:
+        raise Refused("the variant is not run: " + "; ".join(problems[:4]))
+    placed = [dict(g, **{"from": os.path.relpath(f, x.d), "sha256": sf.sha_file(f)}) if g["role"] == "script" else g for g in how_run["placed"]]
+    at_script = d["argv"].index(receipt["script"]["word"], 1)
+    ran = run_in_scratch(x, sa, how_run["argv_as_run"], d["argv"][:at_script], placed)
+    shutil.rmtree(ran["scratch"], ignore_errors=True)
+    if ran["log_changed"] or ran["meddled"]:
+        raise Refused("the variant changed the exploration while it ran: a script writes only into its own scratch folder")
+    crossing = text_problems(ran["out"], sa, "what the variant printed") + text_problems(ran["err"], sa, "what the variant wrote to standard error")
+    if crossing:
+        raise Refused("what the variant printed crosses the fence, so it is not shown: " + crossing[0])
+    print(ran["out"], end="" if ran["out"].endswith("\n") else "\n")
+    print(f"[a variant of {d['id']} ({WAY}), run by the reviewer in the look's scratch folder with the same {len(placed) - 1} file(s) by "
+          f"checksum: exit {ran['code']}. It is not logged and changes nothing in the exploration: list it in your review, with what it showed]")
+
+
 def cmd_recheck(x: Exploration, a) -> None:
-    """Run a logged look again and compare what comes out, without adding a look: for the review agent."""
+    """Run a logged look again and compare what comes out, without adding a look: for the review agent. With
+    `--variant`, run the reviewer's own script in the look's place instead, unlogged."""
     ev = x.events()
     sa = x.started()["data"]["set_aside"]
     e = next((e for e in ev if e["kind"] == "look.run" and e["data"]["id"] == a.look), None)
@@ -1306,6 +1479,10 @@ def cmd_recheck(x: Exploration, a) -> None:
         raise Refused(f"there is no {a.look} in the log")
     d = e["data"]
     receipt = json.loads((x.d / f"receipts/{d['id']}.json").read_text())
+    if getattr(a, "variant", None):
+        if set_aside_present(sa):
+            raise Refused("set-aside data is in the workspace; nothing is run")
+        return run_variant(x, sa, d, receipt, a.variant)
     script = x.d / receipt["script"]["word"]
     if sf.sha_file(script) != d["script_sha"]:
         raise Refused(f"the script of {d['id']} is not the script that was logged; nothing is run")
@@ -1314,6 +1491,10 @@ def cmd_recheck(x: Exploration, a) -> None:
             raise Refused(f"`{i['word']}` is not the file {d['id']} read; nothing is run")
     if set_aside_present(sa):
         raise Refused("set-aside data is in the workspace; nothing is run")
+    late = cut_off_problems(x, sa, {f["from"]: Path(os.path.normpath(x.d / f["from"])) for f in (d.get("ran_in") or {}).get("placed") or []}
+                            or {i["word"]: x.d / i["word"] for i in d["inputs"]})
+    if late:
+        raise Refused("nothing is run: " + "; ".join(late[:3]))
     head = f"[{WAY}: output of {d['id']}]\n"
     how_run = d.get("ran_in")
     if how_run:  # the look ran in a scratch folder: the same folder is built again from the same files, by checksum
@@ -1422,6 +1603,17 @@ def lead_problems(lead, ev: list) -> list:
     for k in ("what_looks_true", "how_it_was_found"):
         if not isinstance(lead[k], str) or len(lead[k].split()) < 5:
             p.append(f"`{k}` is a sentence or more, in words")
+    summ = lead["summary"]
+    if not isinstance(summ, dict) or set(map(str, summ)) != set(SUMMARY_KEYS):
+        p.append("`summary` is the lead in a minute, with exactly these keys: " + ", ".join(SUMMARY_KEYS)
+                 + " (what looks true, how strong the evidence is, what it cannot settle)")
+    else:
+        short = [k for k in SUMMARY_KEYS if not isinstance(summ[k], str) or len(summ[k].split()) < 5]
+        if short:
+            p.append("each part of `summary` is a sentence, in words: " + ", ".join(short))
+        elif sum(len(summ[k].split()) for k in SUMMARY_KEYS) > SUMMARY_WORDS:
+            p.append(f"`summary` is under {SUMMARY_WORDS} words in all, so that a person can read it in a minute; it has "
+                     f"{sum(len(summ[k].split()) for k in SUMMARY_KEYS)}")
     looks = {e["data"]["id"]: e for e in ev if e["kind"] == "look.run"}
     cited = lead["evidence"] if isinstance(lead["evidence"], list) else []
     if not cited:
@@ -1502,14 +1694,56 @@ def as_written(number: str) -> str:
     return re.sub(r"\s+", "", number).replace(",", ".").lower()
 
 
+# Numbers a method names that are not results: the normal quantiles and the usual levels, and those levels as shares. They
+# pass without a receipt in the lead's method text (how it was found, the choices, the pitfalls, a quoted plan sentence),
+# never where it says what looks true. A count written with a thousands comma there (5,000 draws) is a whole number.
+CONSTANTS = ("1.645", "1.96", "2.576", "0.05", "0.01", "0.95", "0.99")
+CONSTANT_SHARES = ("90", "95", "99")
+COUNT = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d.,])(?=\s+[A-Za-z])")
+LOOK_NAMED = re.compile(r"\bLOOK-\d{3,}\b")
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
 def own_words(lead: dict) -> list:
-    """The lead's own words: everything but the proposed plan, whose numbers are proposals and not things that were seen."""
-    texts = [str(lead.get(k)) for k in ("what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations") if lead.get(k)]
+    """The lead's own words: everything but the proposed plan, whose numbers are proposals and not things that were seen
+    (a plan sentence that names a look quotes it, and is read by `plan_quotes`)."""
+    return result_words(lead) + method_words(lead)
+
+
+def result_words(lead: dict) -> list:
+    """Where the lead says what it saw: every number there is a result."""
+    texts = [str(lead.get(k)) for k in ("what_looks_true", "what_does_not_hold", "open_explanations") if lead.get(k)]
+    texts += [str(v) for v in (lead.get("summary") or {}).values()] if isinstance(lead.get("summary"), dict) else []
+    texts += [str(f.get("shows")) for f in lead.get("figures") or [] if isinstance(f, dict)]
+    return texts
+
+
+def method_words(lead: dict) -> list:
+    """Where the lead says how: a number there may also be a listed constant or a count."""
+    texts = [str(lead.get("how_it_was_found"))] if lead.get("how_it_was_found") else []
     texts += [str(t) for t in lead.get("pitfalls") or []]
     texts += [str(c.get("how") or c.get("why")) for key in ("choices_that_would_change_it", "choices_that_would_not")
               for c in lead.get(key) or [] if isinstance(c, dict)]
-    texts += [str(f.get("shows")) for f in lead.get("figures") or [] if isinstance(f, dict)]
     return texts
+
+
+def plan_quotes(lead: dict) -> list:
+    """(sentence, the looks it names) for each sentence of the proposed plan that names a look: it quotes that look, so its
+    numbers are checked against what the look printed. A sentence that names no look proposes, and is not checked."""
+    out = []
+    for v in (lead.get("proposed_plan") or {}).values() if isinstance(lead.get("proposed_plan"), dict) else []:
+        for sentence in SENTENCE_END.split(" ".join(str(v).split())):
+            named = sorted(set(LOOK_NAMED.findall(sentence)))
+            if named:
+                out.append((sentence, named))
+    return out
+
+
+def loose_in(text: str, backed: set, method: bool) -> set:
+    t = number_forms(COUNT.sub(" ", text) if method else text)
+    out = {n.strip() for n in QUOTED.findall(t) if as_written(n) not in backed and not (method and as_written(n) in CONSTANTS)}
+    out |= {m.group(0).strip() for m in PERCENT.finditer(t) if m.group(1) not in backed and not (method and m.group(1) in CONSTANT_SHARES)}
+    return out
 
 
 def backing_pages(x: Exploration, ev: list) -> list:
@@ -1531,17 +1765,20 @@ def unbacked_numbers(x: Exploration, lead: dict, ev: list | None = None) -> list
     """Numbers in the lead's own words that no look it cites printed and no knowledge page recorded as read holds.
     A number counts only when it was printed whole and in the form the lead gives it: 1.4 is not backed by a look that
     printed 1.4826, and .8888 is not backed by 0.8888. A whole number given as a share (105 percent) is checked too."""
-    backed = set()
-    texts = []
-    for lid in lead.get("evidence") or []:
+    def printed(texts: list) -> set:
+        return {as_written(n) for t in texts for n in PRINTED.findall(t)}
+
+    def out_of(lid: str) -> list:
         f = x.d / f"receipts/{lid}.out.txt"
-        texts += [f.read_text(errors="replace")] if f.is_file() else []
-    texts += [f.read_text(errors="replace") for f in backing_pages(x, ev or [])]
-    for t in texts:
-        backed |= {as_written(n) for n in PRINTED.findall(t)}
-    words = [number_forms(t) for t in own_words(lead)]
-    loose = {n.strip() for t in words for n in QUOTED.findall(t) if as_written(n) not in backed}
-    loose |= {m.group(0).strip() for t in words for m in PERCENT.finditer(t) if m.group(1) not in backed}
+        return [f.read_text(errors="replace")] if re.fullmatch(r"LOOK-\d{3,}", lid) and f.is_file() else []
+    pages = printed([f.read_text(errors="replace") for f in backing_pages(x, ev or [])])
+    backed = printed([t for lid in lead.get("evidence") or [] for t in out_of(str(lid))]) | pages
+    loose = {n for t in result_words(lead) for n in loose_in(t, backed, False)}
+    loose |= {n for t in method_words(lead) for n in loose_in(t, backed, True)}
+    logged = {e["data"]["id"] for e in ev or [] if e["kind"] == "look.run"}
+    for sentence, named in plan_quotes(lead):
+        quoted = printed([t for lid in named if lid in logged for t in out_of(lid)]) | pages
+        loose |= {f"{n} (in the proposed plan, in a sentence that quotes {', '.join(named)})" for n in loose_in(sentence, quoted, True)}
     return sorted(loose)
 
 
@@ -1550,9 +1787,18 @@ def render_lead(lead: dict) -> str:
     w = sa.get("window")
     aside = (f"{sa['how']}: {w['start']} to {'onward (the window stays open)' if w.get('open_ended') else w['end']}" if w
              else f"{sa['how']}: {', '.join(sa.get('sites') or sa.get('releases') or []) or 'nothing'}")
+    if sa.get("cut_off"):
+        aside += (f", after the cut-off {sa['cut_off']} (the working data was bound by checksum at the start, {len(sa.get('bound') or [])} "
+                  "file(s), and a look at a file that changed or holds a later date is refused)")
     order = lead.get("order") or {"sequence": [], "choices": {}, "choices_recorded_after_looks": 0, "choices_in_all": 0}
-    lines = [f"# Lead from {lead['exploration']} (exploring; version {lead['version']})", "", BANNER, "",
-             f"**The question.** {lead['question']}", "",
+    summ = lead.get("summary") or {}
+    lines = [f"# Lead from {lead['exploration']} (exploring; version {lead['version']})", "", BANNER, ""]
+    if summ:
+        lines += ["## In short", "", f"**What looks true.** {' '.join(str(summ.get('looks_true')).split())}", "",
+                  f"**How strong the evidence is.** {' '.join(str(summ.get('how_strong')).split())}", "",
+                  f"**What it cannot settle.** {' '.join(str(summ.get('cannot_settle')).split())}", "",
+                  "The rest of this page is the lead in full, with every choice and number behind it.", ""]
+    lines += [f"**The question.** {lead['question']}", "",
              f"**What looks true.** {lead['what_looks_true'].strip()}", ""]
     if lead.get("what_does_not_hold"):
         lines += [f"**What does not hold.** {lead['what_does_not_hold'].strip()}", ""]
@@ -1606,6 +1852,7 @@ def render_lead(lead: dict) -> str:
     lines += ["", "## Knowledge read before looking", ""]
     lines += [f"- `{k['path']}`: {'signed by ' + ', '.join(k['signed_by']) if k['signed'] else 'NOT SIGNED (status ' + str(k['status']) + ')'}"
               + (" (skimmed, not read whole)" if k.get("depth") == "skimmed" else "")
+              + (" (read, though the search did not list it)" if k.get("listed") is False else "")
               + (f". Takes from it: {k['takes']}" if k.get("takes") else "") for k in lead["knowledge_read"]] or ["- none recorded as read"]
     if lead.get("listed_not_read"):
         lines += ["", "Listed by the search and not recorded as read: " + ", ".join(f"`{q}`" for q in lead["listed_not_read"]) + "."]
@@ -1641,8 +1888,9 @@ def cmd_lead(x: Exploration, a) -> None:
         raise Refused("the lead is not complete: " + "; ".join(problems))
     loose = unbacked_numbers(x, given, ev)
     if loose:
-        raise Refused("the lead quotes numbers that none of the looks it cites under `evidence` printed (whole, digit for digit) "
-                      "and that no page of a listed wiki recorded as read holds: " + "; ".join(loose[:12])
+        raise Refused("the lead quotes numbers that none of the looks it cites under `evidence` printed (whole, digit for digit), "
+                      "that no page of a listed wiki recorded as read holds, and, in a sentence of the proposed plan that names a look, "
+                      "that the look named did not print: " + "; ".join(loose[:12])
                       + ". Every number in a lead comes from a look or a page of the knowledge base that was read; cite the look, "
                       "run it, or quote the number as it was printed: not rounded, not in another form (a decimal comma, an "
                       "exponent, a missing zero), and a share (`5 percent`) only when a look printed that number")
@@ -1662,7 +1910,7 @@ def cmd_lead(x: Exploration, a) -> None:
             "fenced": fence_counts(ev),
             "choices": [{k: e["data"][k] for k in ("id", "choice", "alternatives", "rests_on", "look")} for e in ev if e["kind"] == "choice.recorded"],
             "order": order_of(ev),
-            "knowledge_read": [{k: r.get(k) for k in ("path", "sha256", "status", "signed", "signed_by", "takes", "depth")} for r in reads],
+            "knowledge_read": [{k: r.get(k) for k in ("path", "sha256", "status", "signed", "signed_by", "takes", "depth", "listed")} for r in reads],
             "listed_not_read": listed_not_read(ev),
             "set_aside": start["data"]["set_aside"], "log_fingerprint": f"{ev[-1]['seq']}:{ev[-1]['hash']}"}
     sha = write_json(x.d / "lead.json", lead)
@@ -1731,7 +1979,7 @@ def cmd_correct(x: Exploration, a) -> None:
             return {k: swap(i) for k, i in v.items()}
         return v
 
-    words = ("what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations", "pitfalls",
+    words = ("summary", "what_looks_true", "how_it_was_found", "what_does_not_hold", "open_explanations", "pitfalls",
              "choices_that_would_change_it", "choices_that_would_not", "proposed_plan")
     for k in words:
         if k in lead:
@@ -1886,7 +2134,9 @@ def render_question(lead: dict, q: dict, x: Exploration, verdict: dict) -> str:
         f"(verdict `{verdict['data']['verdict']}`, `{verdict['data']['file']}`). Read the lead (`lead.md`) and look at its figures yourself before you answer.", "",
         f"**What the lead shows.** {' '.join(str(q['what_the_lead_shows']).split())}", "",
         f"**Why it might matter.** {' '.join(str(q['why_it_might_matter']).split())}", "",
-        f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", "",
+        f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", ""]
+        + ((["**The options the lead sets out, none chosen.**", ""] + [f"{chr(97 + i)}. {' '.join(str(o).split())}" for i, o in enumerate(q["options"])] + [""])
+           if q.get("options") else []) + [
         "## How to answer", "",
         "One of four: `worth-confirming` (it goes to a confirming study); `try-instead` with the direction in words (the exploration "
         "goes on, with that as its next question); `not-interesting` with a reason (the exploration ends as a lead noted, which is not "
@@ -1913,11 +2163,15 @@ def cmd_ask_so_what(x: Exploration, a) -> None:
         q = yaml.safe_load(Path(a.file).read_text())
     except (OSError, yaml.YAMLError) as err:
         raise Refused(f"the question file cannot be read as YAML ({err})")
-    if not isinstance(q, dict) or set(q) != set(QUESTION_KEYS):
-        raise Refused("the question file has exactly these keys: " + ", ".join(QUESTION_KEYS))
+    if not isinstance(q, dict) or not set(QUESTION_KEYS) <= set(q) or set(q) - set(QUESTION_KEYS) - set(QUESTION_OPTIONAL):
+        raise Refused("the question file has these keys: " + ", ".join(QUESTION_KEYS) + ", and may have `options`: the ways on "
+                      "the lead sets out for the person, none chosen")
     short = [k for k in QUESTION_KEYS if not isinstance(q[k], str) or len(q[k].split()) < 5]
     if short:
         raise Refused("each part of the question is a sentence or more, in words: " + ", ".join(short))
+    if "options" in q and (not isinstance(q["options"], list) or len(q["options"]) < 2
+                           or any(not isinstance(o, str) or len(o.split()) < 3 for o in q["options"])):
+        raise Refused("`options` is a list of two or more ways on, each in words; leave the key out when the lead sets out none")
     lead = json.loads((x.d / "lead.json").read_text())
     n = count(ev, "so-what.asked") + 1
     out = x.d / "so-what"
@@ -2433,7 +2687,7 @@ def stage_of(x: Exploration) -> dict:
     counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
             "models_recorded": {"by_actor": sf.models_recorded(ev), "note": "declared by whoever called the tool; nothing proves which model answered"},
-            "set_aside": {k: start["set_aside"][k] for k in ("how", "window", "sites", "releases")},
+            "set_aside": {k: start["set_aside"].get(k) for k in ("how", "window", "sites", "releases", "cut_off")},
             "says": "nothing here is a finding; an exploration ends in a lead, a note, a method or a stop"}
 
 
@@ -2751,12 +3005,12 @@ def cmd_fingerprint(x: Exploration, a) -> None:
 class A:
     def __init__(self, **kw):
         defaults = dict(by="agent:tester-analysis", how="a later period", set_aside_window="2025-04-28:", working_window="2024-01-01:2024-12-31",
-                        set_aside_sites=None, set_aside_release=None, set_aside_path=None, nothing_set_aside=None, time_keys=None,
+                        set_aside_sites=None, set_aside_release=None, release_cut_off=None, set_aside_path=None, nothing_set_aside=None, time_keys=None,
                         subject="reach_id=R1,gauge=G1", working="calendar 2024", why="the next period, never read", studies=None,
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
-                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
+                        also_reads=None, variant=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
                         reason=None, expertise=None, local_practice=None, record_comment=None, report_only=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
@@ -3021,12 +3275,78 @@ def selftest() -> int:
         site_file.write_text(json.dumps({"gauge": "g7", "rows": []}))
         ok("a look that names a set-aside site is refused", "set aside" in look(xs, ["{python}", ss, "--gauge", "G7"]))
         ok("a look on a data file that holds a set-aside site is refused", "set aside" in look(xs, ["{python}", ss, str(site_file)]))
+        ok("a new release set aside without a cut-off is refused: a release that arrives as rows of the same file carries no mark",
+           "--release-cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-REL-0"), A(
+               request=str(req), id="E-REL-0", how="a new release", set_aside_window=None, set_aside_release=["PRODUCT_v3"], working_window=None,
+               subject="reach_id=R3,gauge=G3", working_data=[str(data)])) and not (work / "explorations" / "E-REL-0").exists())
         xr = fresh("E-REL", how="a new release", set_aside_window=None, set_aside_release=["PRODUCT_v3"], working_window=None,
-                   subject="reach_id=R3,gauge=G3")
+                   subject="reach_id=R3,gauge=G3", release_cut_off="2024-12-31")
         known(xr)
         sr = script(xr, "p.py", "print('ok')\n")
         ok("a look that names a set-aside release is refused", "set aside" in look(xr, ["{python}", sr, "--collection", "product_V3"]))
         ok("a look that names another release runs", look(xr, ["{python}", sr, "--collection", "PRODUCT_v2"]) == "")
+        # the release binds the data as it stands (found by the first real run: the next monthly update would have come in as
+        # plain dated rows of the same file, and any look could have read them)
+        ok("a month written as a year and a month is read against the cut-off, and a range of years is not a month",
+           past_cut_off("A,2024-12,1.0\nA,2025-01,1.1\n1970-2010 2025-02-03", "2024-12-31") == ["2025-01", "2025-02-03"]
+           and past_cut_off("A,2024-12,1.0 in 1970-2010", "2024-12-31") == [])
+        monthly = tmp / "monthly"
+        monthly.mkdir()
+        rows = "Source,Year,Mean\n" + "".join(f"A,2024-{m:02d},{m / 10}\n" for m in range(1, 13))
+        (monthly / "monthly.csv").write_text(rows)
+        rel = dict(how="a new release", set_aside_window=None, set_aside_release=["next-update"], working_window=None, subject="reach_id=R70,gauge=G70")
+        ok("a release whose cut-off is before what the working data holds is refused at the start: the data already goes past it",
+           "already holds dates past the cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-0"), A(
+               request=str(req), id="E-CUT-0", working_data=[str(monthly)], release_cut_off="2024-06-30", **rel)))
+        ok("and so is a working window that runs past the cut-off",
+           "past the cut-off" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-0"), A(
+               request=str(req), id="E-CUT-0", working_data=[str(monthly)], release_cut_off="2024-12-31", **{**rel, "working_window": "2024-01-01:2025-06-30"})))
+        xc = fresh("E-CUT", working_data=[str(monthly)], release_cut_off="2024-12-31", **rel)
+        known(xc)
+        sc = script(xc, "tail.py", "import sys\nprint(open(sys.argv[1]).read().splitlines()[-1])\n")
+        ok("the start binds every working file by checksum and records the cut-off",
+           xc.set_aside()["cut_off"] == "2024-12-31" and [b["sha256"] for b in xc.set_aside()["bound"]] == [sf.sha_file(monthly / "monthly.csv")])
+        ok("a look over the working data as it stood runs", look(xc, ["{python}", sc, str(monthly / "monthly.csv")]) == "")
+        (monthly / "monthly.csv").write_text(rows + "A,2025-01,9.9\nA,2025-02,9.8\n")  # the source publishes; the file is refreshed in place
+        before = len(xc.events())
+        got = look(xc, ["{python}", sc, str(monthly / "monthly.csv")])
+        ok("a look over a working file refreshed with months past the cut-off is refused, and the refusal is logged, not a breach",
+           "has changed since the exploration started" in got and "2025-01" in got and len(xc.events()) == before + 1
+           and xc.events()[-1]["kind"] == "look.refused" and not breached(xc.events()))
+        ok("a recheck over the refreshed file runs nothing", "nothing is run" in said(cmd_recheck, xc, A(look="LOOK-001")))
+        (xc.d / "looks" / "copy.csv").write_text((monthly / "monthly.csv").read_text())
+        ok("a copy of the refreshed file put in the exploration is refused too: it holds months past the cut-off",
+           "holds a date past the cut-off" in look(xc, ["{python}", sc, "looks/copy.csv"]))
+        (monthly / "monthly.csv").write_text(rows)
+        (monthly / "extra.csv").write_text("Source,Year,Mean\nA,2024-12,1.0\n")
+        ok("a file that was not in the working data at the start is refused, whatever its dates",
+           "was not in the working data when the exploration started" in look(xc, ["{python}", sc, str(monthly / "extra.csv")]))
+        (monthly / "extra.csv").unlink()
+        ok("another exploration of the same subject cannot explore past the cut-off of the release set aside",
+           "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-2"), A(
+               request=str(req), id="E-CUT-2", **{**rel, "set_aside_release": ["a-later-update"], "working_window": "2024-01-01:2025-06-30"},
+               release_cut_off="2025-06-30", working_data=[str(monthly)])))
+        rmeta = tmp / "fd-release.json"
+        rmeta.write_text(json.dumps({"subject": {"reach_id": "R71", "gauge": "G71"}, "files": [{"name": "monthly.csv", "sha256": sf.sha_file(monthly / "monthly.csv")}],
+                                     "items": [{"id": "A-2024", "series": "A", "start": "2024-01-01", "end": "2024-12-31", "count": 12}],
+                                     "releases": [{"name": "next-update", "cadence": "monthly"}]}))
+        rp_ = tmp / "proposals" / "release.yaml"
+        quiet(fdt.cmd_propose, fdt.A(metadata=str(rmeta), kind="next-release", release="next-update", what="w", why="y", unfair="u",
+                                     studies=str(fwork / "studies"), out=str(rp_)))
+        rstart = dict(request=str(req), how="a new release", set_aside_window=None, set_aside_release=["next-update"], working_window=None,
+                      subject="reach_id=R71,gauge=G71", fresh_data=str(rp_), studies=str(fwork / "studies"))
+        ok("a proposal of the next release fixes the cut-off from the metadata, and a start with another cut-off is refused",
+           fdt.load(rp_)["rule"]["cut_off"] == "2024-12-31" and "is not the one the proposal fixed" in said(
+               cmd_start, Exploration(fwork / "explorations" / "E-RP-0"), A(id="E-RP-0", working_data=[str(monthly)], release_cut_off="2024-11-30", **rstart)))
+        other = tmp / "other-monthly"
+        other.mkdir()
+        (other / "monthly.csv").write_text(rows.replace("A,2024-03,0.3", "A,2024-03,0.4"))
+        ok("a start whose working file is not the file the metadata described, by checksum, is refused",
+           "not the file the metadata describes" in said(cmd_start, Exploration(fwork / "explorations" / "E-RP-0"), A(id="E-RP-0", working_data=[str(other)], **rstart)))
+        xrp = Exploration(fwork / "explorations" / "E-RP")
+        quiet(cmd_start, xrp, A(id="E-RP", working_data=[str(monthly)], **rstart))
+        ok("with the proposal, the start takes the cut-off it fixed and binds the file the metadata described",
+           xrp.set_aside()["cut_off"] == "2024-12-31" and xrp.set_aside()["bound"][0]["sha256"] == sf.sha_file(monthly / "monthly.csv"))
         # a site is written many ways: the fence reads the ways people type it (found by the hydrologist's review)
         xu = fresh("E-USGS", how="sites never opened", set_aside_window=None, set_aside_sites="USGS-06935965,USGS-06909000", working_window=None,
                    subject="reach_id=R9,gauge=USGS-07374000")
@@ -3068,7 +3388,8 @@ def selftest() -> int:
         quiet(cmd_note, y, A(kind="missing", about="the A product", text="the flag is not described", evidence="receipts/LOOK-001.json"))
         ok("a note is a file and a log event, and says it comes from exploring",
            json.loads((y.d / "notes/NOTE-001.json").read_text())["way"] == WAY and last(y.events(), "note.raised")["data"]["text"])
-        lead = {"what_looks_true": "A follows B closely over the year, on changes.", "how_it_was_found": "By pairing the two records and scoring changes.",
+        lead = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A follows B closely over the year, on changes.", "how_it_was_found": "By pairing the two records and scoring changes.",
                 "evidence": ["LOOK-001"], "choices_that_would_change_it": [{"choice": "CHOICE-002", "how": "keeping all moves the gain"}],
                 "choices_that_would_not": [], "pitfalls": ["levels are on different datums"],
                 "proposed_plan": {"question": "Is the gain of A on B within five percent of one?", "quantity_estimated": "the gain",
@@ -3254,6 +3575,11 @@ def selftest() -> int:
         ok("`read` takes a page by its path below the wiki, and records that it was only skimmed",
            said(cmd_read, w, A(concept="gotchas/follow-datum.md", takes="nothing more", depth="skimmed")) == "" and last(w.events(), "knowledge.read")["data"]["depth"] == "skimmed")
         ok("`read` refuses a depth that is neither whole nor skimmed", "whole" in said(cmd_read, w, A(concept=listed_as, takes="x", depth="glanced")))
+        unlisted = bundle / "gotchas" / "units.md"
+        unlisted.write_text("---\ntype: dataset-gotcha\ntitle: \"Units of the toy record\"\nstatus: draft\n---\n\n# Units\n\nMetres.\n")
+        ok("`read` takes a page the search did not list, and records that it was not listed (found by the first real run)",
+           said(cmd_read, w, A(concept=str(unlisted), takes="the units")) == "" and last(w.events(), "knowledge.read")["data"]["listed"] is False
+           and [e["data"]["listed"] for e in w.events() if e["kind"] == "knowledge.read"][0] is True)
         quiet(cmd_choice, w, A(choice="fit a line with an intercept", alternative=["through the origin"], rests_on="the page read"))
         ok("a look runs once a page is recorded as read", look(w, ["{python}", sw]) == "")
         e = last(w.events(), "look.run")
@@ -3268,12 +3594,24 @@ def selftest() -> int:
            and e["data"]["figures"][0]["sha256"] == sf.sha_file(w.d / "figures/photo.png")
            and json.loads((w.d / "receipts/LOOK-001.json").read_text())["figures"] == e["data"]["figures"] and not breached(w.events()))
         ok("a look with a figure and a warning reproduces", said(cmd_recheck, w, A(look="LOOK-001")) == "")
+        (w.d / "review" / "check.py").write_text("print('a variant: the gain again, by another route')\n")
+        n_before = len(w.events())
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            got = _refusal(cmd_recheck, w, A(look="LOOK-001", variant="review/check.py"))
+        ok("a reviewer's variant of a look runs in its scratch folder on the same files, and nothing is logged (found by the first real run)",
+           got == "" and "by another route" in shown.getvalue() and "not logged" in shown.getvalue() and len(w.events()) == n_before)
+        (w.d / "review" / "reach.py").write_text("START = '2025-05-01'\nprint(START)\n")
+        (w.d / "looks" / "variant.py").write_text("print('x')\n")
+        ok("a variant that names a date inside the set-aside window is refused, and so is one outside the review folder",
+           "date inside" in said(cmd_recheck, w, A(look="LOOK-001", variant="review/reach.py"))
+           and "review/ folder" in said(cmd_recheck, w, A(look="LOOK-001", variant="looks/variant.py")) and len(w.events()) == n_before)
         ok("a look says how many comparisons it held", e["data"]["comparisons_declared"] == 9)
         quiet(cmd_choice, w, A(choice="keep every row", alternative=["drop the first"], rests_on="LOOK-001", look="LOOK-001"))
         ok("a choice is logged with the looks that had run when it was written down",
            last(w.events(), "choice.recorded")["data"]["after_looks"] == 1 and last(w.events(), "choice.recorded")["data"]["after"] == "LOOK-001")
         quiet(cmd_note, w, A(kind="missing", about="the A product", text="no page says what the flag values mean", evidence=None))
-        wl = {"what_looks_true": "A looks as if it follows B with a gain of 1.4826 over the year.",
+        wl = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A looks as if it follows B with a gain of 1.4826 over the year.",
               "how_it_was_found": "By fitting one line to the twelve paired rows.", "evidence": ["LOOK-001"],
               "choices_that_would_change_it": [{"choice": "CHOICE-002", "how": "not tried"}],
               "choices_that_would_not": [{"choice": "CHOICE-001", "why": "the intercept is small"}], "pitfalls": [],
@@ -3292,6 +3630,24 @@ def selftest() -> int:
         ok("a lead that calls observations unflagged is refused, with the words to use",
            "flag's value" in lead_says(what_looks_true="A looks as if it follows B on the unflagged rows of the year."))
         ok("a lead with a key that is not a lead's is still refused", "not a key of a lead" in lead_says(conclusions="x"))
+        # the lead in a minute, at the top (found by the first real run: its lead ran to 4,700 words before the so what)
+        ok("a lead without a summary is refused", "`summary` is missing" in said(cmd_lead, w, A(file=str(
+            (lambda f: (f.write_text(yaml.safe_dump({k: v for k, v in wl.items() if k != "summary"})), f)[1])(wf)))))
+        ok("a summary without what it cannot settle is refused", "exactly these keys" in lead_says(summary={k: v for k, v in wl["summary"].items() if k != "cannot_settle"}))
+        ok("a summary over 150 words is refused", "under 150 words" in lead_says(summary={**wl["summary"], "how_strong": "weak " * 150}))
+        ok("a summary is checked like the rest: a number in it that no look printed is refused",
+           "1.4827" in lead_says(summary={**wl["summary"], "looks_true": "A looks as if it follows B with a gain of 1.4827."}))
+        # constants and counts in method text, and numbers the plan quotes (found by the same run: 1.96 was refused)
+        def loose(**change) -> list:  # the number check alone, without recording a version
+            return unbacked_numbers(w, {**wl, **change}, w.events())
+        ok("a listed constant (1.96) and a count with a thousands comma pass in the method's words without a receipt",
+           loose(how_it_was_found="By fitting one line to the paired rows, with 1.96 standard errors and 5,000 draws.") == [])
+        ok("an unprinted result number is still refused in the method's words, and a listed constant where the lead says what looks true",
+           "0.8123" in lead_says(how_it_was_found="By fitting one line, with a slope of 0.8123 dropped.")
+           and "1.96" in lead_says(what_looks_true="A looks as if it follows B, with a z of 1.96 over the year."))
+        ok("a plan sentence that names a look quotes it: a number that look did not print is refused, one it printed passes",
+           "1.4827 (in the proposed plan" in lead_says(proposed_plan={**wl["proposed_plan"], "hard_cases": "a gain of 1.4827 as in LOOK-001."})
+           and loose(proposed_plan={**wl["proposed_plan"], "hard_cases": "a gain of 1.4826 as in LOOK-001. A gain of 0.8123 is proposed here."}) == [])
         ok("a lead that shows a figure no look drew is refused",
            "no logged look drew" in lead_says(figures=[{"file": "figures/other.svg", "shows": "something"}]))
         ok("a lead may quote a number from a page that was read, may say what does not hold, and may show a figure a look drew",
@@ -3318,6 +3674,10 @@ def selftest() -> int:
            "confidence interval" in said(cmd_correct, w, A(old="over the year", new="over the year, with a sampling interval", why="x")))
         quiet(cmd_correct, w, A(old="looks as if it follows B", new="looks as if it rises and falls with B", why="'follows' was too loose"))
         got = json.loads((w.d / "lead.json").read_text())
+        ok("the summary stands at the top of lead.md, before the question", (lambda md: md.index("## In short") < md.index("**The question.**"))(
+            (w.d / "lead.md").read_text()))
+        ok("the lead says which page was read though the search did not list it",
+           "units.md`: NOT SIGNED (status draft) (read, though the search did not list it)" in (w.d / "lead.md").read_text())
         ok("a one-phrase correction of wording does not cost a lead version, and the lead shows the old and the new words",
            got["version"] == 1 and count(w.events(), "lead.recorded") == 1 and len(w.events()) == n_events + 1
            and "rises and falls with B" in got["what_looks_true"] and "Corrections of wording" in (w.d / "lead.md").read_text()
@@ -3520,7 +3880,8 @@ def selftest() -> int:
                                       "--kind", "missing", "--about", "a", "--text", "b"], capture_output=True, text=True)
         ok("while a look holds the exploration log, a command that would write to it is refused and does not wait",
            waiting.returncode == 2 and "log is held" in waiting.stderr and not count(r.events(), "note.raised"))
-        rl = {"what_looks_true": "A follows B closely over the year, on changes, across 12 rows.", "how_it_was_found": "By pairing the two records and counting rows.",
+        rl = {"summary": {"looks_true": "The second record seems to track the first in twelve months.", "how_strong": "One look on one year of working data.",
+                            "cannot_settle": "Whether it holds in another year or at another site."}, "what_looks_true": "A follows B closely over the year, on changes, across 12 rows.", "how_it_was_found": "By pairing the two records and counting rows.",
               "evidence": ["LOOK-001"], "choices_that_would_change_it": [], "choices_that_would_not": [], "pitfalls": [],
               "proposed_plan": {"question": "Is the gain of A on B within five percent of one?", "quantity_estimated": "the gain",
                                 "difference_that_matters": "five percent", "rule_sketch": "interval inside the band"}}
@@ -3594,10 +3955,21 @@ def selftest() -> int:
         ok("a so what before the lead is reviewed is refused, and so is the question",
            "has not been reviewed" in so_what(sw) and "has not been reviewed" in said(cmd_ask_so_what, sw, A(file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
         quiet(cmd_review, sw, RA(sw, by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        asked_q = yaml.safe_load(qf.read_text())
+        qf.write_text(yaml.safe_dump({**asked_q, "options": "test one idea"}))
+        ok("the question's options are a list of ways on, in words", "`options` is a list" in said(
+            cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
+        qf.write_text(yaml.safe_dump({**asked_q, "options": ["test the gain on next year's data", "look at the low-stage readings first"],
+                                      "mood": "words that are no part of the question"}))
+        ok("a key that is not a question's is still refused", "may have `options`" in said(
+            cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
+        qf.write_text(yaml.safe_dump({**asked_q, "options": ["test the gain on next year's data", "look at the low-stage readings first"]}))
         quiet(cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json")))
         ok("an agent drafts the question for the person: what the lead shows, why it might matter, what would make it unremarkable",
            (sw.d / "so-what" / "QUESTION-001.md").is_file() and "What would make it unremarkable" in (sw.d / "so-what" / "QUESTION-001.md").read_text()
            and last(sw.events(), "so-what.asked")["actor"] == "agent:tester-coordinating")
+        ok("the question shows the options the lead sets out, none chosen (found by the first real run: they had no key of their own)",
+           "b. look at the low-stage readings first" in (sw.d / "so-what" / "QUESTION-001.md").read_text())
         ok("an agent cannot record the answer, by any route: not under its own name, not as practice, not as the platform without a comment",
            "a person's answer" in so_what(sw, by="agent:tester-coordinating") and "a person's answer" in so_what(sw, by="agent:tester-review")
            and "platform's name" in said(cmd_so_what, sw, A(by="agent:tester-coordinating", record_comment=str(tmp / "none.json")))
@@ -4050,6 +4422,9 @@ def build_parser() -> argparse.ArgumentParser:
         (["--set-aside-window"], {"default": None, "help": "START:END, or START: for a window that stays open"}),
         (["--set-aside-sites"], {"default": None, "help": "site identifiers, separated by commas"}),
         (["--set-aside-release"], {"action": "append", "default": None, "help": "a release, collection or record name; repeatable"}),
+        (["--release-cut-off"], {"default": None, "dest": "release_cut_off",
+                                 "help": "with a new release: the last date of the data as it stands; the start binds the working data by "
+                                         "checksum and a look at a file that changed or holds a later date is refused"}),
         (["--set-aside-path"], {"action": "append", "default": None, "help": "where the set-aside data would land if fetched; repeatable"}),
         (["--nothing-set-aside"], {"default": None, "help": "the reason nothing can be set aside; such an exploration hands nothing over"}),
         (["--fresh-data"], {"default": None, "dest": "fresh_data",
@@ -4080,7 +4455,9 @@ def build_parser() -> argparse.ArgumentParser:
                                            "settings file); repeatable. It is read by the fence, put in the look's scratch "
                                            "folder and pinned by checksum like a named file"}))
     look.add_argument("argv", nargs=argparse.REMAINDER, help="-- LAUNCHER SCRIPT [arguments]")
-    add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}))
+    add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}),
+        (["--variant"], {"default": None, "help": "a script of the reviewer's own in review/, run in the look's place on the same files, "
+                                                  "in its scratch folder; logged nowhere, and listed in the review"}))
     add("choice", cmd_choice, by, (["--choice"], {"required": True}), (["--alternative"], {"action": "append", "default": None}),
         (["--rests-on"], {"required": True, "dest": "rests_on"}), (["--look"], {"default": None}))
     add("note", cmd_note, by, (["--kind"], {"required": True}), (["--about"], {"required": True}), (["--text"], {"required": True}),
@@ -4092,7 +4469,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("reviewer", cmd_reviewer, by, (["--reviewer"], {"required": True, "help": "the name the review will come under, such as agent:review-01"}))
     add("review", cmd_review, by, (["--verdict"], {"required": True, "help": " or ".join(VERDICTS)}), (["--file"], {"required": True}),
         (["--read-lead"], {"default": None, "dest": "read_lead", "help": "the sha256 of the lead.json the reviewer read; `status` prints it"}))
-    add("ask-so-what", cmd_ask_so_what, by, (["--file"], {"required": True, "help": "the question (YAML): " + ", ".join(QUESTION_KEYS)}),
+    add("ask-so-what", cmd_ask_so_what, by, (["--file"], {"required": True, "help": "the question (YAML): " + ", ".join(QUESTION_KEYS) + ", and `options` if the lead sets some out"}),
         (["--read-lead"], {"required": True, "dest": "read_lead", "help": "the sha256 of the lead.json the question is about"}))
     add("so-what", cmd_so_what, by, (["--answer"], {"default": None, "help": ", ".join(SO_WHAT)}),
         (["--direction"], {"default": None, "help": "for try-instead: the direction, in words"}),

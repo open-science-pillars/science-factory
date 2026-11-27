@@ -27,6 +27,7 @@ same tools is the optional demo in examples/baton-rouge.
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -38,6 +39,9 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
+# uv refuses a setting of its own that is set and empty (UV_NATIVE_TLS=, for one) before it runs anything: the commands
+# below are given the environment without such a setting, as the tools give the scripts they run
+QUIET_ENV = {k: v for k, v in os.environ.items() if not (k.startswith("UV_") and not v.strip())}
 GAIN_PUT_IN, CLOSE_ENOUGH = 1.03, 0.02   # the answer the record was made with (make_record.py), and how near counts
 MODEL = "stand-alone-run/no-model"       # what this script's events carry where a model's name would stand: no model runs in it
 
@@ -54,7 +58,7 @@ def main() -> int:
         """Run one command. What it prints and what it says on standard error are both returned, for reading a refusal;
         with `answer` only what it prints is returned, because that alone is the tool's answer: the launcher may add a
         warning of its own on standard error (uv does, for a deprecated setting), and a warning is not part of the answer."""
-        done = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        done = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, env=QUIET_ENV)
         if done.returncode != expect:
             raise AssertionError(f"`{' '.join(str(x) for x in command[:6])} ...` ended {done.returncode}, expected {expect}:\n{(done.stdout + done.stderr)[-800:]}")
         return done.stdout if answer else done.stdout + done.stderr
@@ -159,7 +163,7 @@ def main() -> int:
         step("without the screen the gain is further from it, as the wiki page warns", abs(gain_all - GAIN_PUT_IN) > abs(gain - GAIN_PUT_IN))
         later = work / "scratch" / "record-2025.json"
         later.parent.mkdir()
-        subprocess.run(["uv", "run", str(HERE / "make_record.py"), "--year", "2025", "--out", str(later)], check=True, capture_output=True)
+        subprocess.run(["uv", "run", str(HERE / "make_record.py"), "--year", "2025", "--out", str(later)], check=True, capture_output=True, env=QUIET_ENV)
         step("a look that names the set-aside year is refused, and the refusal is logged",
              "set aside" in tool("explore.py", *look, "peek at the next year", "--", "uv", "run", gain_script, later, expect=2)
              and json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[-1])["kind"] == "look.refused")
@@ -182,7 +186,10 @@ def main() -> int:
              "--evidence", "receipts/LOOK-002.json")
 
         # the lead, the review, the end, the hand-over
-        lead = {"what_looks_true": f"With degraded readings left out, the second sensor looks as if it follows the reference with a gain of {gain:.4f} over 2024.",
+        lead = {"summary": {"looks_true": f"In 2024 the second sensor seems to track the reference, with a gain of {gain:.4f} once degraded readings are left out.",
+                            "how_strong": "Three looks at one year of one pair of sensors, with the flag screen chosen after the first look.",
+                            "cannot_settle": "Whether the gain holds in 2025, which was set aside, or for any other pair of sensors."},
+                "what_looks_true": f"With degraded readings left out, the second sensor looks as if it follows the reference with a gain of {gain:.4f} over 2024.",
                 "how_it_was_found": "Read the wiki pages, fitted the gain with an intercept with and without the flag screen.",
                 "evidence": ["LOOK-001", "LOOK-002", "LOOK-003"],
                 "figures": [{"file": "figures/residual.svg", "shows": "what is left of the second sensor after its straight line on the reference, coloured by flag"}],

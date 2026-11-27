@@ -9,7 +9,7 @@ A review is by someone who did none of the work and starts from the files. Its j
 
 If you did any part of this work, or were given the reasoning of the agent that did, stop and say so.
 
-**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating agent goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis agent's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review agent can be started.
+**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating agent goes in `record/review/`, your own place, when the launcher keeps one; in a plain exploration, with no `record/` folder, it goes in the exploration's `review/` folder beside your review file. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis agent's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review agent can be started.
 
 ## 1. The record
 
@@ -27,7 +27,7 @@ Use the `read-what-is-known` skill on the question before reading what the work 
 
 ## 3. Every number against a receipt
 
-For each number in the lead, the plan or the finding: find it in a look's output (`receipts/LOOK-00N.out.txt`) or a run receipt. A number that is in none is a hole. A number that is rounded so it reads better than the receipt is a hole. For an exploration, `uv run tools/explore.py recheck --exploration <x> --look LOOK-00N` runs a logged look again and says whether the output is identical, and what was pinned: for a look that ran in a scratch folder, every file it was given, by checksum; for a look logged before that, only its script and the files its command names. Recheck the looks the lead rests on.
+For each number in the lead, the plan or the finding: find it in a look's output (`receipts/LOOK-00N.out.txt`) or a run receipt. A number that is in none is a hole. A number that is rounded so it reads better than the receipt is a hole. For an exploration, `uv run tools/explore.py recheck --exploration <x> --look LOOK-00N` runs a logged look again and says whether the output is identical, and what was pinned: for a look that ran in a scratch folder, every file it was given, by checksum; for a look logged before that, only its script and the files its command names. Recheck the looks the lead rests on. To check what a look's script does, write a variant of it in `review/` and run it in the look's place with `uv run tools/explore.py recheck --exploration <x> --look LOOK-00N --variant review/<name>.py`: same files, same fence, logged nowhere. List each variant in your review with what it showed.
 
 ## 4. The reasoning
 
@@ -68,6 +68,6 @@ uv run tools/sf.py review --study <s> --by <you> --model <your model> --verdict 
 
 ## What this skill refuses
 
-- Fixing the work, running new looks, or rewriting the lead.
+- Fixing the work, running new looks in the exploration (a variant run with `recheck --variant` is a check, listed in the review), or rewriting the lead.
 - A verdict with no file, or a file with no pointers into the record.
 - Reviewing from the author's summary, or reading the author's account of the work at all.

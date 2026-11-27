@@ -638,8 +638,11 @@ def selftest() -> int:
     ok("curating may not write the queue's index by hand", blocked("curating", "Write", file_path="examples/w/knowledge-queue/queue.json"))
     ok("curating may not write a role file", blocked("curating", "Edit", file_path="factory/agents/curating/agent.md"))
     ok("curating may not write into a path outside the queue", blocked("curating", "Write", file_path="../hydrology/knowledge/gotchas/a.md"))
-    ok("coordinating writes nothing", blocked("coordinating", "Write", file_path=f"{x}/looks/a.py") and blocked("coordinating", "Write", file_path="notes.md")
-       and blocked("coordinating", "Write", file_path=f"{x}/review/r.md"))
+    ok("coordinating writes the files of intake and the so-what question and nothing else (found by the first real run: intake needs them)",
+       blocked("coordinating", "Write", file_path=f"{x}/looks/a.py") and blocked("coordinating", "Write", file_path="notes.md")
+       and blocked("coordinating", "Write", file_path=f"{x}/review/r.md") and blocked("coordinating", "Write", file_path=f"{x}/request.md")
+       and blocked("coordinating", "Write", file_path=f"{x}/lead.yaml")
+       and not any(blocked("coordinating", "Write", file_path=f"examples/w/{n}") for n in ("request.md", "fit.yaml", "so-what-question.yaml", "data/metadata.yaml")))
     ok("analysis may correct the wording of its lead, and no other role may",
        not blocked("analysis", "Bash", command=f"uv run tools/explore.py correct --exploration {x} --by agent:analysis --old a --new b --why c")
        and blocked("review", "Bash", command=f"uv run tools/explore.py correct --exploration {x} --by agent:review --old a --new b --why c"))
@@ -656,8 +659,8 @@ def selftest() -> int:
     ok("a role with no file gets nothing", blocked("auditing", "Read", file_path="README.md"))
     # each role has its own place for its account, and the review role has no route to the author's
     ok("each role may write its account in its own place",
-       not any(blocked(r, "Write", file_path=f"examples/w/record/{r}/01.answer.md") for r in ("analysis", "review", "curating"))
-       and blocked("coordinating", "Write", file_path="examples/w/record/coordinating/01.task.md"))
+       not any(blocked(r, "Write", file_path=f"examples/w/record/{r}/01.answer.md") for r in ("analysis", "review", "curating", "coordinating"))
+       and blocked("coordinating", "Write", file_path="examples/w/record/analysis/01.task.md"))
     ok("no role may write in another role's place",
        blocked("review", "Write", file_path="examples/w/record/analysis/01.answer.md") and blocked("analysis", "Write", file_path="examples/w/record/review/02.answer.md")
        and blocked("curating", "Write", file_path="examples/w/record/review/02.answer.md"))

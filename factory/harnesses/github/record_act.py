@@ -62,6 +62,12 @@ def _load(name: str, path: Path):
 check = _load("verify_request", HERE / "verify_request.py")  # the one reading of reviews and of which requests a change touches
 
 
+def uv_env() -> dict:
+    """The environment uv is called with: this one, without a setting of uv's own that is set and empty, which uv refuses
+    before it runs anything (UV_NATIVE_TLS=, found by the first real run of the factory)."""
+    return {k: v for k, v in os.environ.items() if not (k.startswith("UV_") and not v.strip())}
+
+
 def which_pull(pulls, commit: str) -> str:
     for p in pulls if isinstance(pulls, list) else []:
         if isinstance(p, dict) and p.get("merge_commit_sha") == commit and p.get("merged_at"):
@@ -96,13 +102,13 @@ def record(repo: Path, pull: dict, reviews, commit: str, tools: Path, factory: P
             rec.write_text(json.dumps(platform_record(repo, pull, reviews, study, act), indent=1))
             done = subprocess.run(["uv", "run", "--quiet", str(tools / "sf.py"), act, "--study", str(repo / study), "--record-merge", commit,
                                    "--platform-record", str(rec), "--by", "platform:github", "--factory", str(factory)],
-                                  capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                                  capture_output=True, text=True, stdin=subprocess.DEVNULL, env=uv_env())
         said = "\n".join(ln for ln in (done.stdout + done.stderr).splitlines() if not ln.startswith("warning: "))
         print(f"record_act: the {act} of {study}: " + ("recorded" if done.returncode == 0 else "NOT RECORDED") + "\n" + said)
         worst = max(worst, 1 if done.returncode else 0)
         if verify and done.returncode == 0:
             asked = subprocess.run(["uv", "run", "--quiet", str(tools / "sf.py"), "verify-acts", "--study", str(repo / study), "--by", "platform:github",
-                                    "--factory", str(factory)], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                                    "--factory", str(factory)], capture_output=True, text=True, stdin=subprocess.DEVNULL, env=uv_env())
             said = "\n".join(ln for ln in (asked.stdout + asked.stderr).splitlines() if not ln.startswith("warning: "))
             print(f"record_act: the platform was asked about the acts of {study}: "
                   + ("verified" if asked.returncode == 0 else "NOT VERIFIED (the act stays at `merge found, people not verified`)") + "\n" + said)
@@ -131,6 +137,15 @@ def selftest(only: str | None = None) -> int:
         return text
     A = sf.A
     V, R = "the required check", "recording the merge"
+    held = {k: os.environ.get(k) for k in ("UV_NATIVE_TLS", "UV_NO_PROGRESS")}
+    os.environ.update({"UV_NATIVE_TLS": "", "UV_NO_PROGRESS": "1"})
+    try:
+        for part, mine in ((V, check.uv_env()), (R, uv_env())):
+            ok("uv is called without a setting of its own that is set and empty, which it refuses before it runs anything, and with the others",
+               "UV_NATIVE_TLS" not in mine and mine.get("UV_NO_PROGRESS") == "1", part)
+    finally:
+        for k, v in held.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         tmp = Path(t).resolve()
         repo = tmp / "repo"

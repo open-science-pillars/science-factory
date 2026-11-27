@@ -1,10 +1,11 @@
-# A fit note, written at intake before any work starts (skill note-the-fit). Advice to the person; it blocks nothing.
-answer_is: checkable                 # exact | checkable | a judgement
-data_at_hand: yes                    # yes | partly | no
-mostly: computation                  # computation | reading | judgement
+# A fit note (skill note-the-fit): written at intake before the work starts, recorded right after the start and before the
+# first look or test. Advice to the person; it blocks nothing.
+answer_is: "checkable"               # exact | checkable | a judgement
+data_at_hand: "yes"                  # yes | partly | no
+mostly: "computation"                # computation | reading | judgement
 person_must_supply: >
   WHAT ONLY A PERSON CAN GIVE: THE DIFFERENCE THAT MATTERS, WHAT HAS BEEN LOOKED AT, ACCESS, A DECISION.
-verdict: fit-with-a-person-steering  # good-fit | fit-with-a-person-steering | poor-fit
+verdict: "fit-with-a-person-steering"  # good-fit | fit-with-a-person-steering | poor-fit
 why: >
   WHY, IN A SENTENCE; FOR A POOR FIT, WHAT WOULD MAKE IT A BETTER ONE.
 taste_needed: >

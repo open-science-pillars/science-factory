@@ -6,7 +6,7 @@ Three people take part, because two parts may not be done by whoever explores: o
 
 ## 1. A folder, the data, and your request
 
-Run everything from the top of a clone of this repository.
+Run everything from the top of a clone of this repository. uv refuses a setting of its own that is set and empty (`UV_NATIVE_TLS=`): unset it.
 
 ```
 W=$(mktemp -d)
@@ -58,7 +58,7 @@ uv run tools/explore.py start --exploration $X --id EXPLORATION-1 --by $ME \
 
 From here on 2025 is not looked at, by any route. The tool refuses a look that names it.
 
-Before the first look the coordinator writes a fit note from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml`: is the answer exact, checkable or a judgement, is the data at hand, is the work mostly computation, what must a person supply, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`) and the taste the work will need. It is advice and blocks nothing; it is refused once a look has run:
+At intake, before the start, the coordinator wrote a fit note from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml`: is the answer exact, checkable or a judgement, is the data at hand, is the work mostly computation, what must a person supply, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`) and the taste the work will need. It records it now, right after the start and before the first look. It is advice and blocks nothing; it is refused once a look has run:
 
 ```
 uv run tools/explore.py fit --exploration $X --by $COORDINATOR --model "$M" --file fit.yaml
@@ -72,7 +72,7 @@ uv run tools/explore.py read --exploration $X --by $ME \
   --concept compare-changes-not-levels.md --takes "fit with an intercept: the mounting offset is not surveyed"
 ```
 
-The first look is refused until a page is recorded as read.
+The first look is refused until a page is recorded as read. Add `--depth skimmed` for a page you only skimmed (`whole` is the default).
 
 ## 5. Look, as often as you like
 
@@ -108,6 +108,10 @@ Write the lead from the template (`factory/agents/analysis/skills/write-up-a-lea
 
 ```
 cat > $X/lead.yaml <<'LEAD'
+summary:
+  looks_true: "Over 2024 the second sensor looks to follow the reference with a gain of 1.0281, degraded readings left out."
+  how_strong: "Two looks at one year of one pair of sensors; the flag screen was chosen after the first."
+  cannot_settle: "Whether the gain holds in 2025, which was set aside, or for another pair of sensors."
 what_looks_true: >
   Over 2024 the second sensor looks to follow the reference with a gain of 1.0281
   once the readings flagged 2 or above are left out (50 of 52 readings kept).
@@ -130,7 +134,7 @@ LEAD
 uv run tools/explore.py lead --exploration $X --by $ME --model "$M" --file $X/lead.yaml
 ```
 
-The tool refuses a lead that quotes a number no look printed. It writes `lead.md`, which says on its first line that it is a lead and not a finding. The reviewer reads the lead, the log and the looks, writes the holes they found, and records a verdict on the lead as it stands:
+The tool refuses a lead that quotes a number no look printed. It writes `lead.md`, which says on its first line that it is a lead and not a finding, with the summary at the top for the person who will say so what. The reviewer reads the lead, the log and the looks, writes the holes they found, and records a verdict on the lead as it stands:
 
 ```
 SHA=$(uv run tools/explore.py status --exploration $X | python3 -c "import json,sys; print(json.load(sys.stdin)['lead_json_sha256'])")
