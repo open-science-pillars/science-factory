@@ -84,6 +84,8 @@ jobs:
           uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
       # The self-tests above include each fault the first real run found (F1 to F19 of definition 0.14.0): a release set aside
       # binding the data as it stands, a long series described from its date column, and the rest.
+      # From definition 0.15.0 they also carry that release into the confirming study (WHAT-IS-ENFORCED row 1.31): sf.py's checks
+      # on a monthly series to a cut-off, explore.py's on a release handed over, fresh_data.py's on the cadence a proposal keeps.
       # The example also shows, in practice mode, a fit note, the overclaiming check, a person's so what, figures at the lock, a
       # look promoted to a method in a scratch copy of the definition, and a contribution statement.
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder

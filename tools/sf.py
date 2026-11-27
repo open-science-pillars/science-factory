@@ -20,7 +20,11 @@ Commands, by stage. Each has one name.
 
   Ask
     start                 a study exists; with --request, the request it
-                          answers is bound to it by checksum
+                          answers is bound to it by checksum. A release
+                          is bound too: its cut-off and the working data
+                          by checksum, from the exploration's start (a
+                          hand-over) or from a next-release proposal
+                          (--fresh-data, --working-data)
     status                where the study stands, read from the definition's stages
     close                 the study ends: answered already, a signed
                           result, or a recorded decision not to sign
@@ -77,7 +81,11 @@ Commands, by stage. Each has one name.
                           place with no network a person may open on the
                           merge alone (--people-not-verified REASON):
                           that is logged, and the study is not signed
-                          until somebody verifies it
+                          until somebody verifies it. For a release it
+                          refuses working data changed since the lock,
+                          says it is waiting while the release cannot be
+                          out, and runs nothing on fresh data with a date
+                          on or before the cut-off
     void-unread           a person voids an opening whose fetch failed
                           and left nothing behind
   Review, sign and learn
@@ -1500,6 +1508,7 @@ def cmd_start(study: Study, a) -> None:
     src = Path(request).resolve() if request else None
     if src is not None and not src.is_file():
         raise Refused(f"the request file {request} does not exist")
+    release = release_at_start(study, a, src)
     study.d.mkdir(parents=True, exist_ok=True)
     if src is not None:
         if src.is_relative_to(study.d):
@@ -1522,10 +1531,13 @@ def cmd_start(study: Study, a) -> None:
                 data["from_exploration"] = {"id": ho.get("from"), "path_from_study": os.path.relpath(src.parent.parent, study.d)}
     if asked_by:
         data["asked_by"] = asked_by
+    if release:
+        data["release"] = release
     for sub in ("receipts", "notes", "verdicts", "data"):
         (study.d / sub).mkdir(exist_ok=True)
     study.append(a.by, "study.started", data)
-    print(f"started {a.id}" + (f" (request {data['request']['file']}, sha256 {data['request']['sha'][:12]})" if src else ""))
+    print(f"started {a.id}" + (f" (request {data['request']['file']}, sha256 {data['request']['sha'][:12]})" if src else "")
+          + (f". The {release_in_words(release)}; taken from {release['from']}" if release else ""))
 
 
 def exploration_figures_beside(request: Path) -> list:
@@ -2048,6 +2060,214 @@ def fresh_data_of(study: Study, plan: dict) -> dict | None:
             "seed_sha256": (prop.get("draw") or {}).get("seed_sha256"), "record": tool.on_record(f, study.d.parent)}
 
 
+def explore_tool():
+    """tools/explore.py, for the fence's own reading of dates. Loading it loads its own copy of this tool under the name
+    `sf`; whatever stood under that name before is put back."""
+    if "explore" not in sys.modules:
+        kept = sys.modules.get("sf")
+        try:
+            _beside("explore")
+        finally:
+            if kept is not None:
+                sys.modules["sf"] = kept
+    return sys.modules["explore"]
+
+
+# ---- a release: its cut-off and the data as it stood, carried from the start to the opening ---------------------
+# A release that arrives as new rows of the same file carries no mark of its own. So what binds it is the cut-off and the
+# checksum of the working data as it stood, and both come from where a tool fixed them: the exploration's start, or a
+# proposal of the next release that tools/fresh_data.py wrote from metadata. An agent never types them here.
+
+def _today() -> dt.date:
+    return dt.date.fromisoformat(TODAY) if TODAY else dt.date.today()
+
+
+TODAY = None  # set only by the self-test, to say what day it is
+
+
+def release_at_start(study: Study, a, src: Path | None) -> dict | None:
+    """The release a study starts with: from the exploration's start when the request is its hand-over, or from a
+    next-release proposal (`--fresh-data`) with the working data named (`--working-data`). None when neither names one."""
+    fresh = getattr(a, "fresh_data", None)
+    given = list(getattr(a, "working_data", None) or [])
+    xdir = src.parent.parent if src is not None and (src.parent / "hand-over.json").is_file() else None
+    xlog = xdir / "exploration-log.jsonl" if xdir is not None else None
+    if xlog is not None and xlog.is_file():
+        x = Study(xdir)
+        x.log = xlog
+        if x.chain_problems():
+            raise Refused(f"the exploration log the hand-over comes from ({xlog}) is broken: " + "; ".join(x.chain_problems()))
+        start = next((e for e in x.events() if e["kind"] == "exploration.started"), None)
+        sa = (start or {}).get("data", {}).get("set_aside") or {}
+        if not sa.get("cut_off"):
+            if fresh or given:
+                raise Refused("`--fresh-data` and `--working-data` name a release for a study that is not handed one; this study comes "
+                              "from an exploration that set no release aside, and its plan names its fresh data")
+            return None
+        if fresh or given:
+            raise Refused(f"the exploration set aside the release after {sa['cut_off']}, and its start bound the working data by checksum: "
+                          "the study takes both from there. `--fresh-data` and `--working-data` are not given with a hand-over")
+        working = []
+        for b in sa.get("bound") or []:
+            f = Path(os.path.normpath(xdir / b["path"]))
+            if sha_file(f) != b["sha256"]:
+                raise Refused(f"{f.name} has changed since the exploration started (its sha256 is not the one the start bound): the "
+                              f"release after {sa['cut_off']} may have arrived in it. Put back the file as it stood; nothing was started")
+            working.append({"file": os.path.relpath(f, study.d), "sha256": b["sha256"]})
+        prop, fd = {}, sa.get("fresh_data") or {}
+        if fd:
+            if sha_file(Path(fd["file"])) != fd.get("sha256"):
+                raise Refused(f"the proposal of the fresh data the exploration set aside ({fd['file']}) is missing or changed since its start")
+            prop = fresh_tool().load(Path(fd["file"]))
+        rule = prop.get("rule") or {}
+        return {"name": (sa.get("releases") or [rule.get("release")])[0], "cut_off": sa["cut_off"],
+                "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"), "expected_on": rule.get("expected_on"),
+                "from": f"the start of the exploration {start['data'].get('id')} ({start['seq']}:{start['hash']})", "exploration": True,
+                "working": working, "proposal": {"sha256": fd["sha256"]} if fd else None}
+    if not fresh:
+        if given:
+            raise Refused("`--working-data` goes with `--fresh-data`, the proposal of the next release whose cut-off it is bound against")
+        return None
+    f = Path(os.path.abspath(fresh))
+    tool = fresh_tool()
+    try:
+        prop = tool.load(f)
+        problems = tool.problems(f, study.d.parent)
+    except tool.Refused as r:
+        raise Refused(f"the proposal {fresh} cannot be read: {r}")
+    if prop["kind"] != "next-release":
+        raise Refused(f"`--fresh-data` at the start names a proposal of the next release, and {fresh} proposes {prop['kind_in_words']}: "
+                      "any other kind is named in the plan (`data.held_out.fresh_data`)")
+    if problems:
+        raise Refused(f"the proposal {fresh} does not check out: " + "; ".join(problems))
+    rule = prop["rule"]
+    if not given:
+        raise Refused(f"the release after {rule['cut_off']} binds the working data as it stands: name it with `--working-data FILE`, "
+                      "and it is bound by checksum now")
+    named, working, keys = dict(rule.get("files") or {}), [], {k.casefold() for k in explore_tool().TIME_KEYS}
+    for g in given:
+        p = Path(os.path.abspath(g))
+        if not p.is_file():
+            raise Refused(f"`--working-data {g}` is not a file: name each file of the working data")
+        later = explore_tool().past_cut_off_in_file(p, rule["cut_off"], keys)
+        if later:
+            raise Refused(f"{p.name} already holds dates past the cut-off of the release ({rule['cut_off']}): {', '.join(later[:3])}. "
+                          "Nothing was started")
+        if p.name in named and named[p.name] != sha_file(p):
+            raise Refused(f"{p.name} is not the file the metadata describes (its sha256 differs): the release binds the data as the "
+                          "metadata saw it. Nothing was started")
+        working.append({"file": os.path.relpath(p, study.d), "sha256": sha_file(p)})
+    if named and not any(Path(w["file"]).name in named for w in working):
+        raise Refused(f"the metadata the proposal was made from names {', '.join(sorted(named))}, and none is among the working data "
+                      "named here. Nothing was started")
+    return {"name": rule["release"], "cut_off": rule["cut_off"], "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"),
+            "expected_on": rule.get("expected_on"), "from": f"the proposal {f.name}, written by tools/fresh_data.py from metadata",
+            "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)}}
+
+
+def release_of(ev: list) -> dict | None:
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    return (start or {}).get("data", {}).get("release")
+
+
+def release_in_words(rel: dict) -> str:
+    seen = "the data seen while exploring was" if rel.get("exploration") else "the working data the study was started with was"
+    return (f"fresh data is the release after {rel['cut_off']}; {seen} "
+            + ", ".join(f"{Path(w['file']).name} with checksum {w['sha256']}" for w in rel["working"]))
+
+
+def working_changed(study: Study, working: list) -> list:
+    return [f"{Path(w['file']).name} (sha256 {str(sha_file(study.d / w['file']))[:16]}, bound as {w['sha256'][:16]})"
+            for w in working if sha_file(study.d / w["file"]) != w["sha256"]]
+
+
+def release_lock_problems(study: Study, plan: dict, rel: dict | None) -> list:
+    """Why a lock cannot bind this release: the working data changed since the start, the plan holds out what is not
+    after the cut-off, or the plan names a release the study did not start with."""
+    held = (plan.get("data") or {}).get("held_out") or {}
+    named = held.get("fresh_data")
+    prop = fresh_tool().load(study.path(named)) if named is not None and study.path(named).is_file() else None
+    if rel is None:
+        if prop and prop.get("kind") == "next-release":
+            return [f"the plan names a proposal of the next release, after {(prop.get('rule') or {}).get('cut_off')}, and the study did not "
+                    "bind the release at its start: start the study with `--fresh-data` and `--working-data` (or from the exploration's "
+                    "hand-over), so the cut-off and the working data are bound before any test"]
+        return []
+    out = []
+    changed = working_changed(study, rel["working"])
+    if changed:
+        out.append("the working data has changed since the study started: " + "; ".join(changed) + f". The release after {rel['cut_off']} "
+                   "may have arrived in it; put back the file as it stood")
+    if prop is not None and rel.get("proposal") and sha_file(study.path(named)) != rel["proposal"]["sha256"]:
+        out.append("the plan names a proposal of the fresh data that is not the one the study started with")
+    if prop is not None and prop.get("kind") == "next-release" and (prop.get("rule") or {}).get("cut_off") != rel["cut_off"]:
+        out.append(f"the plan's proposal fixes the cut-off {(prop.get('rule') or {}).get('cut_off')}, and the study started with {rel['cut_off']}")
+    w = window_of(((plan.get("tests") or {}).get("held-out") or {}).get("window") or held.get("window"))
+    if w is None or w["start"] <= rel["cut_off"]:
+        out.append(f"the fresh data is the release after {rel['cut_off']}, and the plan holds out "
+                   + (f"from {w['start']}, which is not after it" if w else "no window of two dates")
+                   + ": the held-out window starts on a day after the cut-off")
+    return out
+
+
+def periods_needed(rel: dict, window: dict) -> tuple:
+    """(how many periods of the release's cadence the plan's window needs, the first day, the last day the last one ends),
+    or (None, first day, the window's end) when the release declares no cadence."""
+    first = dt.date.fromisoformat(rel["cut_off"]) + dt.timedelta(days=1)
+    end = dt.date.fromisoformat(window["end"])
+    if not rel.get("cadence"):
+        return None, first, end
+    n = 1
+    while fresh_tool().add_period(first, rel["cadence"], n) - dt.timedelta(days=1) < end:
+        n += 1
+    return n, first, fresh_tool().add_period(first, rel["cadence"], n) - dt.timedelta(days=1)
+
+
+def release_waiting(rel: dict, window: dict) -> str | None:
+    """The study says it is waiting when the release cannot be out yet: the last period the plan needs has not ended, or
+    the metadata expects the release later. Decided from dates alone, before anything is fetched."""
+    n, first, last = periods_needed(rel, window)
+    today = _today()
+    due = dt.date.fromisoformat(rel["expected_on"]) if rel.get("expected_on") else None
+    if today > last and not (due and today < due):
+        return None
+    need = (f"the plan needs {n} {rel['cadence']} period(s), {first} to {last}" if n else
+            f"the plan needs data from {first} to {last} (the release declares no cadence, so its periods are not counted)")
+    return (f"waiting: the fresh data is the release after {rel['cut_off']}, and it is not published yet. {need[0].upper() + need[1:]}"
+            + (f", and the last of them has not ended (today is {today})" if today <= last else "")
+            + (f"; the metadata expects the release on {due}" if due and today < due else "")
+            + ". Nothing was opened and the opening is not used up; open it once the release is out")
+
+
+def release_dates(f: Path, rel: dict, window: dict) -> dict:
+    """What a fetched release holds, read the way the fence reads dates: its first and last dates, its checksum, and why
+    it is not the release the plan needs (a date on or before the cut-off, no date at all, or short of the window)."""
+    ex = explore_tool()
+    found = ex.past_cut_off_in_file(f, "", {k.casefold() for k in ex.TIME_KEYS})  # every date and month: each is after ""
+    span = {}
+    for d in found:
+        if len(d) == 7:
+            y, m = int(d[:4]), int(d[5:])
+            span[d] = (dt.date(y, m, 1), fresh_tool().add_period(dt.date(y, m, 1), "monthly", 1) - dt.timedelta(days=1))
+        else:
+            span[d] = (dt.date.fromisoformat(d), dt.date.fromisoformat(d))
+    cut = dt.date.fromisoformat(rel["cut_off"])
+    early = sorted(d for d, (s, _e) in span.items() if s <= cut)
+    out = {"release": rel["name"], "cut_off": rel["cut_off"], "sha256": sha_file(f), "dates_read": len(span),
+           "first": min(span, key=lambda d: span[d][0]) if span else None, "last": max(span, key=lambda d: span[d][1]) if span else None}
+    problems = []
+    if not span:
+        problems.append("the tool reads no date in it, so it cannot say the data is the release after the cut-off")
+    if early:
+        problems.append(f"it holds dates on or before the cut-off {rel['cut_off']}: " + ", ".join(early[:3])
+                        + (f", and {len(early) - 3} more" if len(early) > 3 else "") + ". The fetch keeps only the release's own rows")
+    if span and max(e for _s, e in span.values()).isoformat() < window["end"]:
+        problems.append(f"it reaches only to {out['last']}, and the plan needs data to {window['end']}: the release is not out in full")
+    if problems:
+        out["refused"] = problems
+    return out
+
+
 def held_out_in_words(block: dict) -> list:
     """What a plan holds out, in plain words, for the people who lock it."""
     w, pair = block.get("window") or {}, block.get("pair")
@@ -2315,6 +2535,9 @@ def manifest_now(study: Study, plan: dict, ev: list, factory: Path, act: str) ->
     if fresh is not None:  # the proposal and, for a random set aside, its seed: a change to either after the request shows
         f = study.path(fresh)
         out["fresh_data"] = {"file": fresh, "sha256": sha_file(f), "seed_sha256": sha_file(fresh_tool().seed_path(f))}
+    rel = release_of(ev)
+    if rel:  # the cut-off and the working data as it stands: a file changed after the request shows in the required check
+        out["release"] = {"name": rel["name"], "cut_off": rel["cut_off"], "working": {w["file"]: sha_file(study.d / w["file"]) for w in rel["working"]}}
     start = next((e for e in ev if e["kind"] == "study.started"), None)
     steps = [plan["tests"][t] for t in FREE_TESTS] + list(plan.get("rehearsals") or [])
     if act != "lock":
@@ -2646,6 +2869,15 @@ def lock_evidence(study: Study, a) -> dict:
     say("openings allowed: " + ", ".join(f"{t} {study.allowed(plan, t)}" for t in HELD_OUT_TESTS if t in plan["tests"]))
     history = held_out_history(study, ev, plan)
     fresh = fresh_data_of(study, plan)
+    release = release_of(ev)
+    wrong = release_lock_problems(study, plan, release)
+    if wrong:
+        raise Refused("the lock cannot bind the release: " + "; ".join(wrong))
+    if release:
+        n, first, last = periods_needed(release, window_for(plan, plan["tests"]["held-out"]))
+        release = {**release, "needs": {"periods": n, "from": first.isoformat(), "until": last.isoformat()}}
+        say(f"the release: {release_in_words(release)}; taken from {release['from']}; the plan needs "
+            + (f"{n} {release['cadence']} period(s), " if n else "") + f"{first} to {last}")
     if fresh:
         say(f"the fresh data: proposed in {fresh['file']} (sha256 {fresh['sha256'][:16]}), {fresh['proposal']['kind_in_words']}, by "
             f"{fresh['proposal']['proposed']['by']}; on the record beside the studies, {fresh['record']['for_this_subject']} proposal(s) for this subject"
@@ -2674,7 +2906,7 @@ def lock_evidence(study: Study, a) -> dict:
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
             "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None,
-            "figures": {f["file"]: f["sha256"] for f in figures}}
+            "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
     return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh, "figures": figures}
 
 
@@ -2700,6 +2932,13 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
     out += fit_in_words(fit) if fit else ([f"From the exploration: {came['fit']}"] if came.get("fit") else fit_in_words(None))
     out += ["", "## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
     out += ["## The fresh data that will check the idea, and why it was chosen", ""]
+    rel = d.get("release")
+    if rel:
+        need = rel["needs"]
+        out += [f"**The release, and the data as it stood.** The {release_in_words(rel)}. Taken from {rel['from']}, not typed. The plan needs "
+                + (f"{need['periods']} {rel['cadence']} period(s), " if need["periods"] else "") + f"{need['from']} to {need['until']}. The lock "
+                "binds these: the opening refuses fresh data with any date on or before the cut-off, and working data that has changed "
+                "since the lock, and until the release can be out it says it is waiting.", ""]
     fresh = got.get("fresh")
     if fresh:
         out += fresh_tool().in_words(fresh["proposal"], revealed=fresh["revealed_seed"], record=fresh["record"]) + [""]
@@ -3056,6 +3295,16 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
         raise Refused("a virtual environment folder that `uv run` would use appeared or changed after the lock, and uv runs "
                       "the interpreter inside it: " + "; ".join(planted[:6]) + ". Remove it, or put back the one the lock "
                       "recorded; nothing was opened and the opening is not used up")
+    release = lock["data"].get("release")
+    if release:  # the data as it stood when the lock was made, and a release that can be out by now
+        changed = working_changed(study, release["working"])
+        if changed:
+            raise Refused("the working data has changed since the lock: " + "; ".join(changed) + f". The release after {release['cut_off']} "
+                          "may have arrived in it, and then the fresh data has been seen. Put back the file as it stood when the lock was "
+                          "made, and fetch the release apart from it. Nothing was opened and the opening is not used up")
+        waiting = release_waiting(release, window_for(plan, spec))
+        if waiting:
+            raise Refused(waiting)
     if by.casefold() in ran_tests(ev):
         raise Refused(f"{by} ran this study's tests or rehearsals; the access gate is not the agent that built the "
                       "method. Open the held-out data as another actor")
@@ -3165,7 +3414,10 @@ def cmd_open_held_out(study: Study, a) -> None:
     fetch_exit = run_argv(study, plan, spec["fetch"], passes)
     after = study.listing()
     fetch_wrote = sorted(k for k, v in after.items() if before.get(k) != v)  # new or changed during the fetch
-    code = run_argv(study, plan, spec["command"], passes) if fetch_exit == 0 and data.is_file() else None
+    rel = (study.last("lock.recorded") or {}).get("data", {}).get("release")
+    release = release_dates(data, rel, window_for(plan, spec)) if rel and fetch_exit == 0 and data.is_file() else None
+    run = fetch_exit == 0 and data.is_file() and not (release or {}).get("refused")
+    code = run_argv(study, plan, spec["command"], passes) if run else None
     outcomes, declined = judge(plan, rp, data, code)
     e = study.append(a.by, "opening.finished", {"test": a.test, "n": n, "fetch_exit": fetch_exit, "exit": code,
                                                 "receipt": spec["receipt"], "receipt_sha": sha_file(rp), "data": data_rel,
@@ -3173,8 +3425,14 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "wrote": {w: sha_file(study.path(w)) for w in spec.get("writes") or []},
                                                 "figures": figures_drawn(study, spec)[0],
                                                 "env_names": given_names(passes), "ran_in": how_it_ran(mark),
-                                                "outcomes": outcomes, "method_declined": declined})
-    print(f"held-out data opened ({a.test}, opening {n}); outcomes {outcomes}" + (f" (the method declined: {declined})" if declined else ""))
+                                                "outcomes": outcomes, "method_declined": declined,
+                                                **({"release": release} if release else {})})
+    if (release or {}).get("refused"):
+        raise Refused(f"the data fetched is not the release after {rel['cut_off']} that the plan needs: " + "; ".join(release["refused"])
+                      + f". The locked analysis was not run. The opening is used up, because the fetched data is in the workspace; this "
+                      f"is in the study log ({e['seq']}:{e['hash']})")
+    print(f"held-out data opened ({a.test}, opening {n}); outcomes {outcomes}" + (f" (the method declined: {declined})" if declined else "")
+          + (f". The release after {rel['cut_off']}: {release['first']} to {release['last']}, sha256 {release['sha256']}" if release else ""))
     if prior:
         print(f"this data was already opened by {[x['dir'] for x in prior]}: this study is exploratory")
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
@@ -4420,6 +4678,8 @@ elif mode == "fetch":
     if (here / "fetch-is-down").exists():
         sys.exit(7)
     json.dump({"value": 1.02}, open(out, "w"))
+elif mode == "fetch-release":  # the months of a release as the provider gives them; release-rows.json says which
+    json.dump({"value": 1.02, "rows": json.load(open(here / "release-rows.json"))}, open(out, "w"))
 elif mode == "fetch-elsewhere":  # exits 0 and writes a file name the plan does not expect
     json.dump({"value": 1.02}, open(os.path.join(out, "held-out-y1.json"), "w"))
 elif mode == "fetch-fails-after-writing":
@@ -4820,6 +5080,126 @@ def _selftest_fresh_data(tmp: Path, check) -> None:
     cmd_request_lock(f5, A(by="agent:coordinating"))
     check("a plan that names no proposal says so at the lock, plainly: nothing records who chose the fresh data or why",
           "names no proposal of the fresh data" in section(f5) and "Ask before you approve" in section(f5))
+
+
+def _selftest_release(tmp: Path, check) -> None:
+    """A release carried from the start to the opening, on the shape of the first real run: one long monthly series from
+    1850 to a cut-off at the end of July 2026, and the provider's next months appended to the same file later. Every
+    number is made up."""
+    global TODAY
+    fd, person = fresh_tool(), "human:throwaway-placeholder"
+    studies, source = tmp / "studies", tmp / "source"
+    source.mkdir(parents=True)
+    upto = [f"{y}-{m:02d}" for y in range(1850, 2027) for m in range(1, 13) if f"{y}-{m:02d}" <= "2026-07"]
+    as_stood = "Source,Year,Mean\n" + "".join(f"A,{mo},{(i % 23) / 10 - 1.1:.4f}\n" for i, mo in enumerate(upto))
+    csv = source / "monthly.csv"
+    csv.write_text(as_stood)
+    appended = as_stood + "A,2026-08,0.9100\nA,2026-09,0.9200\nA,2026-10,0.9300\n"  # the provider's update, in place
+    meta = tmp / "metadata.yaml"
+    fd.cmd_describe(fd.A(csv=str(csv), date_column="Year", series_column="Source", period="year", subject="record=toy-monthly",
+                         what="a made-up monthly series", release="next-update", cadence="monthly", out=str(meta)))
+
+    def propose(name: str, **k) -> Path:
+        out = tmp / "proposals" / f"{name}.yaml"
+        fd.cmd_propose(fd.A(metadata=str(meta), what="the next monthly updates", why="they come after every month explored",
+                            unfair="a reprocessing of the old months would make it unfair", studies=str(studies), out=str(out), **k))
+        return out
+
+    prop = propose("next-update", kind="next-release", release="next-update", periods=3)
+
+    def start(name: str, **k) -> Study:
+        study = Study(studies / name)
+        cmd_start(study, A(id=name, question=PLAN["question"], by="agent:coordinating", **k))
+        return study
+
+    def planned(study: Study, window=None, rows=None) -> Study:
+        plan = json.loads(json.dumps(PLAN))
+        plan["data"]["held_out"].update(window=window or {"start": "2026-08-01", "end": "2026-10-31"}, pair={"record": "toy-monthly", "case": study.d.name},
+                                        fresh_data=os.path.relpath(prop, study.d))
+        plan["tests"]["held-out"]["fetch"] = ["{python}", "{study}/toy.py", "fetch-release", "{study}/data/held-out.json"]
+        (study.d / "toy.py").write_text(TOY.replace("POWER", "0.9").replace("TESTED", "None"))
+        (study.d / "release-rows.json").write_text(json.dumps([{"time": mo, "Mean": 0.5} for mo in rows or ("2026-08", "2026-09", "2026-10")]))
+        study.plan_path.write_text(yaml.safe_dump(plan, sort_keys=False))
+        cmd_test(study, A(what="known-answers", by="agent:analysis"))
+        cmd_test(study, A(what="working-data", by="agent:analysis"))
+        return study
+
+    def locked(name: str, rows=None) -> Study:
+        study = planned(start(name, fresh_data=str(prop), working_data=[str(csv)]), rows=rows)
+        cmd_lock(study, A(by=person, evidence=URL))
+        return study
+
+    def opening(study: Study) -> str:
+        return _refusal(cmd_open_held_out, study, A(test="held-out", by="agent:coordinating", local_practice=True))
+
+    TODAY = "2026-11-27"
+    try:
+        r1 = start("R1", fresh_data=str(prop), working_data=[str(csv)])
+        got = r1.events()[0]["data"].get("release") or {}
+        check("a study started with a proposal of the next release binds its cut-off from the proposal and the working file by "
+              "checksum, at the start", got.get("cut_off") == "2026-07-31" and got.get("cadence") == "monthly"
+              and [w["sha256"] for w in got.get("working") or []] == [sha_file(csv)])
+        (tmp / "other").mkdir()
+        (tmp / "other" / "monthly.csv").write_text(as_stood.replace("A,1850-01,", "A,1850-01,9"))
+        check("a start whose working file is not the file the metadata described is refused",
+              "not the file the metadata describes" in _refusal(lambda: start("R0", fresh_data=str(prop), working_data=[str(tmp / "other" / "monthly.csv")])))
+        check("a start with a proposal of the next release and no working data is refused",
+              "--working-data" in _refusal(lambda: start("R0", fresh_data=str(prop))))
+        check("a start with a proposal of another kind of fresh data is refused: only a release is bound at the start",
+              "names a proposal of the next release" in _refusal(lambda: start("R0", fresh_data=str(propose("later", kind="later-period", from_="2026-01-01")),
+                                                                          working_data=[str(csv)])))
+        planned(r1)
+        cmd_request_lock(r1, A(by="agent:coordinating"))
+        text = (r1.d / "lock-request" / "EVIDENCE.md").read_text().split("## The fresh data that will check the idea", 1)[-1].split("## The known-answer", 1)[0]
+        manifest = json.loads((r1.d / "lock-request" / "manifest.json").read_text())
+        check("the lock request says the release in plain words: the cut-off, the file the study was started with and its checksum, and "
+              "the periods the plan needs; the manifest binds the file",
+              f"fresh data is the release after 2026-07-31; the working data the study was started with was monthly.csv with checksum {sha_file(csv)}" in text
+              and "3 monthly period(s), 2026-08-01 to 2026-10-31" in text and list((manifest.get("release") or {}).get("working", {}).values()) == [sha_file(csv)])
+        csv.write_text(appended)
+        check("a working file changed after the lock request shows in the required check of the pull request",
+              any(q.startswith("release") for q in request_problems(r1, "lock", FACTORY)))
+        check("and the lock is then refused: the working data has changed since the study started",
+              "has changed since the study started" in _refusal(cmd_request_lock, r1, A(by="agent:coordinating")))
+        csv.write_text(as_stood)
+        r2 = planned(start("R2"))
+        check("a plan that names a proposal of the next release, in a study that did not bind the release at its start, is refused at the lock",
+              "did not bind the release at its start" in _refusal(cmd_request_lock, r2, A(by="agent:coordinating")))
+        r3 = planned(start("R3", fresh_data=str(prop), working_data=[str(csv)]), window={"start": "2026-07-01", "end": "2026-10-31"})
+        check("a plan whose held-out window starts on or before the cut-off is refused at the lock",
+              "starts on a day after the cut-off" in _refusal(cmd_request_lock, r3, A(by="agent:coordinating")))
+        good = locked("R4")
+        TODAY = "2026-10-15"
+        said = opening(good)
+        check("before the last period the plan needs has ended, the study says it is waiting, with the cut-off and the number of "
+              "periods from the metadata's cadence, and opens nothing", said.startswith("waiting") and "release after 2026-07-31" in said
+              and "3 monthly period(s), 2026-08-01 to 2026-10-31" in said and not openings_of(good.events(), "held-out")[0])
+        TODAY = "2026-11-27"
+        csv.write_text(appended)
+        said = opening(good)
+        check("the working file refreshed in place with the release's months after the lock (as the run's file was) refuses the "
+              "opening, and the opening is not used up", "changed since the lock" in said and not openings_of(good.events(), "held-out")[0])
+        csv.write_text(as_stood)
+        opening(good)
+        done = good.last("opening.finished")["data"]
+        check("on the release's own months the opening runs, and the log records the release, its first and last dates and the file's checksum",
+              done.get("release", {}).get("first") == "2026-08" and done["release"]["last"] == "2026-10" and done["release"]["release"] == "next-update"
+              and done["release"]["sha256"] == sha_file(good.path("data/held-out.json")) == done["data_sha"] and done["outcomes"] == {"r": "supported"})
+        old = locked("R5", rows=("2026-06", "2026-07", "2026-08", "2026-09", "2026-10"))
+        said = opening(old)
+        done = old.last("opening.finished")["data"]
+        check("fresh data that brings back months on or before the cut-off is refused: the locked analysis is not run, and the log says why",
+              "on or before the cut-off 2026-07-31: 2026-06, 2026-07" in said and done["exit"] is None and done["outcomes"] == {"r": "run-failed"}
+              and done["release"]["refused"] and not old.path("receipts/held-out.json").exists())
+        short = locked("R6", rows=("2026-08", "2026-09"))
+        check("a release that reaches only part of the plan's window is refused as not out in full",
+              "not out in full" in opening(short) and short.last("opening.finished")["data"]["exit"] is None)
+        due = release_waiting({"name": "next-update", "cut_off": "2026-07-31", "cadence": "monthly", "expected_on": "2026-12-15"},
+                              {"start": "2026-08-01", "end": "2026-10-31"})
+        check("a release the metadata expects on a later day is waited for until that day, though the periods have ended",
+              str(due).startswith("waiting") and "expects the release on 2026-12-15" in str(due))
+    finally:
+        TODAY = None
 
 
 def secrets_hex() -> str:
@@ -6717,6 +7097,8 @@ def selftest() -> int:
         _selftest_overclaiming(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_fit(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_release(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())
@@ -6813,7 +7195,12 @@ def build_parser() -> argparse.ArgumentParser:
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,
         (["--request"], {"default": None, "help": "the request this study answers; bound by checksum, and by the lock with the plan"}),
-        (["--asked-by"], {"default": None, "dest": "asked_by", "help": "the person who asked, as human:<id>"}))
+        (["--asked-by"], {"default": None, "dest": "asked_by", "help": "the person who asked, as human:<id>"}),
+        (["--fresh-data"], {"default": None, "dest": "fresh_data",
+                            "help": "a proposal of the next release (tools/fresh_data.py): its cut-off is bound at the start. Not with a hand-over, "
+                                    "which brings the exploration's"}),
+        (["--working-data"], {"default": None, "dest": "working_data", "action": "append",
+                              "help": "with --fresh-data: a file of the working data, bound by checksum at the start (repeat for each)"}))
     add("check-plan", cmd_check_plan)
     add("test", cmd_test, (["what"], {"help": "known-answers or working-data"}), by)
     add("rehearse", cmd_rehearse, (["--id"], {"required": True}), by)
