@@ -65,7 +65,7 @@ jobs:
       # optional demo (demo-with-hydrology.yml), never here.
       # check_roles.py also parses every command the role files, the skills and AGENTS.md show, under each tool's own
       # options as they are now, so a skill cannot drift from the tool it tells an agent to run.
-      - name: The exploring tool, the fresh-data tool, the knowledge helpers, what waits on a person, the factory update, and the checks
+      - name: The exploring tool, the fresh-data tool, the knowledge helpers, what waits on a person, the factory update, the report, and the checks
         run: |
           uv run tools/explore.py selftest
           uv run tools/knowledge.py selftest
@@ -73,6 +73,7 @@ jobs:
           uv run tools/fresh_data.py selftest
           uv run tools/waiting.py --selftest
           uv run tools/factory_update.py selftest
+          uv run tools/report.py --selftest
           uv run tools/check_roles.py
           uv run tools/check_roles.py --selftest
           uv run factory/harnesses/claude-code/render.py --check

@@ -540,6 +540,17 @@ def main() -> int:
              and yaml.safe_load((mine / "factory-pin.yaml").read_text())["version"] == "99.0.0"
              and "Definition 99.0.0: the review agent reads the request first." in body.read_text() and "**valid**" in body.read_text()
              and "check-factory: VALID" in ran(["uv", "run", str(here_tools / "check_factory.py")], answer=True))
+
+        # What the workspace did, counted: a report in Markdown and as one page of HTML
+        tool("report.py", "--workspace", work, "--out", work / "report.md", "--html", work / "report.html")
+        said = (work / "report.md").read_text()
+        counted = json.loads(tool("report.py", "--workspace", work, "--json", answer=True))
+        step("the report counts the studies and the exploration by stage and outcome, the time at each stage and waiting on a person, "
+             "the models recorded, says no cost was recorded, and first says why it scores nothing",
+             said.splitlines()[2] == counted["why_no_score"] and "## Time at each stage" in said and "## Waiting on a person" in said
+             and "none was recorded" in said and counted["totals"]["by_outcome"]["lead"] == 1
+             and {x["id"] for x in counted["studies"]} >= {"STUDY-A", "STUDY-B"} and MODEL in json.dumps(counted["totals"]["models_by_stage"])
+             and (work / "report.html").read_text().startswith("<!DOCTYPE html>") and "<script" not in (work / "report.html").read_text())
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
@@ -566,6 +577,7 @@ def main() -> int:
   waiting.md                    what waited on a person before the practice lock (tools/waiting.py), in plain words
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given
                                 to judge the review of the lead and the clarity of the plan; no model was asked
+  report.md, report.html        what the workspace did, counted by tools/report.py: by stage and outcome, time, models
   update-pair/                  a throwaway science factory and a study repository copied from it, pinned, then updated on
                                 a branch by tools/factory_update.py; PULL_REQUEST.md is the description it wrote
   data/, request.md             the synthetic record and the request the exploration began with""")

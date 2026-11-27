@@ -17,6 +17,7 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 | `studies/openings.jsonl`, `studies/held-out.jsonl`, `studies/fresh-data.jsonl` | the records beside the studies: what was set aside and opened, every held-out block a study declared, every proposal of fresh data |
 | `knowledge-queue/` | one drafted page waiting for a person, with the queue's index |
 | `waiting.md` | what waited on a person before the practice lock, from `tools/waiting.py` |
+| `report.md`, `report.html` | what the workspace did, counted by stage, outcome and time, from `tools/report.py` |
 | `update-pair/` | a throwaway science factory and a study repository copied from it and pinned, then updated on a branch by `tools/factory_update.py`; `PULL_REQUEST.md` is the description it wrote |
 | `judging/` | two judging packets: what a model judge would be given for the review of the lead and for STUDY-B's plan. No model was asked |
 | `data/`, `request.md`, `review.md` | the record, the request the exploration began with, and the review of its lead |
@@ -37,6 +38,8 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 10. Takes a system trial through its tests (with a figure) to a lock request that shows the fit note and the figure, lists the request and the draft as waiting on a person, shows the three standings an act can have, and records a practice lock.
 
 11. Updates a study repository's copy of the factory in a throwaway pair of git repositories: upstream changes an agent's file, the update keeps the repository's name, gives a local version, moves the pin and writes the pull request's description.
+
+12. Writes a report of the workspace (`tools/report.py`), in Markdown and as one HTML page.
 
 Each step prints its refusals. **Practice at the end**, because a scratch folder has no pull request to merge; a practice study never closes as signed. The pull request route is tested in `tools/sf.py selftest` and `factory/harnesses/github/record_act.py --selftest`, in a throwaway git repository.
 

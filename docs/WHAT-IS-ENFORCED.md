@@ -99,7 +99,7 @@ Left open by the fence: the network, the system's folders (`/etc`, `/usr`), shar
 
 Nothing checks these; the log shows afterwards what the tools saw.
 
-- Which model wrote an event: declared, recorded, proven by nothing; a contribution statement says so, and cannot show thinking that left no event.
+- Which model wrote an event, and what any `--cost` says it cost: declared, recorded, proven by nothing; a contribution statement says so, and cannot show thinking that left no event.
 - That people look at each figure; that a fit note reads the request fairly; that a flagged word is rewritten, and words the list lacks do not overclaim.
 - That only knowledge is read before data is set aside; that nothing is looked at outside the tool; that a choice is written down when made; that every comparison inside a look is declared.
 - That the agent proposing fresh data opened no data file first; that a metadata file holds no values under the names the tool allows; that a proposal's reasons are true; that a confirmatory plan names a proposal at all (the lock request says when it does not).

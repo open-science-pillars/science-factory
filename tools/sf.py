@@ -514,6 +514,30 @@ NO_MODEL = ("an event an agent writes names the model that wrote it: pass --mode
             "whoever calls the tool (a harness, or the agent itself) and nothing proves it; a person's event needs none")
 
 
+COST_KEYS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "total_tokens", "cost_usd")
+
+
+def parse_cost(text) -> dict | None:
+    """`--cost NAME=NUMBER,...`: what the harness reported an agent's step cost, declared by the caller like the model and
+    proven by nothing. Never required. The names are COST_KEYS; each number is zero or more."""
+    if text is None or not str(text).strip():
+        return None
+    out = {}
+    for part in str(text).split(","):
+        k, sep, v = part.strip().partition("=")
+        k = k.strip()
+        if not sep or k not in COST_KEYS or k in out:
+            raise Refused(f"--cost is NAME=NUMBER pairs separated by commas, each name once, from {', '.join(COST_KEYS)}")
+        try:
+            n = float(v)
+        except ValueError:
+            raise Refused(f"--cost: `{v.strip()}` is not a number")
+        if not math.isfinite(n) or n < 0:
+            raise Refused(f"--cost: {k} is a number of zero or more")
+        out[k] = int(n) if n.is_integer() and k != "cost_usd" else n
+    return out
+
+
 def model_problem(model) -> str | None:
     """Why a value is not the name of a concrete model, or None."""
     m = str(model or "")
@@ -542,6 +566,7 @@ class Study:
 
     def __init__(self, d):
         self.model = None  # the model the caller declares for the events of this command (--model)
+        self.cost = None  # what the caller declares the step cost (--cost), never required
         given = Path(os.path.abspath(d))
         self.d = Path(d).resolve()
         if given.is_symlink() or given.parent.resolve() / given.name != self.d:
@@ -579,6 +604,8 @@ class Study:
             body = {k: e[k] for k in ("seq", "at", "actor", "kind", "data")}
             if "model" in e:  # the model that wrote an agent's event is part of what the hash covers
                 body["model"] = e["model"]
+            if "cost" in e:  # and so is a cost declared with it
+                body["cost"] = e["cost"]
             if e["seq"] != i or e["prev"] != prev or e["hash"] != self._digest(prev, body):
                 return [f"study log broken at event {i} ({e.get('kind')})"]
             prev = e["hash"]
@@ -641,6 +668,8 @@ class Study:
             if why:
                 raise Refused(f"--model `{model}`: {why}")
             body["model"] = str(model)
+            if self.cost:
+                body["cost"] = dict(self.cost)
         e = {**body, "prev": prev, "hash": self._digest(prev, body)}
         f.write(json.dumps(e, sort_keys=True) + "\n")
         f.flush()
@@ -5285,6 +5314,8 @@ def _rewritten(study: Study) -> str:
             body["data"] = {**body["data"], "rewritten": True}
         if "model" in e:
             body["model"] = e["model"]
+        if "cost" in e:
+            body["cost"] = e["cost"]
         prev_hash = prev
         prev = study._digest(prev, body)
         out.append({**body, "prev": prev_hash, "hash": prev})
@@ -7532,6 +7563,17 @@ def selftest() -> int:
             forged = study.log.read_text().replace('"model": "claude-sonnet-5-5"', '"model": "claude-opus-5-5"', 1)
             check("the model is under the log's hash: changing it in the file breaks the chain",
                   forged != study.log.read_text() and Study._chain(study, Study._parse(forged)) != [] and study.chain_problems() == [])
+            study.cost = parse_cost("input_tokens=1200,output_tokens=340,cost_usd=0.05")
+            cmd_note(study, A(kind="method", about="c", text="a note with what its step cost", evidence=None, by="agent:analysis"))
+            study.cost = None
+            costed = study.events()[-1]
+            forged = study.log.read_text().replace('"input_tokens": 1200', '"input_tokens": 12', 1)
+            check("a cost declared with --cost is recorded beside the model, is under the log's hash, and is never required",
+                  costed["cost"] == {"input_tokens": 1200, "output_tokens": 340, "cost_usd": 0.05} and "cost" not in written
+                  and forged != study.log.read_text() and Study._chain(study, Study._parse(forged)) != [] and study.chain_problems() == [])
+            check("a cost that is not NAME=NUMBER pairs of the listed names, or is below zero, is refused",
+                  "NAME=NUMBER" in _refusal(parse_cost, "tokens=5") and "zero or more" in _refusal(parse_cost, "output_tokens=-1")
+                  and "not a number" in _refusal(parse_cost, "cost_usd=a lot") and parse_cost("") is None)
             study.model = "a-model-nobody-declared"
             cmd_note(study, A(kind="method", about="b", text="from somewhere else", evidence=None, by="agent:visitor"))
             study.model = None
@@ -7962,7 +8004,7 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, allow_abbrev=False, help=DESCRIBE.get(name), description=DESCRIBE.get(name))
         p.add_argument("--study", required=True, help="the study directory")
         if by in args and not any(names == ["--model"] for names, _ in args):
-            args = (*args, model)
+            args = (*args, model, cost)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
@@ -7970,6 +8012,8 @@ def build_parser() -> argparse.ArgumentParser:
     by = (["--by"], {"required": True, "help": "who acts: human:<id> or agent:<id>"})
     model = (["--model"], {"default": None, "help": "the model that acts, when an agent does: required with --by agent:<id>, declared "
                                                     "by the caller and recorded in the event; a person's event needs none"})
+    cost = (["--cost"], {"default": None, "help": "optional, for an agent's event: what its step cost, as NAME=NUMBER pairs ("
+                                               + ", ".join(COST_KEYS) + "), declared by the caller like the model and proven by nothing"})
     anchor = (["--anchor"], {"action": "append", "default": None,
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
@@ -8046,6 +8090,9 @@ def main() -> int:
         study.model = getattr(a, "model", None)
         if str(getattr(a, "by", "")).startswith("agent:") and not study.model:
             raise Refused(NO_MODEL)  # said before anything is run or written
+        study.cost = parse_cost(getattr(a, "cost", None))
+        if study.cost and not str(getattr(a, "by", "")).startswith("agent:"):
+            raise Refused("--cost is declared for an agent's event, beside its model")
         a.fn(study, a)
     except Refused as r:
         print(f"REFUSED: {r}", file=sys.stderr)

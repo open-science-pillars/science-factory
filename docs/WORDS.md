@@ -98,6 +98,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **judge**: a rubric for a model, reading only what was written before any opening.
 - **scorer**: a file in `scorers/`, of either kind.
 - **scorecard**: the nine checks for one study (`sf.py scorecard`).
+- **report**: `tools/report.py`, what a workspace's studies and explorations did, counted by stage, outcome and time; it scores no factory by findings supported.
 - **overclaiming check**: flags words that claim more than the work shows ("good agreement", "clearly", "proves", a number finer than its uncertainty) in leads, reviews and findings; it warns, never blocks.
 - **firewall**: what an opening showed never reaches a judge or a proposal to change the factory.
 - **benchmark**: a suite of sealed cases run under two versions of the definition and compared.

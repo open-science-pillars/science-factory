@@ -91,6 +91,8 @@ Every scorer declares what it `reads`, from a list split at the first opening:
 
 **The firewall.** What an opening showed must never reach what changes how the next opening runs, or the factory would drift toward agreeing with its claims. The validator refuses a judge reading the right-hand column, `selfImprovement: true` on any scorer that does, and a benchmark case that is real fresh data. Outcomes may still be counted, shown to people and fed to the knowledge loop.
 
+**The report.** `uv run tools/report.py --workspace .` counts a workspace's studies and explorations by stage and by outcome, the time at each stage and waiting on a person, the models the logs record beside those declared, any token or cost figures agents' events declare (`--cost`, optional) and the checks' results; `--html FILE` writes one page for GitHub Pages. It ranks no factory by findings supported, and says why first.
+
 ![Measure and improve: what is written before any opening feeds the judges and may feed a proposal; what an opening produced is counted and shown to people, behind a wall.](diagrams/measure-and-improve.svg)
 
 ## Benchmarks: the blind test, as suites
