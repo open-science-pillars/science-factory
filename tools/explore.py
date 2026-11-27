@@ -49,13 +49,13 @@ a lead, and is refused until a reviewer is named; the named reviewer
 reviews it; a revised lead, and a lead corrected after its review, is
 reviewed again. `end` as a lead is refused until the lead as it stands has
 been reviewed, and `resolve` (the
-curating assistant's) is refused until the exploration has ended. Logs
+curating agent's) is refused until the exploration has ended. Logs
 written before the tool held this order still check out; `check-log` says
 in a remark where an old log departs from it.
 
 An exploration is one directory: exploration-log.jsonl, set-aside.json,
 request.md, the scripts of its looks, receipts/, figures/, notes/, review/
-(where the review assistant writes), verdicts/ (the tool's copy of each
+(where the review agent writes), verdicts/ (the tool's copy of each
 review, which is the record), the lead, and hand-over/. By convention explorations sit in `explorations/`
 beside `studies/`, and the record is `studies/openings.jsonl`.
 
@@ -69,7 +69,7 @@ Commands.
   look           run one script on working data; logged with checksums
   recheck        run a logged look again, on the same files by checksum, and
                  compare the output; adds nothing to the log (for the
-                 review assistant), and says what was pinned
+                 review agent), and says what was pinned
   choice         a choice, its alternatives, what it rests on
   note           something missing or wrong in the data or the knowledge
   lead           record the lead from a lead file (YAML)
@@ -85,7 +85,7 @@ Commands.
   end            ended as a lead, a note, a method or a stop
   hand-over      what `sf.py start` needs, for a confirming study
   check-study    a study started from the lead keeps the fence
-  curation-list  open notes, for the curating assistant
+  curation-list  open notes, for the curating agent
   resolve        a note is drafted, linked or declined
   status         where the exploration stands and who is next
   check-log      everything re-checked from the files
@@ -278,13 +278,14 @@ LEAD_STATUS = "a lead, not a finding: found by exploring, tested on nothing, and
 BANNER = ("**Exploring.** This is a lead, not a finding. It was found by looking at data, every choice in it was made "
           "after looking, and it has been tested on nothing. It cannot be signed. To become a finding it goes through "
           "a confirming study on the data that was set aside.")
-HOW = {  # the ways to hold data out that docs/TWO-WAYS-OF-WORKING.md lists, and what each has to name
+HOW = {  # the ways to hold data out (docs/HOW-IT-WORKS.md lists them), and what each has to name
     "a later period": "window",
     "a period of contrasting conditions": "window",
     "sites never opened": "sites",
     "a new release": "releases",
     "a different instrument or record": "releases",
     "forecasts scored later": "window",
+    "a random set aside": "sites",   # drawn by tools/fresh_data.py, never chosen: `start` needs the proposal (`--fresh-data`)
 }
 OPEN_END = "9999-12-31"
 TOOLS = ("sf.py", "explore.py", "knowledge.py", "system_trial.py")  # a look does not run these
@@ -639,13 +640,13 @@ def lead_on_file(ev: list):
 
 
 def reviewed(ev: list) -> bool:
-    """Has a review assistant looked at the latest lead?"""
+    """Has a review agent looked at the latest lead?"""
     lead = last(ev, "lead.recorded")
     return bool(lead) and any(e["kind"] == "review.verdict" and e["seq"] > lead["seq"] for e in ev)
 
 
 def review_stands(ev: list) -> bool:
-    """Has a review assistant looked at the lead as it stands now? A new version and a correction of wording both
+    """Has a review agent looked at the lead as it stands now? A new version and a correction of wording both
     come after the review that went before them: the review covers the words the reviewer saw and no others."""
     now = lead_on_file(ev)
     return bool(now) and any(e["kind"] == "review.verdict" and e["seq"] > now["seq"] for e in ev)
@@ -913,8 +914,23 @@ def cmd_start(x: Exploration, a) -> None:
                           ": nothing is looked at until what is set aside is written down")
         if not str(a.why or "").strip():
             raise Refused("`--why` says why this is the data to set aside; it goes into the later plan")
+        if how == "a random set aside" and not getattr(a, "fresh_data", None):
+            raise Refused("a random set aside is drawn by `tools/fresh_data.py propose --kind random`, never chosen by anybody: name its "
+                          "proposal with `--fresh-data`, and set aside exactly the members it drew")
     if window and working and sf.windows_overlap(core(working), core(window)):
         raise Refused("the working window and the set-aside window overlap: data that is explored cannot also be held out")
+    studies_here = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
+    fresh = None
+    if getattr(a, "fresh_data", None):
+        if a.nothing_set_aside:
+            raise Refused("`--fresh-data` names what is set aside, and `--nothing-set-aside` says nothing is; choose one")
+        fpath = Path(os.path.abspath(a.fresh_data))
+        prop, wrong = fresh_data_problems(fpath, studies_here, how, window, sites, releases)
+        if wrong:
+            raise Refused("the proposal of the fresh data does not match this start: " + "; ".join(wrong) + ". Nothing was started")
+        fresh = {"file": str(fpath), "sha256": sf.sha_file(fpath), "kind": prop["kind"], "kind_in_words": prop["kind_in_words"],
+                 "proposed_by": (prop.get("proposed") or {}).get("by"), "proposed_at": (prop.get("proposed") or {}).get("at"),
+                 "seed_sha256": (prop.get("draw") or {}).get("seed_sha256")}
     request = Path(a.request).resolve() if a.request else None
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
@@ -973,6 +989,8 @@ def cmd_start(x: Exploration, a) -> None:
           "working": {"description": a.working, "window": working, "places": places}}
     if gap:
         sa["in_neither"] = gap
+    if fresh:
+        sa["fresh_data"] = fresh
     if pages:
         sa["boundary_read_from"] = pages
     x.d.mkdir(parents=True, exist_ok=True)
@@ -1017,6 +1035,34 @@ def cmd_start(x: Exploration, a) -> None:
 
 def knowledge_tool():
     return _load("knowledge", HERE / "knowledge.py")
+
+
+def fresh_tool():
+    return sys.modules.get("fresh_data") or _load("fresh_data", HERE / "fresh_data.py")
+
+
+def fresh_data_problems(path: Path, studies: Path, how: str, window, sites: list, releases: list) -> tuple:
+    """(the proposal, what is wrong): the proposal of the fresh data that this start sets aside is on the record beside
+    the studies, checks out (a random draw comes from its seed), and is the same as what the start sets aside."""
+    tool = fresh_tool()
+    try:
+        prop = tool.load(path)
+        found = tool.problems(path, studies)
+    except tool.Refused as r:
+        return None, [str(r)]
+    rule, kind = prop.get("rule") or {}, prop["kind"]
+    want = {"later-period": "a later period", "another-site": "sites never opened", "next-release": "a new release", "random": "a random set aside"}[kind]
+    if how != want:
+        found.append(f"the proposal is {prop['kind_in_words']}, which is set aside as `--how \"{want}\"`, not `{how}`")
+    elif kind == "later-period" and (not window or window["start"] != rule.get("from")
+                                     or (rule.get("until") and window.get("end") != rule["until"]) or (not rule.get("until") and not window.get("open_ended"))):
+        found.append(f"the window set aside is not the later period the proposal names ({rule.get('from')} to {rule.get('until') or 'onward'})")
+    elif kind in ("another-site", "random") and sorted(sites) != sorted(prop["members"]):
+        found.append("the sites set aside are not the members the proposal names" + (": a random set aside is drawn by the tool, and "
+                     "nobody adds a site to it or takes one out" if kind == "random" else ""))
+    elif kind == "next-release" and rule.get("release") not in releases:
+        found.append(f"the release set aside is not the one the proposal names ({rule.get('release')})")
+    return prop, found
 
 
 def cmd_known(x: Exploration, a) -> None:
@@ -1219,7 +1265,7 @@ def without_warnings(text: str) -> str:
 
 
 def cmd_recheck(x: Exploration, a) -> None:
-    """Run a logged look again and compare what comes out, without adding a look: for the review assistant."""
+    """Run a logged look again and compare what comes out, without adding a look: for the review agent."""
     ev = x.events()
     sa = x.started()["data"]["set_aside"]
     e = next((e for e in ev if e["kind"] == "look.run" and e["data"]["id"] == a.look), None)
@@ -1547,7 +1593,7 @@ def cmd_lead(x: Exploration, a) -> None:
         raise Refused("this exploration is spoiled (set-aside data reached it); no lead comes from it")
     if not reviewers(ev, len(ev)):
         raise Refused("no reviewer is named for this exploration. Whoever coordinates the work names the reviewer before a lead "
-                      "exists (`explore.py reviewer --by <the coordinating assistant> --reviewer agent:review-...`), so that the "
+                      "exists (`explore.py reviewer --by <the coordinating agent> --reviewer agent:review-...`), so that the "
                       "name a review comes under was not chosen by the author once the lead was written. Hand the exploration "
                       "back for that, then record the lead")
     src = Path(a.file).resolve()
@@ -1595,7 +1641,7 @@ def cmd_lead(x: Exploration, a) -> None:
     x.add(a.by, "lead.recorded", {"version": version, "json_sha": sha, "md_sha": sf.sha_file(x.d / "lead.md"),
                                   "source_sha": sf.sha_file(src), "tried": lead["tried"]})
     print(f"lead version {version} recorded ({WAY}): lead.md, lead.json. {lead['tried']['looks']} looks behind it. "
-          "Next: a review assistant that did none of this picks holes in it. Do not `end` yet: an exploration ends as a lead "
+          "Next: a review agent that did none of this picks holes in it. Do not `end` yet: an exploration ends as a lead "
           "only after its latest lead has been reviewed.")
 
 
@@ -1667,7 +1713,7 @@ def cmd_review(x: Exploration, a) -> None:
     if not last(ev, "lead.recorded") and not last(ev, "exploration.ended"):
         raise Refused("there is nothing to review yet: no lead is recorded and the exploration has not ended")
     if a.by.casefold() in did_the_work(ev):
-        raise Refused(f"{a.by} did part of this exploration; the review is by an assistant that did none of it")
+        raise Refused(f"{a.by} did part of this exploration; the review is by an agent that did none of it")
     target = last(ev, "lead.recorded") or last(ev, "exploration.ended")
     named = reviewers(ev, target["seq"])
     if a.by.casefold() not in named:
@@ -1737,7 +1783,7 @@ def cmd_end(x: Exploration, a) -> None:
         if not last(ev, "lead.recorded"):
             raise Refused("no lead is recorded; record it with `lead`, or end as a note, a method or a stop")
         if not reviewed(ev):
-            raise Refused("the latest lead has not been reviewed: an exploration ends as a lead only after a review assistant "
+            raise Refused("the latest lead has not been reviewed: an exploration ends as a lead only after a review agent "
                           "has looked at the lead it ends on. Hand it back for review; `end` comes after the review is answered")
         if not review_stands(ev):
             raise Refused("the lead was corrected after it was reviewed: the review covers the words the reviewer saw, not the "
@@ -1752,7 +1798,7 @@ def cmd_end(x: Exploration, a) -> None:
     if not str(a.summary or "").strip():
         raise Refused("`--summary` says in a sentence what the exploration came to")
     x.add(a.by, "exploration.ended", data)
-    print(f"ended ({WAY}) as a {a.outcome}." + (" Next: `hand-over`, by the coordinating assistant." if a.outcome == "lead" else ""))
+    print(f"ended ({WAY}) as a {a.outcome}." + (" Next: `hand-over`, by the coordinating agent." if a.outcome == "lead" else ""))
 
 
 def handover_problems(x: Exploration, ev: list) -> list:
@@ -1768,7 +1814,7 @@ def handover_problems(x: Exploration, ev: list) -> list:
     if lead:
         verdicts = [e for e in ev if e["kind"] == "review.verdict" and e["seq"] > lead["seq"]]
         if not verdicts:
-            p.append("no review assistant has looked at the latest lead")
+            p.append("no review agent has looked at the latest lead")
         elif not review_stands(ev):
             p.append("the lead was corrected after its latest review, so no review covers the lead as it stands")
         for name, key in (("lead.json", "json_sha"), ("lead.md", "md_sha")):
@@ -1791,7 +1837,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
     if problems:
         raise Refused("nothing is handed over: " + "; ".join(problems))
     if a.by.casefold() in did_the_work(ev):
-        raise Refused(f"{a.by} did the exploring; the hand-over is made by the coordinating assistant, which did not")
+        raise Refused(f"{a.by} did the exploring; the hand-over is made by the coordinating agent, which did not")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", a.study_id or "") or a.study_id == x.d.name:
         raise Refused("`--study-id` names the confirming study (for example STUDY-0002); it is not the exploration's name")
     lead = json.loads((x.d / "lead.json").read_text())
@@ -1811,6 +1857,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
         f"**The question proposed for the confirming study.** {stub['question']}", "",
         f"**The difference that matters, as proposed.** {stub['difference_that_matters']}", "",
         "**Already looked at (working data from now on).** " + str(sa["working"].get("description") or "see the exploration log") + "", "",
+        *([f"**The fresh data, as proposed.** {sa['fresh_data']['kind_in_words'].capitalize()}, proposed by {sa['fresh_data']['proposed_by']} "
+           f"at {sa['fresh_data']['proposed_at']} from metadata only; the proposal is `hand-over/fresh-data.yaml`, and the lock shows it in words.", ""]
+          if sa.get("fresh_data") else []),
         "**Held out.** Only what the exploration set aside: " + (f"{w['start']} to {'onward' if w.get('open_ended') else w['end']}" if w
                                                                else ", ".join(sa.get("sites") or sa.get("releases") or [])) + f". {sa.get('why')}", "",
         f"**The review of the lead.** {verdict['data']['verdict']} ({verdict['data']['file']} in the exploration), recorded "
@@ -1819,10 +1868,19 @@ def cmd_hand_over(x: Exploration, a) -> None:
            if verdict["actor"].casefold() in reviewers(ev, len(ev)) else "")
         + (f". The lead's wording was corrected {len(lead['corrections'])} time(s) before that review, and not since" if lead.get("corrections") else "")
         + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
-        "Names are typed, not proven: whether the reviewer was a separate assistant with a fresh context is in the run's record, not in this line.", "",
+        "Names are typed, not proven: whether the reviewer was a separate agent with a fresh context is in the run's record, not in this line.", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
     held = {"pair": sa["subject"], "why_this_window": sa.get("why")}
+    fd = sa.get("fresh_data")
+    if fd:  # the proposal and its seed travel with the hand-over, byte for byte, so the plan can name them and the lock show them
+        src = Path(fd["file"])
+        if sf.sha_file(src) != fd["sha256"]:
+            raise Refused(f"the proposal of the fresh data this exploration set aside ({src}) is missing or changed since the start")
+        shutil.copyfile(src, out / "fresh-data.yaml")
+        if fresh_tool().seed_path(src).is_file():
+            shutil.copyfile(fresh_tool().seed_path(src), out / "fresh-data.seed")
+        held["fresh_data"] = os.path.relpath(out / "fresh-data.yaml", x.record().parent / a.study_id)
     if w:
         held["window"] = {"start": w["start"], "end": "CHOOSE: a date inside the set-aside window" if w.get("open_ended") else w["end"]}
     plan_stub = {"study": a.study_id, "question": stub["question"], "quantity_estimated": stub["quantity_estimated"],
@@ -1833,13 +1891,13 @@ def cmd_hand_over(x: Exploration, a) -> None:
                  "pitfalls_to_make_hard_cases": lead["pitfalls"]}
     (out / "analysis-plan.stub.yaml").write_text(
         f"# Exploring: a stub from {start['data']['id']}, not an analysis plan. The study tool will not read this file.\n"
-        "# The analysis assistant writes analysis-plan.yaml from factory/templates/analysis-plan.yaml at the plan stage and takes\n"
+        "# The analysis agent writes analysis-plan.yaml from factory/templates/analysis-plan.yaml at the plan stage and takes\n"
         "# from here the question, the quantity, the data and the choices to fix. The held-out data may only be what the\n"
         "# exploration set aside; `explore.py check-study` refuses anything else.\n"
         + yaml.safe_dump(plan_stub, sort_keys=False, allow_unicode=True, width=110))
     study_dir = os.path.relpath(x.record().parent / a.study_id, x.d)
     command = ["uv", "run", "tools/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
-               "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating assistant>", "--model", "<the model it runs as>"]
+               "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating agent>", "--model", "<the model it runs as>"]
     sha = write_json(out / "hand-over.json", {
         "kind": "hand-over", "from": start["data"]["id"], "for": "sf.py start", "study_id": a.study_id,
         "study_directory_from_exploration": study_dir, "question": stub["question"],
@@ -1852,7 +1910,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
                                 "request_sha": sf.sha_file(out / "request.md"), "study_directory_from_exploration": study_dir})
     print(f"handed over ({WAY}): hand-over/request.md, hand-over/analysis-plan.stub.yaml, hand-over/hand-over.json.\n"
           f"Start the study with:\n  uv run tools/sf.py start --study {study_dir} --id {a.study_id} --question \"{stub['question']}\" "
-          "--request hand-over/request.md --by agent:<the coordinating assistant> --model <the model it runs as>\n(paths from the exploration directory)")
+          "--request hand-over/request.md --by agent:<the coordinating agent> --model <the model it runs as>\n(paths from the exploration directory)")
 
 
 def study_problems(x: Exploration, study_dir: Path) -> list:
@@ -1892,6 +1950,11 @@ def study_problems(x: Exploration, study_dir: Path) -> list:
     if working and (window is None or sf.windows_overlap(window, core(working))):
         p.append("the plan's held-out window touches the window that was explored: data that was used to explore cannot "
                  "be used to confirm what the exploring found")
+    if sa.get("fresh_data"):
+        named = held.get("fresh_data")
+        if not named or sf.sha_file(study.d / str(named)) != sa["fresh_data"]["sha256"]:
+            p.append("the exploration set aside the fresh data a proposal named, and the plan's `data.held_out.fresh_data` does not name "
+                     "that proposal, byte for byte (hand-over/fresh-data.yaml)")
     names = json.dumps(pair or {}).casefold() + " " + str(held.get("path") or "").casefold()
     if sa.get("sites") and not any(names_token(names, str(s), sa) for s in sa["sites"]):
         p.append(f"the plan's held-out subject names none of the sites that were set aside ({', '.join(sa['sites'])})")
@@ -1939,7 +2002,7 @@ def cmd_curation_list(x: Exploration, a) -> None:
         "exploration": start["data"]["id"], "generated": sf.now(), "open_notes": len(notes), "notes": notes,
         "lead": {"file": "lead.json", "version": lead["data"]["version"], "status": LEAD_STATUS} if lead else None,
         "log_fingerprint": f"{ev[-1]['seq']}:{ev[-1]['hash']}",
-        "contract": "the curating assistant drafts at status draft with its own generated event; it never merges and never "
+        "contract": "the curating agent drafts at status draft with its own generated event; it never merges and never "
                     "signs. A lead is never drafted as a finding: what may be drafted from it is its pitfalls and what it "
                     "learned about the data, each marked as seen while exploring"})
     print(f"curation list ({WAY}): {len(notes)} open note(s); curation-list.json sha256 {sha[:12]}")
@@ -1953,7 +2016,7 @@ def cmd_resolve(x: Exploration, a) -> None:
         raise Refused(f"{a.note} is not an open note of this exploration")
     if not last(ev, "exploration.ended"):
         raise Refused("this exploration has not ended: its notes can still change and its lead can still be revised after a "
-                      "review. The curating assistant waits until `status` says the exploration has ended (stage `learn`, "
+                      "review. The curating agent waits until `status` says the exploration has ended (stage `learn`, "
                       "`hand-over` or `ended`), then resolves each note")
     if a.disposition != "declined" and not a.ref:
         raise Refused("a drafted or linked note names the draft or the concept (`--ref`)")
@@ -1966,7 +2029,7 @@ def cmd_resolve(x: Exploration, a) -> None:
 def stage_of(x: Exploration) -> dict:
     ev = x.events()
     if not ev:
-        return {"way": WAY, "stage": "set-aside", "who": "analysis assistant",
+        return {"way": WAY, "stage": "set-aside", "who": "analysis agent",
                 "does": "decide what will not be looked at and start the exploration (explore.py start)"}
     start = ev[0]["data"]
     lead, ended, over = last(ev, "lead.recorded"), last(ev, "exploration.ended"), last(ev, "handed.over")
@@ -1980,35 +2043,35 @@ def stage_of(x: Exploration) -> dict:
     if lead and count(ev, "lead.corrected"):
         counts["wording_corrections_to_the_latest_lead"] = sum(1 for e in ev if e["kind"] == "lead.corrected" and e["seq"] > lead["seq"])
     if breached(ev) and not ended:
-        here = {"stage": "spoiled", "who": "analysis assistant", "does": "set-aside data reached the exploration: end it as a stop and say so"}
+        here = {"stage": "spoiled", "who": "analysis agent", "does": "set-aside data reached the exploration: end it as a stop and say so"}
     elif not last(ev, "knowledge.listed"):
-        here = {"stage": "read-what-is-known", "who": "analysis assistant", "does": "list and read the knowledge that bears on the question (explore.py known, read)"}
+        here = {"stage": "read-what-is-known", "who": "analysis agent", "does": "list and read the knowledge that bears on the question (explore.py known, read)"}
     elif ended:
         if ended["data"]["outcome"] == "lead" and not over:
-            here = {"stage": "hand-over", "who": "coordinating assistant", "does": "hand the lead to the confirming way (explore.py hand-over), or leave it"}
+            here = {"stage": "hand-over", "who": "coordinating agent", "does": "hand the lead to the confirming way (explore.py hand-over), or leave it"}
             blockers = handover_problems(x, ev)
             if blockers:
-                here.update(stage="review", who="review assistant", still_needs=blockers)
+                here.update(stage="review", who="review agent", still_needs=blockers)
         elif open_notes(ev):
-            here = {"stage": "learn", "who": "curating assistant", "does": "every open note drafted, linked or declined (explore.py curation-list, resolve)"}
+            here = {"stage": "learn", "who": "curating agent", "does": "every open note drafted, linked or declined (explore.py curation-list, resolve)"}
         else:
             here = {"stage": "ended"}
         here["outcome"] = ended["data"]["outcome"]
         if over:
             here["handed_over_to"] = over["data"]["study_id"]
     elif not lead:
-        here = {"stage": "explore", "who": "analysis assistant", "does": "look, record choices and notes, then write up the lead or end as a note, a method or a stop"}
+        here = {"stage": "explore", "who": "analysis agent", "does": "look, record choices and notes, then write up the lead or end as a note, a method or a stop"}
         if not reviewers(ev, len(ev)):
-            here["before_a_lead"] = ("the coordinating assistant names the reviewer (explore.py reviewer); `lead` is refused until "
+            here["before_a_lead"] = ("the coordinating agent names the reviewer (explore.py reviewer); `lead` is refused until "
                                      "a reviewer is named")
     elif not verdict or verdict["seq"] < lead_on_file(ev)["seq"]:
-        here = {"stage": "review", "who": "review assistant", "does": "pick holes in the lead (explore.py review)",
-                "not_yet": "the analysis assistant does not `end`, and the curating assistant does not `resolve`, until the latest lead is reviewed"}
+        here = {"stage": "review", "who": "review agent", "does": "pick holes in the lead (explore.py review)",
+                "not_yet": "the analysis agent does not `end`, and the curating agent does not `resolve`, until the latest lead is reviewed"}
     else:
-        here = {"stage": "revise-or-end", "who": "analysis assistant", "last_review": verdict["data"]["verdict"],
+        here = {"stage": "revise-or-end", "who": "analysis agent", "last_review": verdict["data"]["verdict"],
                 "does": "answer the review: revise the lead (a new version is reviewed again), or end the exploration on the lead "
                         "that was reviewed (explore.py end)",
-                "not_yet": "the curating assistant waits for the end"}
+                "not_yet": "the curating agent waits for the end"}
     if lead:
         counts["lead_json_sha256"] = lead_on_file(ev)["data"]["json_sha"]
     counts["looks_by_fence"] = fence_counts(ev)
@@ -2101,7 +2164,7 @@ def remarks(ev: list) -> list:
         r.append(f"{len(early)} note(s) were resolved (events {early[0]['seq']} to {early[-1]['seq']}) before the exploration had ended"
                  + ("" if reviewed([e for e in ev if e["seq"] < early[0]["seq"]]) or not last(ev[:early[0]["seq"]], "lead.recorded")
                     else ", and before the latest lead of that moment had been reviewed")
-                 + ". The tool now refuses that: the curating assistant waits for the end")
+                 + ". The tool now refuses that: the curating agent waits for the end")
     if ended and ended["data"]["outcome"] == "lead" and not reviewed([e for e in ev if e["seq"] < ended["seq"]]):
         r.append("the exploration ended as a lead before its latest lead had been reviewed. The tool now refuses that")
     merged = [e["data"]["id"] for e in ev if e["kind"] == "look.run" and e["data"].get("streams") != "separate"]
@@ -2143,7 +2206,7 @@ class A:
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
-                        also_reads=None, reviewer=None, working_data=None, read_lead=None)
+                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
 
@@ -2263,6 +2326,50 @@ def selftest() -> int:
         ok("start is refused without a reason for what is set aside", "why" in said(cmd_start, x0, A(request=str(req), why="")))
         ok("start is refused when the question is not a question", "not a question" in said(cmd_start, x0, A(request=str(req), question="Look at A")))
         ok("start is refused for a name that is not an actor", "actor" in said(cmd_start, x0, A(request=str(req), by="someone")))
+        # ---- the fresh data proposed from metadata (tools/fresh_data.py) and set aside at the start --------
+        fdt = fresh_tool()
+        fwork = tmp / "work-fresh"  # a record of its own, so these starts touch nothing the checks below read
+        (fwork / "explorations").mkdir(parents=True)
+        meta = tmp / "fd-metadata.json"
+        meta.write_text(json.dumps({"subject": {"reach_id": "R9", "gauge": "G9"}, "items": [
+            {"id": f"USGS-0{n}-{y}", "site": f"USGS-0{n}", "start": f"{y}-01-01", "end": f"{y}-12-31", "count": 10}
+            for n in range(1000001, 1000011) for y in (2025, 2026)]}))
+
+        def proposal(name: str, **k) -> Path:
+            out = tmp / "proposals" / f"{name}.yaml"
+            quiet(fdt.cmd_propose, fdt.A(metadata=str(meta), what="w", why="y", unfair="u", studies=str(fwork / "studies"), out=str(out), **k))
+            return out
+        xr = Exploration(fwork / "explorations" / "E-RANDOM")
+        ok("a random set aside cannot be typed: without the tool's proposal (`--fresh-data`) the start is refused",
+           "never chosen by anybody" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None,
+                                                              set_aside_sites="USGS-01000001", subject="reach_id=R9,gauge=G9"))
+           and not xr.log.exists())
+        rp = proposal("random", kind="random", fraction=0.3)
+        drawn = fdt.load(rp)["members"]
+        others = [m for m in fdt.load(rp)["draw"]["drawn_from"] if m not in drawn]
+        ok("a random set aside with one site swapped for a site of one's own choosing is refused: nobody adds a site or takes one out",
+           "nobody adds a site" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9",
+                                                          set_aside_sites=",".join(drawn[1:] + others[:1]), fresh_data=str(rp)))
+           and not xr.log.exists())
+        quiet(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9", working_window=None,
+                               set_aside_sites=",".join(drawn), fresh_data=str(rp), working_data=[str(data)]))
+        got_sa = xr.set_aside()
+        ok("with the proposal and exactly its members the random set aside starts, and the start records the proposal by checksum",
+           got_sa["how"] == "a random set aside" and sorted(got_sa["sites"]) == drawn and got_sa["fresh_data"]["sha256"] == sf.sha_file(rp)
+           and got_sa["fresh_data"]["seed_sha256"] == fdt.load(rp)["draw"]["seed_sha256"])
+        lp = proposal("later", kind="later-period", from_="2026-01-01")
+        xl = Exploration(fwork / "explorations" / "E-LATER")
+        ok("a proposal is set aside as it was proposed: a later period with another window than the proposal's is refused",
+           "not the later period the proposal names" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(lp),
+                                                                              set_aside_window="2025-06-01:", working_window=None)))
+        ok("and so is a proposal of another kind than the way the start holds data out",
+           "is set aside as" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(rp),
+                                                      set_aside_window="2026-01-01:", working_window=None)))
+        lp2 = tmp / "proposals" / "later-edited.yaml"
+        lp2.write_text(lp.read_text().replace("what: w", "what: a wider window, edited by hand"))
+        ok("a proposal edited after the tool wrote it is refused at the start: it is not on the record beside the studies",
+           "not on the record" in said(cmd_start, xl, A(request=str(req), subject="reach_id=R9,gauge=G9", fresh_data=str(lp2),
+                                                        set_aside_window="2026-01-01:", working_window=None)))
         early = tmp / "held" / "later.json"
         early.parent.mkdir()
         early.write_text("{}")
@@ -2444,23 +2551,23 @@ def selftest() -> int:
            "has not ended as a lead" in said(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="STUDY-T")))
         vf = tmp / "verdict.md"
         vf.write_text("# Review (exploring)\n\nHoles: the gain rests on one year.\n")
-        ok("the assistant that explored cannot review its own lead", "did part of this exploration" in said(cmd_review, y, RA(y, verdict="holes-found", file=str(vf))))
-        ok("the same assistant under another case of its name cannot either",
+        ok("the agent that explored cannot review its own lead", "did part of this exploration" in said(cmd_review, y, RA(y, verdict="holes-found", file=str(vf))))
+        ok("the same agent under another case of its name cannot either",
            "did part of this exploration" in said(cmd_review, y, RA(y, by="agent:TESTER-analysis", verdict="holes-found", file=str(vf))))
         ok("a verdict outside the two is refused", "one of" in said(cmd_review, y, RA(y, by="agent:tester-review", verdict="approve", file=str(vf))))
         quiet(cmd_review, y, RA(y, by="agent:tester-review", verdict="holes-found", file=str(vf)))
-        ok("status after a review sends the work back to the analysis assistant", stage_of(y)["stage"] == "revise-or-end")
+        ok("status after a review sends the work back to the analysis agent", stage_of(y)["stage"] == "revise-or-end")
         quiet(cmd_lead, y, A(file=str(lf)))
         ok("a revised lead is a new version, and the first is kept", (y.d / "leads/lead-v1.json").is_file() and json.loads((y.d / "lead.json").read_text())["version"] == 2)
         ok("ending as a lead is refused until the latest lead has been reviewed",
            "has not been reviewed" in said(cmd_end, y, A(outcome="lead", summary="A follows B on changes; worth a test")))
-        ok("status names the review assistant when the latest lead is not reviewed", stage_of(y)["who"] == "review assistant")
-        ok("a note is not resolved while the lead can still be revised: the curating assistant waits for the end",
+        ok("status names the review agent when the latest lead is not reviewed", stage_of(y)["who"] == "review agent")
+        ok("a note is not resolved while the lead can still be revised: the curating agent waits for the end",
            "has not ended" in said(cmd_resolve, y, A(by="agent:tester-curating", note="NOTE-001", disposition="drafted", ref="knowledge-queue/gotchas/a-flag.md")))
         quiet(cmd_review, y, RA(y, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
         quiet(cmd_end, y, A(outcome="lead", summary="A follows B on changes; worth a test"))
         ok("after the end nothing more is looked at", "has ended" in look(y, ["{python}", sy, str(data)]))
-        ok("the assistant that explored cannot make the hand-over", "did the exploring" in said(cmd_hand_over, y, A(study_id="STUDY-T")))
+        ok("the agent that explored cannot make the hand-over", "did the exploring" in said(cmd_hand_over, y, A(study_id="STUDY-T")))
         ok("the hand-over refuses the exploration's own name for the study", "study-id" in said(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="E-2")))
         quiet(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="STUDY-T"))
         ho = json.loads((y.d / "hand-over/hand-over.json").read_text())
@@ -2521,7 +2628,7 @@ def selftest() -> int:
         cl = json.loads((y.d / "curation-list.json").read_text())
         ok("the curation list holds the open notes and says a lead is never drafted as a finding",
            cl["open_notes"] == 1 and "never drafted as a finding" in cl["contract"] and cl["way"] == WAY)
-        ok("status after the hand-over sends the notes to the curating assistant", stage_of(y)["stage"] == "learn" and stage_of(y)["who"] == "curating assistant")
+        ok("status after the hand-over sends the notes to the curating agent", stage_of(y)["stage"] == "learn" and stage_of(y)["who"] == "curating agent")
         ok("a drafted note names its draft", "names the draft" in said(cmd_resolve, y, A(by="agent:tester-curating", note="NOTE-001", disposition="drafted", ref=None)))
         quiet(cmd_resolve, y, A(by="agent:tester-curating", note="NOTE-001", disposition="drafted", ref="knowledge-queue/gotchas/a-flag.md"))
         ok("a resolved note leaves the list, and the exploration is then ended", stage_of(y)["stage"] == "ended" and stage_of(y)["handed_over_to"] == "STUDY-T")
@@ -2555,7 +2662,7 @@ def selftest() -> int:
         quiet(cmd_end, z, A(outcome="note", summary="a dead end worth recording"))
         ok("an exploration can end as a note", last(z.events(), "exploration.ended")["data"]["outcome"] == "note")
         ok("an exploration that ended as a note hands nothing over", "has not ended as a lead" in said(cmd_hand_over, z, A(by="agent:tester-coordinating", study_id="STUDY-Z")))
-        # ---- what real assistants and a hydrologist found: order, numbers, words, figures, corrections ----
+        # ---- what real agents and a hydrologist found: order, numbers, words, figures, corrections ----
         data_page = tmp / "not-a-page.json"
         data_page.write_text("{}")
         w0 = Exploration(work / "explorations" / "E-5")
@@ -2566,7 +2673,7 @@ def selftest() -> int:
            w.set_aside()["boundary_read_from"][0]["sha256"] == sf.sha_file(page))
         ok("data that is neither explored nor set aside is named at the start",
            w.set_aside()["in_neither"] == {"start": "2025-01-01", "end": "2025-04-27"})
-        ok("the start makes a place for the review assistant to write and a place for figures", (w.d / "review").is_dir() and (w.d / "figures").is_dir())
+        ok("the start makes a place for the review agent to write and a place for figures", (w.d / "review").is_dir() and (w.d / "figures").is_dir())
         quiet(cmd_known, w, A(bundle=[str(bundle)], question=None))
         sw = script(w, "fit.py", "import sys\nfrom pathlib import Path\nprint('gain 1.4826 on 12 rows')\nprint('comparisons: 9')\n"
                                  "print('warning: a launcher grumbles', file=sys.stderr)\n"
@@ -2672,7 +2779,7 @@ def selftest() -> int:
         sm = script(m, "method.py", "print('m')\n")
         quiet(cmd_end, m, A(outcome="method", summary="a method that pairs passes", file=sm))
         ok("an exploration can end as a method, bound by checksum", last(m.events(), "exploration.ended")["data"]["method"]["sha256"] == sf.sha_file(m.d / sm))
-        # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) ----------------
+        # ---- what an independent attack found (docs/reviews/README.md, R1) ----------------
         # B1: set-aside data reached through a folder, a pattern, a tilde, a key=value word, a variable, a built path
         k = fresh("E-7", subject="reach_id=R11,gauge=G11")
         known(k)
@@ -2879,7 +2986,7 @@ def selftest() -> int:
         # S5: a correction made after the review undoes the review
         ok("a correction made after the review is taken, and says the lead must be reviewed again",
            said(cmd_correct, r, A(old="follows B closely", new="is beyond any doubt identical to B", why="wording")) == "")
-        ok("after it the lead is no longer reviewed: the exploration does not end as a lead, and status names the review assistant",
+        ok("after it the lead is no longer reviewed: the exploration does not end as a lead, and status names the review agent",
            "corrected after it was reviewed" in said(cmd_end, r, A(outcome="lead", summary="x")) and stage_of(r)["stage"] == "review")
         quiet(cmd_review, r, RA(r, by="agent:tester-review", verdict="holes-found", file=str(vf)))
         quiet(cmd_end, r, A(outcome="lead", summary="A follows B; worth a test"))
@@ -3188,6 +3295,8 @@ def build_parser() -> argparse.ArgumentParser:
         (["--set-aside-release"], {"action": "append", "default": None, "help": "a release, collection or record name; repeatable"}),
         (["--set-aside-path"], {"action": "append", "default": None, "help": "where the set-aside data would land if fetched; repeatable"}),
         (["--nothing-set-aside"], {"default": None, "help": "the reason nothing can be set aside; such an exploration hands nothing over"}),
+        (["--fresh-data"], {"default": None, "dest": "fresh_data",
+                            "help": "the proposal of the fresh data (tools/fresh_data.py propose) that this start sets aside; required for a random set aside"}),
         (["--why"], {"default": None, "help": "why this is the data to set aside"}),
         (["--working"], {"default": None, "help": "what will be explored, in words"}),
         (["--working-data"], {"action": "append", "default": None, "dest": "working_data",

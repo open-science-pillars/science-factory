@@ -26,7 +26,7 @@ contract:
   manifest: The entry point hashes the named files in the container, before `fetch.started`, and does not start the argv when one differs.
   resources: walltime_seconds, cpus and memory_mb map to the service's job limits. A resource with no such limit is refused at submit.
   clean_interpreter: Yes when the image is pinned by digest and built from a lockfile, and the digest is in the run log. Not otherwise.
-  blinds_the_method_builder: 'Only where the held-out data sits behind a role that the opening''s job alone is given. For public data, no: what keeps public data from the method builder is where the analysis assistant runs, which this file does not cover.'
+  blinds_the_method_builder: 'Only where the held-out data sits behind a role that the opening''s job alone is given. For public data, no: what keeps public data from the method builder is where the analysis agent runs, which this file does not cover.'
 open_questions:
 - which services can refuse a second job with the same label by themselves, and whether listing by label can be trusted after a lost answer
 - 'for a CI job: whether a run can be found again by a label the adapter chose, and what makes a second run of the same key impossible and not merely unlikely'

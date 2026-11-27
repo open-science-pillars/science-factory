@@ -3,13 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""run_role: start one role as a Claude Code assistant in a fresh context, and keep the record.
+"""run_role: start one role as a Claude Code agent in a fresh context, and keep the record.
 
 It runs `claude -p --agent <role>` from the repository root with the task
 given to it, so the role starts from its rendered role file with that
 file's tools and hook, and with no memory of any other conversation. It
 writes what the brief of a working example asks to be kept: the task as it
-was given, what the assistant answered, which model ran it, and when.
+was given, what the agent answered, which model ran it, and when.
 
 Usage:
   uv run factory/harnesses/claude-code/run_role.py --role analysis --task-file TASK.md --record DIR/record/analysis/NN
@@ -22,8 +22,8 @@ to <record>.run.json. `--claude` names the Claude Code program (default
 
 Each role's account has its own place. The record of a role goes in a
 folder named for the role (`record/analysis/01`, `record/review/02`), and
-this script refuses any other place, so that the account of the assistant
-that did the work never sits where the assistant that checks it writes.
+this script refuses any other place, so that the account of the agent
+that did the work never sits where the agent that checks it writes.
 It also refuses a task that names a path the role file lists under
 `must_never_see` as `path:<pattern>`: a task for the review role that
 points at `record/analysis/` hands the reviewer the author's account, and
@@ -112,7 +112,7 @@ def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> i
         pat = never_sees(role, tidy, root) if tidy else None
         if pat:
             print(f"the task names `{word}`, which the {role} role must never see (factory/agents/{role}/agent.md, must_never_see: {pat}). "
-                  "Give this role the work as files and nothing the other assistant said about it; the task is not started", file=sys.stderr)
+                  "Give this role the work as files and nothing the other agent said about it; the task is not started", file=sys.stderr)
             return 2
     record.parent.mkdir(parents=True, exist_ok=True)
     Path(f"{record}.task.md").write_text(task)
@@ -137,7 +137,7 @@ def run(role: str, task: str, record: Path, claude: str, root: Path = ROOT) -> i
         "turns": out.get("num_turns"), "failed": failed, "claude_session": out.get("session_id")}, indent=1) + "\n")
     print(answer)
     if failed:
-        print(f"the {role} assistant did not finish: {answer[:200]}", file=sys.stderr)
+        print(f"the {role} agent did not finish: {answer[:200]}", file=sys.stderr)
         return 1
     return 0
 

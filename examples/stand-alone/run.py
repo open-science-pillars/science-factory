@@ -13,12 +13,12 @@ that a newcomer can open an exploration and a study and see what each
 looks like on disk. Nothing is written into the repository.
 
 What this is and is not. It is the tools, driven from the command line the
-way a role would drive them, with each step checked. No assistant runs in
+way a role would drive them, with each step checked. No agent runs in
 it and no language model: it shows that the loops hold together and that
 the refusals refuse, and the checks workflow runs it. Its last part takes
 a study of its own (a system trial on a synthetic record, with this
 repository's own method) through every stage a tool can take, and stops
-where the next step is a person's: the lock. What assistants do with the
+where the next step is a person's: the lock. What agents do with the
 same tools is the optional demo in examples/baton-rouge.
 
   uv run examples/stand-alone/run.py            run, check, and print where the output is
@@ -102,10 +102,26 @@ def main() -> int:
         step("a start that sets nothing aside is refused",
              "REFUSED" in tool("explore.py", "start", *E, "--id", "EXPLORATION-A", "--by", me, "--question", "How closely does the second sensor follow the reference?",
                                "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--why", "x", expect=2))
+        # the fresh data is proposed by the analysis agent from metadata only, before the exploration starts
+        proposal = x / "fresh-data.yaml"
+        propose = ("fresh_data.py", "propose", "--kind", "later-period", "--from", "2025-01-01", "--until", "2025-12-31",
+                   "--what", "the whole of 2025, every pass of the second sensor and the reference",
+                   "--why", "the request says only 2024 has been looked at, and the same two sensors keep running in 2025",
+                   "--unfair", "a change of either sensor or of its processing at the turn of the year; the wiki page names none",
+                   "--by", me, "--studies", studies)
+        step("the fresh data is proposed from metadata only: the record's own data file, offered as metadata, is refused",
+             "this looks like data" in tool(*propose, "--metadata", data, "--out", work / "refused.yaml", expect=2))
+        said = tool(*propose, "--metadata", HERE / "metadata.yaml", "--out", proposal)
+        step("the proposal says in words which data, why, what would make it unfair and how large a test it allows, from the metadata",
+             all(w in said for w in ("A later period.", "**Why it suits the question.**", "**What would make it unfair.**",
+                                     "Fresh: 12 items, 52 observations", "Not computed here")))
         tool("explore.py", "start", *E, "--id", "EXPLORATION-A", "--by", me, "--question", "How closely does the second sensor follow the reference?",
              "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--set-aside-window", "2025-01-01:2025-12-31",
              "--why", "the following year: the request says only 2024 has been looked at", "--working", "the 2024 record", "--working-window", "2024-01-01:2024-12-31",
-             "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md")
+             "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md", "--fresh-data", proposal)
+        step("the exploration sets aside exactly what was proposed, and its log binds the proposal by checksum",
+             json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["fresh_data"]["sha256"]
+             == hashlib.sha256(proposal.read_bytes()).hexdigest())
         step("before data is set aside only knowledge was read, and the page the boundary came from is in the log by checksum",
              json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["boundary_read_from"][0]["path"].endswith("the-two-sensor-record.md"))
         record = [json.loads(ln) for ln in (studies / "openings.jsonl").read_text().splitlines()]
@@ -197,7 +213,7 @@ def main() -> int:
              and "has not ended" in tool("explore.py", "resolve", *E, "--by", curator, "--note", "NOTE-001", "--disposition", "declined", "--comment", "x", expect=2))
         review = work / "review.md"
         review.write_text("# Review (exploring)\n\nChecked the log and both looks. One hole: one year only.\n")
-        step("the assistant that explored cannot review its own lead",
+        step("the agent that explored cannot review its own lead",
              "did part of this exploration" in tool("explore.py", "review", *E, "--by", me, "--verdict", "no-holes-found", "--file", review, expect=2))
         step("a review under a name nobody named as a reviewer before the lead existed is refused",
              "was not named as a reviewer" in tool("explore.py", "review", *E, "--by", "agent:review-fresh", "--verdict", "no-holes-found", "--file", review, expect=2))
@@ -211,17 +227,22 @@ def main() -> int:
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
-        step("the assistant that explored cannot make the hand-over",
+        step("the agent that explored cannot make the hand-over",
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
         tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A")
         hand = json.loads((x / "hand-over" / "hand-over.json").read_text())
+        stub = yaml.safe_load((x / "hand-over" / "analysis-plan.stub.yaml").read_text())
+        step("the hand-over carries the proposal of the fresh data byte for byte, and the plan stub names it",
+             (x / "hand-over" / "fresh-data.yaml").read_bytes() == proposal.read_bytes()
+             and stub["data"]["held_out"]["fresh_data"].endswith("hand-over/fresh-data.yaml"))
         study = studies / "STUDY-A"
         tool("sf.py", "start", "--study", study, "--id", "STUDY-A", "--question", hand["question"], "--request", x / "hand-over" / "request.md", "--by", coordinator)
 
         def plan(window: dict) -> None:
             (study / "analysis-plan.yaml").write_text(yaml.safe_dump({
                 "study": "STUDY-A", "question": hand["question"],
-                "data": {"working": "the 2024 record", "held_out": {"window": window, "pair": {"record": "two-sensor", "sensor": "second"}, "path": "data/record-2025.json"}},
+                "data": {"working": "the 2024 record", "held_out": {"window": window, "pair": {"record": "two-sensor", "sensor": "second"}, "path": "data/record-2025.json",
+                                                                 "fresh_data": stub["data"]["held_out"]["fresh_data"]}},
                 "tests": {"held-out": {"fetch": ["{python}", "fetch.py"], "command": ["{python}", "confront.py"], "receipt": "receipts/held-out.json"}}}))
 
         plan({"start": "2025-01-01", "end": "2025-12-31"})
@@ -310,18 +331,19 @@ def main() -> int:
         step("the design set of blind cases can be listed, and the acceptance set gives nothing without its keeper's seed",
              "the idea is false" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "built-in-gain")
              and "never invents one" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "acceptance", expect=2))
-        step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no assistant takes it further",
+        step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no agent takes it further",
              trial_status["stage"] == "lock" and "PASS" not in tool("sf.py", "lock", *S, "--by", me, "--evidence", "https://example.invalid/not-a-person", expect=2)
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "held-out.opened", "signature.recorded") for ln in (trial / "study-log.jsonl").read_text().splitlines()))
 
-        # The lock itself. In a real study it is a pull request: an assistant writes the request, and people approve and
+        # The lock itself. In a real study it is a pull request: an agent writes the request, and people approve and
         # merge it on the protected branch of the repository where the study lives (factory/harnesses/github). This
         # example runs in a scratch folder that is no repository and has no branch to merge into, and this repository
         # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
-        step("an assistant can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
-             "## The question" in asked and "## What is held out, and every change to it" in asked
+        step("an agent can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
+             "## The question" in asked and "## The fresh data that will check the idea, and why it was chosen" in asked
+             and "a blind test case that the tool makes and seals at the opening" in asked
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))

@@ -216,7 +216,7 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
     call = f"{script.relative_to(root.resolve()).as_posix()} {words[i + 1]}"
     allowed = [str(c) for c in fm.get("may_call") or [] if not str(c).startswith(("skill:", "role:"))]
     if call not in allowed:
-        return f"the {role} assistant may not call `{call}`. Its role file allows: {', '.join(allowed)}"
+        return f"the {role} agent may not call `{call}`. Its role file allows: {', '.join(allowed)}"
     known = options_of(script, words[i + 1])
     if known is None:
         return f"the options of `{call}` could not be read from the tool, so the command is not allowed"
@@ -261,7 +261,7 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
             return (f"`--model {value}` is not the model this role's file declares ({declared}): an agent says which model it is, "
                     "and under this harness that is the one its file asks for")
         if name == "--by" and not (value == f"agent:{role}" or value.startswith(f"agent:{role}-")):
-            return f"`--by {value}` is not this role's name: the {role} assistant acts as agent:{role} or agent:{role}-<suffix>"
+            return f"`--by {value}` is not this role's name: the {role} agent acts as agent:{role} or agent:{role}-<suffix>"
         if value and (cwd / value).exists():  # a tool reads the files it is given: what the role may not read, it may not hand to a tool
             why = read_problem(value, fm, cwd, search=(cwd / value).is_dir())
             if why:
@@ -372,7 +372,7 @@ def write_problem(path: str, role: str, fm: dict, cwd: Path, call: dict | None =
     for pat in fm.get("writes") or []:
         if matches_from_the_top(p, str(pat), places):
             return held_out_problem(p, call or {}, root)
-    return (f"the {role} assistant may not write `{path}`. Its role file lets it write: "
+    return (f"the {role} agent may not write `{path}`. Its role file lets it write: "
             + (", ".join(str(w) for w in fm.get("writes") or []) or "nothing")
             + " (each read from the top of the work, a `*` standing for one name and never for a run of folders)")
 
@@ -493,7 +493,7 @@ def read_problem(path: str | None, fm: dict, cwd: Path, search: bool = False, pa
         pat = never_sees(q.as_posix(), fm)
         if pat:
             return (f"`{shown}` is in a place this role must never see ({pat}; the role file's `must_never_see` says what "
-                    "it is: the account of the assistant whose work it checks, or the acceptance set of blind cases). "
+                    "it is: the account of the agent whose work it checks, or the acceptance set of blind cases). "
                     "Work from the files of the work itself")
     if never and not search and p.is_file():
         twin = same_file_in_a_place_never_seen(p, fm, cwd)
@@ -560,13 +560,13 @@ def decide(role: str, call: dict, root: Path = ROOT) -> str | None:
                             pattern=str(given.get("pattern") or "") if tool == "Glob" else None)
     if tool == "Skill":
         name = str(given.get("skill") or given.get("name") or "")
-        return None if f"skill:{name}" in (fm.get("may_call") or []) else f"the {role} assistant may not use the skill `{name}`"
+        return None if f"skill:{name}" in (fm.get("may_call") or []) else f"the {role} agent may not use the skill `{name}`"
     if tool in ("Agent", "Task"):
         name = str(given.get("subagent_type") or "")
-        return None if f"role:{name}" in (fm.get("may_call") or []) else f"the {role} assistant may not start `{name or 'an unnamed assistant'}`"
+        return None if f"role:{name}" in (fm.get("may_call") or []) else f"the {role} agent may not start `{name or 'an unnamed agent'}`"
     if tool in HARMLESS or tool.rsplit("__", 1)[-1] in WIKI_TOOLS:
         return None
-    return f"the {role} assistant has no use for the tool `{tool}`; it is not in its role"
+    return f"the {role} agent has no use for the tool `{tool}`; it is not in its role"
 
 
 def selftest() -> int:
@@ -641,8 +641,8 @@ def selftest() -> int:
     ok("analysis may use its skills", not blocked("analysis", "Skill", skill="explore-a-record"))
     ok("analysis may not use the curating skill", blocked("analysis", "Skill", skill="draft-a-knowledge-page"))
     ok("coordinating may start the three other roles", not any(blocked("coordinating", "Agent", subagent_type=r) for r in ("analysis", "review", "curating")))
-    ok("coordinating may not start an assistant that is not a role", blocked("coordinating", "Agent", subagent_type="general-purpose"))
-    ok("analysis may not start another assistant", blocked("analysis", "Agent", subagent_type="review"))
+    ok("coordinating may not start an agent that is not a role", blocked("coordinating", "Agent", subagent_type="general-purpose"))
+    ok("analysis may not start another agent", blocked("analysis", "Agent", subagent_type="review"))
     ok("a tool outside the role is blocked", blocked("analysis", "WebFetch", url="https://example.org") and blocked("review", "WebSearch", query="x"))
     ok("every role may search and read the wiki through the two read-only tools",
        not any(blocked(r, "mcp__openwiki__openwiki_search", query="x") or blocked(r, "mcp__openwiki__openwiki_read", path="a.md") for r in ("coordinating", "analysis", "review", "curating")))
@@ -661,7 +661,7 @@ def selftest() -> int:
        not blocked("review", "Read", file_path=f"{x}/lead.md") and not blocked("review", "Read", file_path="examples/w/record/review/02.answer.md"))
     ok("the analysis role may read its own account, and a review handed back to it",
        not blocked("analysis", "Read", file_path="examples/w/record/analysis/01.answer.md") and not blocked("analysis", "Read", file_path=f"{x}/verdicts/REVIEW-001.md"))
-    # ---- what an independent attack found (docs/reviews/ASSISTANTS-AND-EXPLORING.md, round 4) --------------------
+    # ---- what an independent attack found (docs/reviews/README.md, R1) --------------------
     status = f"uv run tools/explore.py status --exploration {x}"
     review = f"uv run tools/explore.py review --exploration {x} --by agent:review-smuggled --verdict no-holes-found --file r.md"
     lock = "uv run tools/sf.py lock --study s --by human:someone --evidence https://example.org/pull/1"
@@ -702,7 +702,7 @@ def selftest() -> int:
     try:
         # an example laid out the way a run by one instance keeps it: every role's account as a flat file in record/
         kept = tmp / "kept"
-        flat = ["examples/demo/record/02-analysis.answer.md", "examples/demo/with-assistants/record/01-analysis.answer.md",
+        flat = ["examples/demo/record/02-analysis.answer.md", "examples/demo/with-agents/record/01-analysis.answer.md",
                 "examples/demo/record/07-analysis-second-question.answer.md"]
         for q in flat:
             (kept / q).parent.mkdir(parents=True, exist_ok=True)

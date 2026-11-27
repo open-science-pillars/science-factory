@@ -13,8 +13,8 @@ ended, and the checksum of what it printed.
 
 What it holds and what it does not. It holds the role's commands: a
 command the role file does not allow is not run. It gives no fresh
-context, because it starts no assistant: whoever calls it, a person or one
-assistant playing several roles in turn, remembers everything. A review
+context, because it starts no agent: whoever calls it, a person or one
+agent playing several roles in turn, remembers everything. A review
 made through this harness is therefore not an independent review, and the
 record says which harness was used so that nobody reads it as one.
 

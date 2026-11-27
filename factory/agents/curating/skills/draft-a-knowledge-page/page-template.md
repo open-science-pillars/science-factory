@@ -1,6 +1,6 @@
 ---
-type: dataset-gotcha
-spheres: [hydrosphere]
+type: pitfall
+spheres: []
 title: "State the thing itself in one sentence, so the title alone would stop someone making the mistake"
 description: "Two or three sentences: what happens, where it was seen, with the main number and its count, and what to do about it."
 tags: [product, field, topic]
@@ -10,7 +10,7 @@ stale_after: 2027-01-01
 seen_while: exploring
 drafted_from: { exploration: EXPLORATION-0000, notes: [NOTE-001], log: "SEQ:HASH", by: "agent:curating-0000" }
 relates_to:
-  - { concept: gotchas/an-existing-page.md, relation: extends, why: "what this adds to that page" }
+  - { concept: an-existing-page.md, relation: extends, why: "what this adds to that page" }
 sources:
   - id: look
     resource: https://github.com/ORG/REPO/blob/COMMIT/path/to/receipts/LOOK-001.json

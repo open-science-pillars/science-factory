@@ -16,7 +16,7 @@ is in the file before anything is run; changing it after a run is choosing
 the answer.
 
   run       run a suite: every case, every repetition, under every
-            configuration, through the whole confirming procedure in
+            configuration, through every stage of the confirming way in
             scratch folders (the known-answer tests, the working data and
             the rehearsals, then for each case the lock, the opening on the
             sealed case, a finding, a review, the log check, and the seal
@@ -68,7 +68,7 @@ view.
 
 What this measures: the study tool and the method under a definition. The
 lock is recorded by the harness in throwaway folders and labelled as such;
-no person and no assistant takes part, and no language model runs.
+no person and no agent takes part, and no language model runs.
 
 Usage:
   benchmark.py run --suite factory/benchmarks/built-in-gain [--out RESULT.json] [--work DIR]
@@ -340,7 +340,7 @@ def run_suite(suite_dir: Path, work: Path | None = None, runner=None, env: dict 
         shutil.rmtree(scratch, ignore_errors=True)
     report = {"suite": suite["name"], "set": suite["set"], "target": suite["target"], "cases": len(cases), "repetitions": suite["repetitions"],
               "what_this_measures": "the study tool and the method under each definition; the lock is recorded by the harness in throwaway "
-                                    "folders, and no person, no assistant and no language model takes part",
+                                    "folders, and no person, no agent and no language model takes part",
               "configurations": {n: {"definition": v["definition"], **rates(v["runs"])} for n, v in by_config.items()},
               "comparison_as_stated": suite["comparison"]}
     base, cand = suite["comparison"]["baseline"], suite["comparison"]["candidate"]

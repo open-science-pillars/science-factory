@@ -8,7 +8,8 @@
 # allowed; everything else is.
 #
 # Words used below.
-#   held-out data    data nobody opens before the lock
+#   fresh data       data nobody working on the question has looked at; the tools call it held-out data,
+#                    and nobody opens it before the lock
 #   working data     anything you or your group have already looked at
 #   run receipt      the record a run writes, with its code and inputs by checksum and every number it
 #                    produced: one JSON file. Each test below names where its command writes one.
@@ -48,7 +49,6 @@ study: STUDY-0002                 # required: this study's id
 study_kind: confirmatory          # optional: confirmatory (the default), or system_trial for a blind test case
                                   #   made at its own opening (see examples/stand-alone/system-trial)
 question: "Is monthly mean sea level at the harbor tide gauge rising faster than 2 mm per year?"   # required; ends in a question mark
-claim_class: trend                # for people: the organization's claim class
 quantity_estimated: >             # required: what is estimated and how its interval is made
   The linear rate of monthly mean sea level over the window, in mm per year, with a 95 percent interval
   under a lag-1 model of the residuals.
@@ -75,6 +75,12 @@ data:
     observation_metadata: [month, number of passes, quality flag]   # for people: what may be read before the lock
     why_this_window: "The series begins in 2005; none of it has been loaded by this group."   # for people
     metadata_note: "Months and pass counts say nothing about the rate."                       # for people
+    # fresh_data: ../../explorations/EXPLORATION-1/hand-over/fresh-data.yaml
+    #   Optional, and expected: the proposal of the fresh data that `tools/fresh_data.py propose` wrote from
+    #   metadata only, as a path from this study directory (a study that came from an exploration names the copy in
+    #   its hand-over). The lock refuses one that is not on the record beside the studies, or whose random draw its
+    #   seed does not give, and shows it to the people locking in words. Left out, the lock request says plainly
+    #   that nothing records who chose the fresh data or why.
 
 tests:
   # The two tests that run before the lock, as often as you like. Each needs `command` and `receipt`.

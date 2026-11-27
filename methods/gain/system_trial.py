@@ -24,7 +24,7 @@ is known, with the answer sealed from everyone until the opening is over.
                 the study log carries the data's, so neither can be changed
                 afterwards without `verdict` refusing. The gain put in is
                 1.00 with probability one half and 0.90 or 1.10 otherwise,
-                so nobody, person or assistant, knows whether the idea is
+                so nobody, person or agent, knows whether the idea is
                 true in it. It is a seal by procedure, and that is a
                 stated limit: the answer file sits inside the study. The
                 study tool passes it to no command, but nothing in the tool
@@ -55,7 +55,7 @@ is known, with the answer sealed from everyone until the opening is over.
                 check), counting how often a false idea is supported and a
                 true one missed. The lock is recorded by the harness, in
                 throwaway directories, and labelled as such: this measures
-                the study tool and the method, never people or assistants.
+                the study tool and the method, never people or agents.
 
 Usage:
   system_trial.py working-data --executor PATH --case CASE.json --out RECEIPT.json
@@ -348,7 +348,7 @@ def cmd_blind_test(a) -> int:
     out = {"blind_test": "blind test cases through the whole procedure", "cases": a.n, "seed": a.seed,
            "difference_that_matters": DIFFERENCE,
            "acts_by_people": ("recorded by the harness in throwaway directories; this measures the study tool and the "
-                              "method, not people or assistants"),
+                              "method, not people or agents"),
            "by_gain_put_in": tally,
            "false_support_rate": round(sum(t["supported"] for t in false) / n_false, 4) if n_false else None,
            "missed_true_rate": round(1 - true["supported"] / true["cases"], 4) if true["cases"] else None,

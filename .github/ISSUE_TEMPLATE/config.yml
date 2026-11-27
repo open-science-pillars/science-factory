@@ -1,0 +1,2 @@
+# Requests come through the form; other issues (a hole, something not built, a decision) are opened blank.
+blank_issues_enabled: true

@@ -20,7 +20,7 @@ three results. It runs no language model and it edits nothing.
 The tree it reads (the path is the name: a resource is called what its
 folder or file is called, and nothing inside a file can rename it):
 
-  factory.yaml                        identity, defaults, the procedure, the two acts by people
+  factory.yaml                        identity, defaults, the stages, the two acts by people
   agents/<name>/agent.md              one agent: settings and permissions in front matter, instructions in the body
   agents/<name>/skills/<skill>/       a skill that agent alone uses
   skills/<skill>/SKILL.md             a skill two or more agents use
@@ -45,7 +45,7 @@ The rules, by name (the name is printed with each broken rule):
               scorer's agents and a judge's model; a benchmark's
               configurations and cases; a runner's contract (the twelve
               keys factory.yaml lists); a pinned checker's checksum
-  roles       the agent files, the procedure's `agents` block and the
+  roles       the agent files, the `agents` block of factory.yaml and the
               skills say the same thing (every rule of check_roles.py)
   acts        the acts by people are exactly the stages people do, and no
               agent may call them
@@ -325,12 +325,15 @@ MERGE_METHODS = ("merge", "squash")
 # the opening), and nothing weaker can be declared. A place with no network says so at the opening, by an option
 # that is logged; it is not a setting of the definition.
 OPENING_NEEDS = ("verified",)
+# Whether a person may open held-out data on a lock nobody verified (`open-held-out --people-not-verified REASON`).
+# Left out, it is refused: the exception is something people approve in the definition, not something typed.
+UNVERIFIED_OPENING = ("refused", "allowed-with-a-reason")
 REPOSITORY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$")  # owner/name on the platform
 ACT_REQUESTS = {"lock": "tools/sf.py request-lock", "signature": "tools/sf.py request-signature"}  # what an agent may call instead
 STRINGS = [TEXT]
 FACTORY = {
     "schemaVersion!": TEXT, "name!": TEXT, "version!": TEXT, "description!": TEXT, "alias": TEXT, "product": TEXT, "by_products": STRINGS,
-    "capability": {"name!": TEXT, "repositories!": STRINGS, "borrows": [ANY], "stewards": TEXT, "holds": ("map", TEXT),
+    "home": {"name!": TEXT, "repositories!": STRINGS, "borrows": [ANY], "stewards": TEXT, "holds": ("map", TEXT),
                    "shared_across_factories": STRINGS, "not_yet_shared": TEXT},
     "agentDefaults!": {"harness!": TEXT, "model!": TEXT, "runner!": TEXT},
     "procedure!": {
@@ -342,7 +345,8 @@ FACTORY = {
         "stages!": [{"id!": TEXT, "done_by!": ANY, "done_when!": STRINGS, "does!": TEXT, "ends_early_when": STRINGS}],
         "acts_by_people!": ("map", {"who!": STRINGS, "command!": TEXT, "route!": ("one", ACT_ROUTES), "harness": TEXT,
                                     "protected_branch": TEXT, "repository": TEXT, "merge_methods": [("one", MERGE_METHODS)],
-                                    "approvals": WHOLE, "opening_needs": ("one", OPENING_NEEDS), "shows": STRINGS, "evidence!": TEXT,
+                                    "approvals": WHOLE, "opening_needs": ("one", OPENING_NEEDS),
+                                    "opening_without_verification": ("one", UNVERIFIED_OPENING), "shows": STRINGS, "evidence!": TEXT,
                                     "not_held_by_the_tool": TEXT}),
         "rules_for_people": STRINGS},
     "where_it_runs": {"default!": TEXT, "tests": TEXT, "opening_held_out_data": TEXT},
@@ -709,9 +713,14 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
                 bad("acts", f"factory.yaml: the {act} is a pull request, and its harness ({a.get('harness')}) names no `platform.api` that begins "
                             "with https://: without it nothing can ask the platform who approved, and an act stays at `merge found, people not verified`")
         elif a.get("route") == "practice":
-            if any(k in a for k in ("harness", "protected_branch", "approvals", "repository", "merge_methods", "opening_needs")):
+            if any(k in a for k in ("harness", "protected_branch", "approvals", "repository", "merge_methods", "opening_needs",
+                                    "opening_without_verification")):
                 bad("acts", f"factory.yaml: the {act} is declared as practice (typed at a command line) and still names a harness, a branch or "
                             "approvals: say one or the other, so nobody reads a practice factory as one whose acts are pull requests")
+    for act, a in acts.items():
+        if act != "lock" and isinstance(a, dict) and "opening_without_verification" in a:
+            bad("acts", f"factory.yaml: the {act} says `opening_without_verification`, which belongs to the lock: only the lock opens "
+                        "held-out data")
     if len({(a or {}).get("route") for a in acts.values() if isinstance(a, dict)}) > 1:
         bad("acts", "factory.yaml: one act is a pull request and the other is practice: a study with a typed act never closes as a signed "
                     "finding, so a factory declares both acts the same way")
@@ -1006,12 +1015,15 @@ def summary(old: Path | None, new: Path) -> list:
                      + ("" if set(a["acts"]) != set(b["acts"]) else " (the same acts, with who, the command or the evidence reworded)") + ".")
         for act in sorted(set(a["acts"]) & set(b["acts"])):
             was, is_ = (a["acts"][act] if isinstance(a["acts"][act], dict) else {}), (b["acts"][act] if isinstance(b["acts"][act], dict) else {})
-            for key in ("route", "approvals", "protected_branch", "repository", "merge_methods", "harness", "who", "shows"):
+            for key in ("route", "approvals", "protected_branch", "repository", "merge_methods", "opening_without_verification", "harness", "who", "shows"):
                 if was.get(key) != is_.get(key):
                     first.append(f"TAKE NOTE: the {act}: `{key}` was {json.dumps(was.get(key))} and is {json.dumps(is_.get(key))}"
                                  + (". A practice act is typed at a command line and proves nothing about who acted" if key == "route" and is_.get(key) == "practice" else "")
                                  + (". The verification asks the platform about another repository from now on" if key == "repository" else "")
                                  + (". A squash merge is one commit with one parent: git alone cannot tell it from an ordinary commit" if key == "merge_methods" and "squash" in (is_.get(key) or []) and "squash" not in (was.get(key) or []) else "")
+                                 + (". From now on a person may open the held-out data on a lock nobody verified with the platform, "
+                                    "giving a reason (`open-held-out --people-not-verified`); it is logged, and the study is not signed until "
+                                    "the lock is verified" if key == "opening_without_verification" and is_.get(key) == "allowed-with-a-reason" else "")
                                  + (". Fewer people now have to approve" if key == "approvals" and isinstance(was.get(key), int) and isinstance(is_.get(key), int) and is_.get(key) < was.get(key) else "") + ".")
     added_removed("The stage", a["stages"], b["stages"], first)
     if a["stage_order"] != b["stage_order"] and set(a["stage_order"]) == set(b["stage_order"]):
@@ -1176,7 +1188,7 @@ def selftest() -> int:
         case("the role check's rules are part of the result: an agent may not call the lock",
              lambda d: edit(d, "agents/coordinating/agent.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'), "roles:")
         case("an agent file and a skill that give different orders",
-             lambda d: edit(d, "agents/review/skills/review-work/SKILL.md", "Your account for the coordinating assistant goes in `record/review/`", "Your account goes beside the author's"),
+             lambda d: edit(d, "agents/review/skills/review-work/SKILL.md", "Your account for the coordinating agent goes in `record/review/`", "Your account goes beside the author's"),
              "do not say the same thing")
         nv = copy("no-tools")
         shutil.rmtree(nv.parent / "tools")
@@ -1213,7 +1225,8 @@ def selftest() -> int:
              "      approvals: 1                             # approving reviews by people other than the pull request's author\n", "      route: practice\n")
         text = (practice / "factory.yaml").read_text()
         (practice / "factory.yaml").write_text("".join(ln for ln in text.splitlines(keepends=True)
-                                                       if not ln.startswith(("      repository: ", "      merge_methods: ", "      opening_needs: "))))
+                                                       if not ln.startswith(("      repository: ", "      merge_methods: ", "      opening_needs: ",
+                                                                             "      opening_without_verification: "))))
         edit(practice, "factory.yaml", "      route: pull-request\n      harness: github\n      protected_branch: main\n      approvals: 1\n", "      route: practice\n")
         results.append(("a factory whose two acts are both declared as practice is valid, and the summary of that change says what practice means",
                         result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
@@ -1227,6 +1240,18 @@ def selftest() -> int:
              lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]", "      merge_methods: []", 2), "`merge_methods` is empty")
         case("an opening that is declared to need less than a verified lock",
              lambda d: edit(d, "factory.yaml", "      opening_needs: verified", "      opening_needs: a merge found with git"), "opening_needs")
+        case("an opening without verification that is neither refused nor allowed with a reason",
+             lambda d: edit(d, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed"),
+             "opening_without_verification")
+        case("the signature claims to say whether held-out data may be opened without verification",
+             lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]\n      shows: [the question, what the opening showed",
+                            "      merge_methods: [merge]\n      opening_without_verification: refused\n      shows: [the question, what the opening showed"),
+             "which belongs to the lock")
+        allows = copy("allows-an-unverified-opening")
+        edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
+        results.append(("a definition that allows an opening on an unverified lock is valid, and the summary of that change says so in words",
+                        result(allows)[0] == "valid" and "From now on a person may open the held-out data on a lock nobody verified"
+                        in "\n".join(summary(clean, allows))))
         case("a harness that carries the acts and does not say where its platform answers",
              lambda d: edit(d, "harnesses/github/harness.yaml", "  api: https://api.github.com", "  api: http://localhost:8080"),
              "names no `platform.api` that begins with https://")
@@ -1343,7 +1368,7 @@ def selftest() -> int:
         st = stamp(a)
         results.append(("the stamp of a definition carries its checksum, the model each agent declares and each skill used by checksum",
                         st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-5-5"}
-                        and set(st["skills"]) == {"read-what-is-known", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
+                        and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
                         and all(SHA.match(v) for v in st["skills"].values())))
         results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 8))
         results.append(("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))

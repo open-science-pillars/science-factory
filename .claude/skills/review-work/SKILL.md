@@ -7,9 +7,9 @@ description: "Check work you did not do: the record first, then every number aga
 
 A review is by someone who did none of the work and starts from the files. Its job is to pick holes, not to agree. This skill is the procedure. It carries no facts about any dataset.
 
-If you did any part of this work, or were given the reasoning of the assistant that did, stop and say so.
+If you did any part of this work, or were given the reasoning of the agent that did, stop and say so.
 
-**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating assistant goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis assistant's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review assistant can be started.
+**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating agent goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis agent's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review agent can be started.
 
 ## 1. The record
 
@@ -47,6 +47,8 @@ Ask of an exploration's lead:
 - **Words.** Does it call observations "unflagged" when their flag has a value, or an interval anything but a confidence interval with its model named? Would a scientist in the field misread a word?
 - **Does it call itself a lead** throughout?
 
+Ask of the fresh data, in an exploration and in a study: was it chosen fairly, and before any look? Follow the section "When you review" of the skill `propose-fresh-data`: `uv run tools/fresh_data.py check --proposal <the proposal> --studies <the folder of studies> --log <the log>` passes; the kind suits the question; what would make it unfair is named and is not the case as far as the knowledge says; the size is stated and the claim does not outrun it; the plan holds out exactly what was proposed; and the record holds one proposal for the subject, or the others are explained. A plan that names no proposal is a hole: nothing records who chose its fresh data or why.
+
 Ask of a study's plan: `check-plan` passes; the held-out data was never looked at (`explore.py check-study` when the study came from an exploration); the rule can fail; the known-answer tests include the pitfalls. Ask of a finding: every number is in a run receipt and the verdict is the one the locked rule gives; and when `sf.py status` gives the lock a standing other than `verified`, the finding's first line says so.
 
 Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --wiki <w>` passes; each statement is in its source; one case's numbers are not stated as general; nothing reads as signed; a disagreement with a signed page is declared as `contradicts`.
@@ -56,12 +58,12 @@ Ask of a queue of drafts: `uv run tools/knowledge.py check-drafts --queue <q> --
 Write the review file in the work's `review/` folder: what you checked, then each hole with where it shows (file and line or event), how much it matters (it would change the lead, it limits it, or it is a matter of wording), and what would close it. Put gaps in the knowledge itself, as against holes in the work, under a heading "For the steward". Then record the verdict with the tool:
 
 ```
-uv run tools/explore.py review --exploration <x> --by <you> --verdict holes-found --file <x>/review/<name>.md \
+uv run tools/explore.py review --exploration <x> --by <you> --model <your model> --verdict holes-found --file <x>/review/<name>.md \
   --read-lead <lead_json_sha256, as `explore.py status` printed it when you began>
-uv run tools/sf.py review --study <s> --by <you> --verdict block --file <s>/review/<name>.md
+uv run tools/sf.py review --study <s> --by <you> --model <your model> --verdict block --file <s>/review/<name>.md
 ```
 
-`no-holes-found` and `approve` say that you looked and found none, and the file still says what you checked. For an exploration, `<you>` is the name the coordinating assistant named as reviewer before the lead was recorded; the tool refuses any other. Your verdict covers the lead as it stands: if its wording is corrected afterwards, it comes back to you.
+`no-holes-found` and `approve` say that you looked and found none, and the file still says what you checked. For an exploration, `<you>` is the name the coordinating agent named as reviewer before the lead was recorded; the tool refuses any other. Your verdict covers the lead as it stands: if its wording is corrected afterwards, it comes back to you.
 
 ## What this skill refuses
 

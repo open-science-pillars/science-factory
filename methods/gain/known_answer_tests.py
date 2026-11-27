@@ -596,8 +596,8 @@ def main() -> int:
     if not a.executor:
         ap.error("--executor is required: the pairing step the method wraps (methods/built-in-pairing/pair_records.py is this repository's own)")
     if not a.executor.is_file():
-        print(f"known-answer tests: refused. The executor {a.executor} is not there; it ships with the capability it belongs "
-              "to, so check that capability out where the plan's roots point. Nothing was run", file=sys.stderr)
+        print(f"known-answer tests: refused. The executor {a.executor} is not there; it ships with the repository it belongs "
+              "to, so check that repository out where the plan's roots point. Nothing was run", file=sys.stderr)
         return 2
     if a.check:
         old = json.loads(a.check.read_text())
