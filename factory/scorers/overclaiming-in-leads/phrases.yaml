@@ -1,0 +1,23 @@
+# The words the overclaiming check flags in leads, reviews and findings. A factory edits this list: each entry is a
+# pattern (a regular expression, matched without regard to case, at word boundaries) and why it is flagged. `when:
+# not-supported` flags a word only where the locked rules did not give `supported` (in a lead, always: a lead is
+# tested on nothing). `unless` is a pattern that, when it stands on the same line, clears the flag. The check warns;
+# it never blocks. Each flag names the phrase and the line.
+phrases:
+  - {pattern: "good agreement", why: "say what agreed with what, by how much, against which criterion"}
+  - {pattern: "excellent(ly)?", why: "a judgement, not a measurement: give the number and what it is compared with"}
+  - {pattern: "clearly", why: "if it is clear, the number shows it; say the number"}
+  - {pattern: "definitive(ly)?", why: "one test on one window settles nothing for good"}
+  - {pattern: "prov(es|ed|en|e)", why: "a test supports or refutes an idea under a stated rule; it does not prove it"}
+  - {pattern: "confirm(s|ed)", when: not-supported, why: "only an opening whose locked rule gave `supported` confirms anything, and then only for that data"}
+  - {pattern: "remarkabl(e|y)", why: "let the reader judge what is remarkable"}
+  - {pattern: "breakthrough", why: "let the reader judge what is a breakthrough"}
+  - {pattern: "(years|decades|months|weeks) of (work|effort|labou?r|research)", why: "a dramatic timescale: say what was done, not what it would have cost"}
+  - {pattern: "what (would have )?(took|taken|take) (years|decades|months|weeks)", why: "a dramatic timescale: say what was done, not what it would have cost"}
+  - {pattern: "(in|within) (seconds|minutes|hours|days) (what|that)", why: "a dramatic timescale: say what was done, not how fast it was"}
+  - {pattern: "significant(ly)?", unless: "(p\\s*[<=>≤≥]|p-value|\\btest\\b|interval|confidence|sign test)", why: "say which test, at what level; without one, `significant` is a mood"}
+precision:
+  # A number stated with more decimals than its uncertainty supports is flagged: at most this many digits beyond the
+  # first significant digit of the uncertainty, read from `X ± U` on the same line or from a receipt that gives an
+  # interval or an uncertainty beside the number.
+  digits_beyond_uncertainty: 1

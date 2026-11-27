@@ -1664,9 +1664,24 @@ def cmd_lead(x: Exploration, a) -> None:
     shutil.copyfile(x.d / "lead.md", x.d / "leads" / f"lead-v{version}.md")
     x.add(a.by, "lead.recorded", {"version": version, "json_sha": sha, "md_sha": sf.sha_file(x.d / "lead.md"),
                                   "source_sha": sf.sha_file(src), "tried": lead["tried"]})
+    for line in sf.flags_in_words([f for f in lead_overclaiming(x, x.events()) if f["what"] == "lead.md"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
     print(f"lead version {version} recorded ({WAY}): lead.md, lead.json. {lead['tried']['looks']} looks behind it. "
           "Next: a review agent that did none of this picks holes in it. Do not `end` yet: an exploration ends as a lead "
           "only after its latest lead has been reviewed.")
+
+
+def lead_overclaiming(x: Exploration, ev: list) -> list:
+    """The overclaiming check of an exploration: the lead as it stands and every review of it. A lead is tested on nothing, so
+    `confirms` is always flagged. A warning: nothing is refused on it."""
+    name, listing = sf.overclaiming_listing(sf.FACTORY, "exploration")
+    if not name or not lead_on_file(ev):
+        return []
+    flags = sf.overclaiming_flags((x.d / "lead.md").read_text(errors="replace"), listing, False, "lead.md")
+    for e in ev:
+        if e["kind"] == "review.verdict" and (x.d / e["data"]["file"]).is_file():
+            flags += sf.overclaiming_flags((x.d / e["data"]["file"]).read_text(errors="replace"), listing, False, e["data"]["file"])
+    return flags
 
 
 def cmd_correct(x: Exploration, a) -> None:
@@ -1771,6 +1786,8 @@ def cmd_review(x: Exploration, a) -> None:
                                    "of_lead_json_sha": lead_on_file(ev)["data"]["json_sha"] if lead else None,
                                    "corrections_seen": sum(1 for e in ev if lead and e["kind"] == "lead.corrected" and e["seq"] > lead["seq"])})
     print(f"review {n} recorded ({WAY}): {a.verdict}")
+    for line in sf.flags_in_words([f for f in lead_overclaiming(x, x.events()) if f["what"] == f"verdicts/{dest.name}"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
 
 
 def cmd_reviewer(x: Exploration, a) -> None:
@@ -2395,6 +2412,8 @@ def stage_of(x: Exploration) -> dict:
             here["so_what"] = so_what_in_words(ev, said)
     if lead:
         counts["lead_json_sha256"] = lead_on_file(ev)["data"]["json_sha"]
+    if lead:
+        counts["overclaiming"] = sf.flags_in_words(lead_overclaiming(x, ev))[:20]
     given = [e for e in ev if e["kind"] == "so-what.recorded"]
     if given:
         counts["so_whats"] = [{"seq": e["seq"], "answer": e["data"]["answer"], "by": e["actor"], "of_lead_version": e["data"]["of_lead_version"],
@@ -3446,8 +3465,13 @@ def selftest() -> int:
         pc = fresh("E-SO-WHAT-PR", subject="reach_id=R42,gauge=G42")
         known(pc)
         look(pc, ["{python}", script(pc, "rows.py", "import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n"), str(data)])
-        (pc.d / "lead.yaml").write_text(yaml.safe_dump(rl))
+        (pc.d / "lead.yaml").write_text(yaml.safe_dump({**rl, "what_looks_true": "A clearly follows B over the year, which confirms the idea, across 12 rows."}))
         quiet(cmd_lead, pc, A(file=str(pc.d / "lead.yaml")))
+        over = stage_of(pc)["overclaiming"]
+        ok("a lead that claims more than an exploration can show is recorded all the same, and status names each phrase and its line: "
+           "`confirms` always, since a lead is tested on nothing",
+           count(pc.events(), "lead.recorded") == 1 and any("`clearly`" in f and f.startswith("lead.md, line ") for f in over)
+           and any("`confirms`" in f for f in over))
         quiet(cmd_review, pc, RA(pc, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
         repo = so_what_declared()["repository"]
         body = f"so-what: worth-confirming\nexploration: explorations/{pc.d.name}\nlead: {sf.sha_file(pc.d / 'lead.json')[:16]}\n"

@@ -135,7 +135,7 @@ SHA = re.compile(r"^[0-9a-f]{64}$")
 STAGE_CHECKS = ("started", "plan-complete", "tests-pass", "rehearsals-pass", "locked", "openings-complete", "finding-attached",
                 "reviewed", "steward-decided", "notes-resolved", "closed")
 SCORER_CHECKS = ("log-checks-out", "not-exploratory", "openings-within-allowed", "no-failed-opening", "lock-committed-before-opening",
-                 "review-recorded", "acts-recorded-by-people", "notes-on-curation-list")
+                 "review-recorded", "acts-recorded-by-people", "notes-on-curation-list", "overclaiming")
 BEFORE_THE_LOCK = ("started", "plan-complete", "tests-pass", "rehearsals-pass")  # the checks of the stages an automation may start
 
 # The firewall's fixed list: the kinds of material a scorer may say it reads. The line between the two halves is
@@ -370,7 +370,9 @@ RUNNER = {"description!": TEXT, "platform": {"os!": TEXT, "arch!": TEXT, "linux"
           "status!": ("one", ("built", "specified")), "basis!": TEXT, "for!": STRINGS, "contract!": ("map", TEXT), "open_questions!": STRINGS}
 SCORER = {"description!": TEXT, "type!": ("one", ("deterministic", "judge")), "check": TEXT, "reads!": STRINGS, "selfImprovement!": FLAG,
           "agents": STRINGS, "labels": [{"value!": TEXT, "score!": NUMBER, "description": TEXT}], "passingScore": NUMBER,
-          "samplingRate": NUMBER, "model": TEXT, "harness": TEXT, "applies_to": ("one", ("study", "exploration"))}
+          "samplingRate": NUMBER, "model": TEXT, "harness": TEXT, "applies_to": ("one", ("study", "exploration")), "phrases": TEXT}
+PHRASES = {"phrases!": [{"pattern!": TEXT, "why!": TEXT, "when": ("one", ("not-supported",)), "unless": TEXT}],
+           "precision": {"digits_beyond_uncertainty!": WHOLE}}
 DEFINITION_REF = {"path": TEXT, "ref": TEXT}
 SUITE = {
     "name!": TEXT, "description!": TEXT, "set!": ("one", ("design", "acceptance")),
@@ -458,7 +460,7 @@ def allowed_path(rel: str) -> bool:
         return True
     if top == "runners" and len(parts) == 2 and rel.endswith(".yaml"):
         return True
-    if top == "scorers" and len(parts) == 3 and parts[2] == "scorer.md":
+    if top == "scorers" and len(parts) == 3 and parts[2] in ("scorer.md", "phrases.yaml"):
         return True
     if top == "automations" and len(parts) == 3 and parts[2] == "automation.md":
         return True
@@ -800,6 +802,27 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         if s.get("type") == "deterministic":
             if s.get("check") not in SCORER_CHECKS:
                 bad("references", f"{where}: the check `{s.get('check')}` is not one the study tool evaluates ({', '.join(SCORER_CHECKS)})")
+            if (s.get("check") == "overclaiming") != ("phrases" in s):
+                bad("references", f"{where}: the check `overclaiming` names its list of phrases (`phrases: <scorer>/phrases.yaml`), and no other check names one")
+            elif "phrases" in s:
+                listing = root / "scorers" / str(s["phrases"])
+                if not re.fullmatch(r"[a-z0-9][a-z0-9-]*/phrases\.yaml", str(s["phrases"])) or not listing.is_file():
+                    bad("references", f"{where}: `phrases` names {s['phrases']}, which is not a phrases.yaml in a scorer's folder")
+                else:
+                    try:
+                        listed = yaml.load(listing.read_text(encoding="utf-8"), Loader=_NoDuplicateKeys)
+                    except (yaml.YAMLError, UnicodeDecodeError) as e:
+                        listed = None
+                        bad("form", f"scorers/{s['phrases']}: does not parse ({type(e).__name__})")
+                    if listed is not None:
+                        for q in conforms(listed, PHRASES, f"scorers/{s['phrases']}"):
+                            bad("form", q)
+                        for i, ph in enumerate((listed or {}).get("phrases") or [] if isinstance(listed, dict) else []):
+                            for key in ("pattern", "unless"):
+                                try:
+                                    re.compile(str((ph or {}).get(key) or "x"))
+                                except re.error:
+                                    bad("form", f"scorers/{s['phrases']}: phrases[{i}].{key} is not a pattern that compiles")
             extra = [k for k in ("labels", "passingScore", "samplingRate", "model", "agents", "harness") if k in s]
             if extra:
                 bad("form", f"{where}: a deterministic scorer has no {', '.join(extra)}: the tool works it out and no model is asked")
@@ -1262,6 +1285,14 @@ def selftest() -> int:
         case("an act that is a pull request and names no repository on the platform",
              lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
              "`repository` does not name the repository on the platform")
+        case("an overclaiming check that names no list of phrases",
+             lambda d: edit(d, "scorers/overclaiming-in-findings/scorer.md", "phrases: overclaiming-in-leads/phrases.yaml\n", ""), "names its list of phrases")
+        case("a list of phrases with a pattern that does not compile",
+             lambda d: edit(d, "scorers/overclaiming-in-leads/phrases.yaml", '{pattern: "clearly",', '{pattern: "clearly(",'), "not a pattern that compiles")
+        case("a list of phrases with a key of its own",
+             lambda d: edit(d, "scorers/overclaiming-in-leads/phrases.yaml", 'why: "if it is clear', 'severity: high, why: "if it is clear'), "the key `severity` is not one")
+        case("the overclaiming check of findings marked as feeding a proposal",
+             lambda d: edit(d, "scorers/overclaiming-in-findings/scorer.md", "selfImprovement: false", "selfImprovement: true"), "`selfImprovement: true` on a scorer that reads finding")
         case("a definition with no so what for a reviewed lead",
              lambda d: write(d, "factory.yaml", "\n".join(ln for ln in (d / "factory.yaml").read_text().split("\n  so_what:\n")[0].split("\n"))
                             + "\n  rules_for_people:" + (d / "factory.yaml").read_text().split("\n  rules_for_people:", 1)[1]), "`procedure.so_what` is missing")
@@ -1412,7 +1443,7 @@ def selftest() -> int:
                         st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-5-5"}
                         and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
                         and all(SHA.match(v) for v in st["skills"].values())))
-        results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 8))
+        results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 9))
         results.append(("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

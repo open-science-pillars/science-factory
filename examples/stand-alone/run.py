@@ -221,7 +221,11 @@ def main() -> int:
         lead_read = lambda: hashlib.sha256((x / "lead.json").read_bytes()).hexdigest()  # noqa: E731  (the lead the reviewer read)
         step("a review that does not say which lead the reviewer read is refused",
              "--read-lead" in tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, expect=2))
-        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+        loose = work / "review-loose.md"
+        loose.write_text("# Review (exploring)\n\nThe gain clearly holds, in good agreement with the wiki. One hole: one year only.\n")
+        said = tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", loose, "--read-lead", lead_read())
+        step("a review that claims more than an exploration can show is recorded, and the overclaiming check names each phrase and its line",
+             "overclaiming check (a warning, not a refusal): verdicts/REVIEW-001.md, line 3: `clearly`" in said and "`good agreement`" in said)
         tool("explore.py", "correct", *E, "--by", me, "--old", "over 2024", "--new", "over the whole of 2024", "--why", "to say the year was read whole")
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))

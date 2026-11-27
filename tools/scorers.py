@@ -583,7 +583,7 @@ def selftest() -> int:
         own = scorers_of(FACTORY)
         judges = sorted(n for n, s in own.items() if s.get("type") == "judge")
         ok("this definition has deterministic scorers and judges, and every judge reads nothing written after an opening",
-           len(judges) >= 2 and len(own) - len(judges) == 8 and all(judge_of(FACTORY, n)["reads"] for n in judges))
+           len(judges) >= 2 and len(own) - len(judges) == 10 and all(judge_of(FACTORY, n)["reads"] for n in judges))
         ok("a deterministic scorer is not judged by a model", "deterministic scorer" in refuses(judge_of, FACTORY, "chain-of-custody"))
         # a definition whose judge was edited to read the finding: refused here too, whatever the validator said
         leaky = tmp / "leaky"

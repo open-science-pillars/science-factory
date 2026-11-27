@@ -251,7 +251,7 @@ runner_contract:
     - "What a job wrote stays at the runner until a person removes it: the contract has no verb to delete a job. Where a data provider asks to see results first, each runner has to say how long that is before an opening is sent to it."
 
 measure:         # how this factory is measured and changed
-  scorecard: "the checks in scorers/ (the scorers of the deterministic kind), worked out from one study's log by `sf.py scorecard`; a check that cannot be judged yet says `pending`"
+  scorecard: "the checks in scorers/ (the scorers of the deterministic kind), worked out from one study's log by `sf.py scorecard`; a check that cannot be judged yet says `pending`, and the overclaiming check says `warn` and never fails. The overclaiming check of leads is worked out by `explore.py`"
   judges: "the judge scorers in scorers/: a model reads a packet of exactly the material the scorer declares, never anything written after an opening, and returns one label (tools/scorers.py). A first trial ran them as agents reading packets by hand; the Claude Code path has not run"
   blind_test_of_the_system: "the suites in benchmarks/: sealed cases through every stage under two versions of the definition, compared by a rule stated in advance (tools/benchmark.py); `system_trial.py blind-test` is the same driver on one definition"
   improving_the_procedure:

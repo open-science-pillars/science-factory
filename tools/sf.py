@@ -3179,6 +3179,9 @@ def cmd_review(study: Study, a) -> None:
     attached = any(e["kind"] == "finding.attached" and live and e["seq"] > live["seq"] for e in ev)
     print(f"review: {a.verdict}" + ("" if attached else " (recorded before any finding was attached: the study is ready for the "
                                                        "steward only after a verdict that follows the finding)"))
+    said = study_overclaiming(study, Path(getattr(a, "factory", None) or FACTORY))
+    for line in flags_in_words([f for f in (said or {}).get("flags") or [] if f["what"] == f"verdicts/{dest.name}"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
 
 
 def cmd_note(study: Study, a) -> None:
@@ -3242,6 +3245,112 @@ def cmd_curation_list(study: Study, a) -> None:
     print(f"curation list: {out['open_notes']} open note(s) across {len(by_subject)} subject(s)")
 
 
+# ---- the overclaiming check: words that claim more than the work can show ----------
+UNCERTAINTY_KEYS = ("se", "stderr", "standard_error", "sd", "sigma", "uncertainty", "half_width")
+DECIMAL = re.compile(r"(?<![\d.])\d+\.\d+(?![\d.])")
+PLUS_MINUS = re.compile(r"(?<![\d.])(\d+\.\d+)\s*(?:±|\+/-|\+-)\s*(\d+(?:\.\d+)?)(?![\d.])")
+TOOL_SECTION = "## Who did what, from the logs"  # what the tool adds to a finding: its own words, not the author's
+
+
+def overclaiming_listing(factory: Path, applies_to: str) -> tuple:
+    """(the scorer's name, its list of phrases) for the overclaiming check that applies to a study or an exploration; (None, None)
+    when the definition has none. The list is the factory's own file, which people may edit."""
+    for f in sorted((Path(factory) / "scorers").glob("*/scorer.md")):
+        try:
+            fm = definition_tool().front_matter(f.read_text())[0]
+        except (OSError, ValueError, yaml.YAMLError):
+            continue
+        if fm.get("check") == "overclaiming" and fm.get("applies_to", "study") == applies_to and fm.get("phrases"):
+            try:
+                return f.parent.name, yaml.safe_load((Path(factory) / "scorers" / str(fm["phrases"])).read_text()) or {}
+            except (OSError, yaml.YAMLError):
+                raise Refused(f"the overclaiming check {f.parent.name} names a list of phrases that cannot be read: run check_factory.py")
+    return None, None
+
+
+def decimals(number: str) -> int:
+    return len(number.partition(".")[2])
+
+
+def allowed_decimals(u: float, beyond: int) -> int:
+    return max(0, -math.floor(math.log10(abs(u)))) + beyond if u else 99
+
+
+def with_uncertainty(obj, out=None) -> list:
+    """(value, uncertainty) for every number a receipt gives beside an interval or an uncertainty, all the way down."""
+    out = [] if out is None else out
+    if isinstance(obj, dict):
+        u = next((float(obj[k]) for k in UNCERTAINTY_KEYS if is_num(obj.get(k)) and float(obj[k]) > 0), None)
+        if u is None and is_num(obj.get("ci_low")) and is_num(obj.get("ci_high")) and obj["ci_high"] > obj["ci_low"]:
+            u = (float(obj["ci_high"]) - float(obj["ci_low"])) / 2
+        if u is not None:
+            out += [(float(v), u) for k, v in obj.items() if is_num(v) and k not in UNCERTAINTY_KEYS]
+        for v in obj.values():
+            with_uncertainty(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            with_uncertainty(v, out)
+    return out
+
+
+def overclaiming_flags(text: str, listing: dict, supported: bool, what: str, receipts: tuple = ()) -> list:
+    """Every phrase of the list in the text, and every number stated more finely than its uncertainty supports, each with the
+    line it stands on: [{what, line, phrase, why}]. A warning: nothing is refused on it."""
+    out, beyond = [], int(((listing or {}).get("precision") or {}).get("digits_beyond_uncertainty") or 1)
+    pairs = [pv for r in receipts for pv in with_uncertainty(r)]
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.strip() == TOOL_SECTION:
+            break
+        for ph in (listing or {}).get("phrases") or []:
+            m = re.search(r"\b(?:" + str(ph["pattern"]) + r")\b", line, re.I)
+            if not m or (ph.get("when") == "not-supported" and supported) or (ph.get("unless") and re.search(str(ph["unless"]), line, re.I)):
+                continue
+            out.append({"what": what, "line": n, "phrase": m.group(0), "why": ph["why"]})
+        for m in PLUS_MINUS.finditer(line):
+            if decimals(m.group(1)) > allowed_decimals(float(m.group(2)), beyond):
+                out.append({"what": what, "line": n, "phrase": m.group(0),
+                            "why": f"stated to {decimals(m.group(1))} decimals beside an uncertainty of {m.group(2)}, which supports {allowed_decimals(float(m.group(2)), beyond)}"})
+        for m in DECIMAL.finditer(line):
+            t = m.group(0)
+            for v, u in pairs:
+                if abs(float(t) - v) <= 0.5 * 10 ** -decimals(t) + 1e-12 and decimals(t) > allowed_decimals(u, beyond):
+                    out.append({"what": what, "line": n, "phrase": t, "why": f"stated to {decimals(t)} decimals; the receipt's uncertainty beside it "
+                                f"({u:.3g}) supports {allowed_decimals(u, beyond)}"})
+                    break
+    return out
+
+
+def flags_in_words(flags: list) -> list:
+    return [f"{f['what']}, line {f['line']}: `{f['phrase']}`: {f['why']}" for f in flags]
+
+
+def study_overclaiming(study: Study, factory: Path, ev: list | None = None) -> dict | None:
+    """The overclaiming check of a study: the finding in force and the reviews after the opening. None when the definition has no
+    such check; `pending` when there is no finding yet."""
+    name, listing = overclaiming_listing(factory, "study")
+    if not name:
+        return None
+    ev = study.events() if ev is None else ev
+    att = attached_finding(ev)
+    if not att:
+        return {"scorer": name, "result": "pending", "flags": []}
+    finished = [e for e in ev if e["kind"] == "opening.finished"]
+    try:
+        primary = [r["id"] for r in study.plan()["rules"] if r.get("role", "secondary") == "primary"]
+    except (Refused, KeyError, TypeError):
+        primary = []
+    outcomes = finished[-1]["data"].get("outcomes") or {} if finished else {}
+    supported = bool(primary) and all(outcomes.get(r) == "supported" for r in primary)
+    receipts = []
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        receipts.append(json.loads((study.d / finished[-1]["data"]["receipt"]).read_text()))
+    flags = overclaiming_flags((study.d / att["data"]["file"]).read_text(errors="replace"), listing, supported, att["data"]["file"], tuple(receipts))
+    for e in ev:
+        if e["kind"] == "review.verdict" and e["seq"] > att["seq"] and (study.d / e["data"]["file"]).is_file():
+            flags += overclaiming_flags((study.d / e["data"]["file"]).read_text(errors="replace"), listing, supported, e["data"]["file"], tuple(receipts))
+    return {"scorer": name, "result": "warn" if flags else "pass", "flags": flags, "supported": supported}
+
+
 # ---- who did each step: a contribution statement drawn from the logs ----------
 WORK = (  # (the kind of work, in words; the kinds of event that are that work)
     ("asking the question", ("study.started", "exploration.started")),
@@ -3260,8 +3369,8 @@ WORK = (  # (the kind of work, in words; the kinds of event that are that work)
 )
 LOG_CANNOT_SHOW = ("What the logs cannot show. They record who wrote each event and nothing else: the thinking that left no event (choosing "
                    "the problem, the conversations, what was read outside the tools, a person steering an agent in its chat) is not in them. "
-                   "An agent's model is the name its caller declared, not proven. A person's name typed at a command line (practice) proves "
-                   "nothing; an act on the platform names the accounts the platform recorded, and is shown with its standing.")
+                   "An agent's model is the name its caller declared, and nothing checks it. A person's name typed at a command line (practice) "
+                   "shows nothing about who acted; an act on the platform names the accounts the platform recorded, and is shown with its standing.")
 
 
 def who_in_words(e: dict, roles: tuple) -> str:
@@ -3383,6 +3492,9 @@ def cmd_attach(study: Study, a) -> None:
     with dest.open("a") as out:  # the finding carries who did each step, as the logs show it when it is attached
         out.write("\n\n## Who did what, from the logs\n\n" + c["paragraph"] + "\n\n" + c["cannot_show"] + "\n")
     study.append(a.by, "finding.attached", {"file": f"finding/{dest.name}", "sha": sha_file(dest)})
+    said = study_overclaiming(study, Path(getattr(a, "factory", None) or FACTORY))
+    for line in flags_in_words((said or {}).get("flags") or []):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
     live = last_live_opening(ev)
     earlier = any(e["kind"] == "review.verdict" and live and e["seq"] > live["seq"] for e in ev)
     print(f"finding attached: finding/{dest.name}" + (" (the reviews recorded before it do not cover it: the review "
@@ -3480,6 +3592,10 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
         out += [f"`{att['data']['file']}`, sha256 {att['data']['sha']}:", "", "```", *body.rstrip().splitlines(), "```"]
     else:
         out += ["No finding is attached."]
+    said = study_overclaiming(study, FACTORY, ev)
+    if said is not None:
+        out += ["", "## Words the overclaiming check flags (a warning, never a block)", ""]
+        out += [f"- {line}" for line in flags_in_words(said["flags"])] or ["None."]
     out += ["", "## The review", ""]
     out += [f"- {who}: {verdict}" for who, verdict in sorted(rep["reviews"].items())] or ["- no review agent that did none of the study has recorded a verdict on this finding"]
     for e in ev:
@@ -4030,7 +4146,8 @@ def cmd_scorecard(study: Study, a) -> None:
             "notes_raised": sum(1 for e in ev if e["kind"] == "note.raised"),
             "acts_by_people": sum(1 for e in ev if e["actor"].startswith(("human:", "platform:"))),
             "acts_by_assistants": sum(1 for e in ev if e["actor"].startswith("agent:")),
-            "checks": run_checks(study, Path(a.factory), a.anchor)}
+            "checks": run_checks(study, Path(a.factory), a.anchor),
+            "overclaiming": flags_in_words((study_overclaiming(study, Path(a.factory), ev) or {}).get("flags") or [])}
     (study.d / "scorecard.json").write_text(json.dumps(card, indent=1))
     print(json.dumps(card, indent=1))
 
@@ -4044,7 +4161,7 @@ def deterministic_scorers(factory: Path) -> list:
             fm = fd.front_matter(f.read_text())[0]
         except (OSError, ValueError, yaml.YAMLError):
             raise Refused(f"the scorer {f.parent.name} has no front matter that parses")
-        if fm.get("type") == "deterministic":
+        if fm.get("type") == "deterministic" and fm.get("applies_to", "study") == "study":
             out.append((f.parent.name, fm.get("check")))
     if not out:
         raise Refused(f"the definition at {factory} has no deterministic scorer (scorers/<name>/scorer.md)")
@@ -4077,13 +4194,14 @@ def run_checks(study: Study, factory: Path, posted: list | None = None) -> dict:
         "acts-recorded-by-people": all(is_act_by_people(e) for e in ev if e["kind"] in ACTS_BY_PEOPLE) and (
             True if any(e["kind"] in ACTS_BY_PEOPLE for e in ev) else None),
         "notes-on-curation-list": (raised - {e["data"]["id"] for e in ev if e["kind"] == "note.resolved"}) <= listed,
+        "overclaiming": {"pending": None, "pass": True, "warn": "warn"}[(study_overclaiming(study, factory, ev) or {"result": "pending"})["result"]],
     }
     out = {}
     for name, check in deterministic_scorers(factory):
         if check not in kinds:
             raise Refused(f"scorer {name}: the check `{check}` is not one this study tool evaluates")
         v = kinds[check]
-        out[name] = "pending" if v is None else ("pass" if v else "fail")
+        out[name] = "pending" if v is None else v if isinstance(v, str) else ("pass" if v else "fail")  # `warn` is a warning, never a failure
     return out
 
 
@@ -4392,6 +4510,54 @@ def _selftest_figures(tmp: Path, check) -> None:
     check("the signature request shows the opening's figure with its caption and binds it",
           "## The figures the opening drew: look at each one yourself" in sig and "](../figures/held-out.svg)" in sig
           and "figures/held-out.svg" in json.loads((study.d / "signature-request" / "manifest.json").read_text())["figures"])
+
+
+def _selftest_overclaiming(tmp: Path, check) -> None:
+    """The overclaiming check: the factory's own list of phrases, each flag with its phrase and line, a warning and never a refusal."""
+    import io
+    name, listing = overclaiming_listing(FACTORY, "study")
+    text = ("The fit shows good agreement and is clearly right.\nThis is definitive and proves the idea, a remarkable breakthrough.\n"
+            "It saves years of work.\nThe change is significant.\nThe change is significant (sign test, p < 0.01).\n"
+            "The opening confirms the idea.\nThe gain is 1.02811 ± 0.012, or 1.028 ± 0.012.\nFrom the receipt: 1.02811, and 1.028.\n"
+            "## Who did what, from the logs\nclearly not the author's words\n")
+    receipt = {"gain": {"estimate": 1.02811, "ci_low": 1.016, "ci_high": 1.040}}
+    flags = overclaiming_flags(text, listing, False, "finding.md", (receipt,))
+    said = {(f["line"], f["phrase"].lower()) for f in flags}
+    check("the overclaiming check flags each phrase of the factory's list with its line: good agreement, clearly, definitive, proves, "
+          "remarkable, breakthrough, a dramatic timescale, significant with no test, and confirms when the rules did not support it",
+          name == "overclaiming-in-findings" and {(1, "good agreement"), (1, "clearly"), (2, "definitive"), (2, "proves"), (2, "remarkable"),
+                                                    (2, "breakthrough"), (3, "years of work"), (4, "significant"), (6, "confirms")} <= said
+          and (5, "significant") not in said and all(f["why"] for f in flags))
+    check("it flags a number stated more finely than the uncertainty beside it, on the line or in the receipt, and not one stated as finely as it allows",
+          (7, "1.02811 ± 0.012") in said and (8, "1.02811") in said and not any(p == "1.028 ± 0.012" or p == "1.028" for _, p in said))
+    check("it reads the author's words and not the section the tool adds", not any(n >= 9 for n, _ in said))
+    check("`confirms` is not flagged where the locked rules gave `supported`",
+          (6, "confirms") not in {(f["line"], f["phrase"].lower()) for f in overclaiming_flags(text, listing, True, "finding.md")})
+    edited = tmp / "factory-edited"
+    shutil.copytree(FACTORY, edited, ignore=shutil.ignore_patterns("__pycache__"))
+    lf = edited / "scorers" / "overclaiming-in-leads" / "phrases.yaml"
+    lf.write_text(lf.read_text().replace("phrases:\n", 'phrases:\n  - {pattern: "game.chang(er|ing)", why: "a factory\'s own addition"}\n', 1))
+    check("the list is a file the factory edits: a phrase added there is flagged",
+          any(f["phrase"].lower() == "game-changing" for f in overclaiming_flags("A game-changing result.", overclaiming_listing(edited, "study")[1], False, "x")))
+    study = _fresh(tmp, "over-1")
+    _to_lock(study)
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
+    (tmp / "over-finding.md").write_text(PRACTICE_WORDS + "\n\nThe gain clearly sits inside the band, a remarkable result.\n")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        cmd_attach(study, A(by="agent:analysis", file=str(tmp / "over-finding.md")))
+    check("attaching a finding with such words warns, names the phrase and the line, and attaches it all the same",
+          "overclaiming check (a warning, not a refusal)" in out.getvalue() and "line 3: `clearly`" in out.getvalue() and attached_finding(study.events()))
+    (tmp / "over-v.md").write_text("APPROVE: excellent work\n")
+    cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "over-v.md")))
+    card = run_checks(study, FACTORY, _posted(study))
+    check("the scorecard shows the check as `warn`, never as a failure, and covers the review too",
+          card["overclaiming-in-findings"] == "warn" and "overclaiming-in-leads" not in card
+          and any(f["phrase"].lower() == "excellent" for f in study_overclaiming(study, FACTORY)["flags"]))
+    cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=_posted(study), evidence=None, comment=None))
+    check("the signature request lists the words the check flags, for the steward",
+          "## Words the overclaiming check flags (a warning, never a block)" in (study.d / "signature-request" / "EVIDENCE.md").read_text()
+          and "`remarkable`" in (study.d / "signature-request" / "EVIDENCE.md").read_text())
 
 
 def copy_of(obj):
@@ -5159,7 +5325,7 @@ def selftest() -> int:
         sc = run_checks(study, FACTORY, _posted(study))
         check("the checks a definition may name, for a stage and for a deterministic scorer, are exactly the ones this tool evaluates",
               set(stage_checks(study)[0]) == set(definition_tool().STAGE_CHECKS)
-              and {c for _, c in deterministic_scorers(FACTORY)} == set(definition_tool().SCORER_CHECKS) and len(sc) == 8)
+              and {c for _, c in deterministic_scorers(FACTORY)} == set(definition_tool().SCORER_CHECKS) and len(sc) == 9)
         check("every process check in the procedure passes on the happy path",
               set(sc.values()) == {"pass"} if have_git else {k: v for k, v in sc.items() if v != "pass"} == {"lock-committed": "fail"})
         cmd_log_change(study, A(by="agent:curating", log=str(tmp / "changes.jsonl"), factory=str(FACTORY), problem="toy",
@@ -6363,6 +6529,8 @@ def selftest() -> int:
         _selftest_fresh_data(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_figures(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_overclaiming(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())
