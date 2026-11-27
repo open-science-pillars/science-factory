@@ -5,7 +5,7 @@
 # generates and seals at the opening. It is a template: the blind test of
 # the system copies it into throwaway folders, and nothing is ever started
 # in this folder. To run a system trial as a person, copy this plan into a
-# study of your own (docs/PLAN.md, Part A). Every key here is explained in
+# study of your own (docs/FIRST-STUDY.md). Every key here is explained in
 # factory/templates/analysis-plan.yaml.
 study: SYSTEM-TRIAL-BUILT-IN
 study_kind: system_trial    # its held-out data is made at its own opening; it closes only as system-trial-accepted or system-trial-declined

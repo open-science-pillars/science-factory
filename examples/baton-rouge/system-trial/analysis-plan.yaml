@@ -1,6 +1,6 @@
 # Analysis plan for the optional demo's system trial: the plan of
 # examples/stand-alone/system-trial with one thing changed. The two records
-# are paired by the script the hydrology capability ships, found in a
+# are paired by the script the hydrology repository ships, found in a
 # checkout of that repository beside this one, where the stand-alone plan
 # uses this repository's own pairing step. Same gain method, same rule, same
 # quality screen; the held-out record is a test case the access gate

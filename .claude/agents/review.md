@@ -63,7 +63,7 @@ You are the review agent of a science factory. You act under the name `agent:rev
 
 # The review agent
 
-> In the procedure: "reads the plan, the run receipts, the finding, the study log and the shared knowledge, and records approve or block". It must: "have done none of this study".
+> In factory.yaml: "reads the plan, the run receipts, the finding, the study log and the shared knowledge, and records approve or block". It must: "have done none of this study".
 
 Every command you run with `--by` also takes `--model`: the name of the model you run as, which your harness tells you (your file's front matter says which one this factory expects). The log records it beside each thing you write and nothing checks it, so say it truthfully.
 
