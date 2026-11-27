@@ -706,10 +706,19 @@ def selftest() -> int:
                       and "verify-acts --study studies/MERGED" in got[0]["next_step"]["command"])
                 check("its request is no longer listed as waiting to be merged",
                       not [i for gr in waiting([repo], sf.FACTORY)["groups"] for i in gr["items"] if i["what"] == "lock-request-not-merged"])
+                with contextlib.suppress(Refused):
+                    sf.cmd_open_held_out(m, A(test="held-out", by="agent:coordinating"))
+                got = [i for gr in waiting([repo], sf.FACTORY)["groups"] for i in gr["items"] if i["what"] == "opening-refused"]
+                check("an opening refused because GitHub could not be asked appears once, with the token as the way on, nothing used up",
+                      len(got) == 1 and got[0]["details"]["result"] == sf.NOT_CHECKED and "GH_TOKEN=YOUR-READ-TOKEN" in got[0]["next_step"]["command"]
+                      and "open-held-out --study studies/MERGED" in got[0]["next_step"]["command"] and not m.last("opening.started"))
                 sf.PLATFORM_CALL = sf._stand_in_platform(m, "lock", merge, head)
                 got = waiting([repo], sf.FACTORY)
                 check("asked now and confirmed (a stand-in's answer, in this self-test only), the lock is verified and the item leaves",
                       not [i for gr in got["groups"] for i in gr["items"] if i["what"] == "lock-merged-not-verified"])
+                sf.cmd_open_held_out(m, A(test="held-out", by="agent:coordinating"))
+                check("and once the opening is made, the refused opening leaves too",
+                      not [i for gr in waiting([repo], sf.FACTORY)["groups"] for i in gr["items"] if i["what"] == "opening-refused"])
             finally:
                 sf.PLATFORM_CALL = sf._dead_platform
                 sf.Study.default_route = route
@@ -779,6 +788,8 @@ def selftest() -> int:
         got = [i for gr in waiting([xw], sf.FACTORY)["groups"] for i in gr["items"] if gr["path"] == "explorations/X3"]
         check("a spoiled exploration appears as blocked, for the analysis agent to end it as a stop", [i["what"] for i in got] == ["exploration-spoiled"]
               and "--outcome stop" in got[0]["next_step"]["command"])
+        explore.cmd_end(z, XA(by="agent:analysis-x", outcome="stop", summary="spoiled: a set-aside date reached a look"))
+        check("and leaves once it is ended as a stop", not [i for gr in waiting([xw], sf.FACTORY)["groups"] for i in gr["items"] if gr["path"] == "explorations/X3"])
         cli = sf.subprocess.run([sys.executable, str(Path(__file__).resolve()), "--workspace", str(xw), "--json"], capture_output=True, text=True,
                                 env={k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", "SF_PLATFORM_TOKEN")})
         check("the command prints the JSON its docstring documents", cli.returncode == 0 and json.loads(cli.stdout)["schema"] == SCHEMA
