@@ -11,6 +11,7 @@ The lock and the steward's signature are the two acts no agent makes. On one mac
 | File | What it is |
 |---|---|
 | `acts.workflow.yml` | the workflow, as a template: copy it to `.github/workflows/acts.yml` of the repository where the studies live |
+| `waiting.workflow.yml` | keeps the label `waiting-on-a-person` in step on each tracking issue, from `tools/waiting.py` |
 | `verify_request.py` | the required check on a pull request that touches a study's `lock-request/` or `signature-request/` |
 | `record_act.py` | the job after the merge: writes the act into the study log as a merge found, then has GitHub asked |
 | `verify_acts.py` | what `sf.py verify-acts` runs: asks GitHub about the pull request, its reviews and the branch; holds the one function that calls GitHub |
@@ -65,6 +66,8 @@ for l in yaml.safe_load(open(".github/labels.yml")):
 | Waiting on a person | single select | yes, no |
 
 Save a view "Waiting on a person", filtered to that field, so the lock and signature requests and the drafts to accept are in one place. Keep the Stage field and the `stage:` label in step by hand; nothing sets them yet.
+
+**What waits on a person.** `uv run tools/waiting.py` lists it for the repository, grouped by study and exploration, oldest first, each with its next step: a so what, a request to approve, an act to verify, a release to wait for, a blocked or failed opening, a draft for the steward (`--json` for the shape its docstring gives). Copy `waiting.workflow.yml` to `.github/workflows/waiting.yml` and list each tracking issue in `tracking-issues.yaml` (`studies/STUDY-1: 12`); on a schedule and on push the workflow writes the list to its job summary and keeps the label `waiting-on-a-person` on each issue in step. It has never run on GitHub.
 
 ## Practice
 

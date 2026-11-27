@@ -35,7 +35,7 @@ What became of each Warp concept: **kept**, **translated** (the same idea in ano
 
 **A different model for review**, "to reduce shared blind spots": cheap, and checkable now that models are recorded.
 
-**The page that matters is what is waiting on a person**, not the dashboard: a steward's queue of locks, signatures and drafts is otherwise invisible.
+**The page that matters is what is waiting on a person**, not the dashboard: a steward's queue of locks, signatures and drafts is otherwise invisible. Built as `tools/waiting.py` (Warp's Home, "Waiting on you"), with a workflow that keeps a label in step on each tracking issue.
 
 ## Where a science factory must differ in kind
 

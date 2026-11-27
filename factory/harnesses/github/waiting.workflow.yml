@@ -1,0 +1,50 @@
+# What waits on a person, kept in step on GitHub. A template: copy it to .github/workflows/waiting.yml in the repository
+# where the studies live, with tools/ and factory/ of the science factory in that repository. This workflow has never
+# run on GitHub; `tools/waiting.py --selftest` tests the list it reads, on scratch workspaces.
+#
+# On a schedule and on every push to the protected branch it runs `tools/waiting.py` on the repository, writes the list
+# in plain words to the job summary, and keeps one label, `waiting-on-a-person` (.github/labels.yml), in step on each
+# study's and exploration's tracking issue: on when something there waits on a person, off when nothing does. Which
+# issue tracks which study or exploration is said by `tracking-issues.yaml` at the top of the repository
+# (`studies/STUDY-1: 12`); a study with no line there has no label to keep. The job's token reads contents and pull
+# requests, so the standings of the acts are asked of GitHub now; it writes issues, for the label, and nothing else.
+name: waiting on a person
+
+on:
+  schedule:
+    - cron: "17 6 * * *"        # once a day
+  push:
+    branches: [main]            # the protected branch that factory.yaml names
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  waiting:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read       # the standings of the locks and signatures, asked of GitHub
+      issues: write             # the label on the tracking issues, and nothing else
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: What waits on a person, in plain words, to the job summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uv run tools/waiting.py --workspace . | tee -a "$GITHUB_STEP_SUMMARY"
+          uv run tools/waiting.py --workspace . --json > "$RUNNER_TEMP/waiting.json"
+      - name: Keep the label in step on each tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I -c 'import json, sys
+          for t in json.load(open(sys.argv[1]))["tracking_issues"]:
+              print(t["number"], "add" if t["waiting"] else "remove")' "$RUNNER_TEMP/waiting.json" |
+          while read -r number how; do
+            gh issue edit "$number" --repo "${{ github.repository }}" "--$how-label" waiting-on-a-person || echo "issue $number: the label could not be changed"
+          done

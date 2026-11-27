@@ -43,7 +43,7 @@ Reference: [the words](docs/WORDS.md), [compared with Warp Factories](docs/WARP-
 | Folder | What is in it |
 |---|---|
 | `factory/` | the definition: `factory.yaml`, the agents, skills, harnesses, runners, checks, benchmarks, templates and change log |
-| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py` |
+| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py`, `waiting.py` (what waits on a person) |
 | `methods/` | the built-in method the trials and examples use |
 | `compute/` | the contract any runner keeps, and its test |
 | `openwiki/` | this repository's knowledge base, a wiki |

@@ -245,6 +245,16 @@ def main() -> int:
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+
+        def waiting_now() -> dict:
+            return json.loads(tool("waiting.py", "--workspace", work, "--json", answer=True))
+
+        def waiting_for(what: str, path: str) -> list:
+            return [i for g in waiting_now()["groups"] if g["path"] == path for i in g["items"] if i["what"] == what]
+
+        asked = waiting_for("so-what-wanted", "explorations/EXPLORATION-A")
+        step("what waits on a person (tools/waiting.py) lists the reviewed lead once, for a person's so what, with the lines of the "
+             "comment on the tracking issue", len(asked) == 1 and asked[0]["who"] == "people" and f"lead: {lead_read()[:16]}" in asked[0]["next_step"]["do"])
         # the person's so what: is the reviewed lead worth confirming? An agent drafts the question; only a person answers
         step("the exploration cannot end as a lead before a person has said the reviewed lead is worth confirming",
              "worth confirming" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
@@ -265,6 +275,9 @@ def main() -> int:
              "--read-lead", lead_read(), "--local-practice")
         step("try-instead sends the exploration back to exploring, with the person's direction as its next question",
              json.loads(tool("explore.py", "status", *E, answer=True))["next_question"].startswith("look at the low end"))
+        step("the so what leaves the waiting list, and the direction waits there for an agent to pick it up",
+             not waiting_for("so-what-wanted", "explorations/EXPLORATION-A")
+             and len(waiting_for("try-instead-not-picked-up", "explorations/EXPLORATION-A")) == 1)
         tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), "--local-practice")
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the agent that explored cannot make the hand-over",
@@ -442,9 +455,17 @@ def main() -> int:
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+        waits = waiting_now()
+        step("the lock request waits on people, and the drafted page waits on the steward, each once, oldest first, in plain words too",
+             len(waiting_for("lock-request-not-merged", "studies/STUDY-B")) == 1
+             and len(waiting_for("draft-awaiting-the-steward", "explorations/EXPLORATION-A")) == 1
+             and "lock-request/EVIDENCE.md" in tool("waiting.py", "--workspace", work, answer=True)
+             and [g["path"] for g in waits["groups"]][0] == "explorations/EXPLORATION-A")
+        (work / "waiting.md").write_text(tool("waiting.py", "--workspace", work, answer=True))
         step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
              "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
         tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
+        step("once the lock is recorded the request leaves the waiting list", not waiting_for("lock-request-not-merged", "studies/STUDY-B"))
         credit = tool("sf.py", "contribution", *S)
         step("the study's contribution statement credits the practice lock to the name typed, the tests to the analysis agent with its declared model, "
              "and lists the steps with no event yet",
@@ -488,6 +509,7 @@ def main() -> int:
                                 what the platform answers when `sf.py verify-acts` asks it. Neither can be shown here.
   studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
   knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
+  waiting.md                    what waited on a person before the practice lock (tools/waiting.py), in plain words
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given
                                 to judge the review of the lead and the clarity of the plan; no model was asked
   data/, request.md             the synthetic record and the request the exploration began with""")

@@ -89,6 +89,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **driver**: the script that drives the blind test (`methods/gain/system_trial.py blind-test`, `tools/benchmark.py`).
 - **validator**: `tools/check_factory.py`: valid, invalid, or not validated, which is never a pass.
 - **change log**: `factory/change-log.jsonl`, every change to the definition with its prediction and what it did.
+- **waiting on a person**: what `tools/waiting.py` lists: everything in a workspace that wants a person, or is stuck, with its next step.
 
 ## Measuring
 

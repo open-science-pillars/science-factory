@@ -16,6 +16,7 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 | `factory-copy/` | a scratch copy of the definition, with `methods/gain-with-intercept/` promoted from a look and recorded in its change log |
 | `studies/openings.jsonl`, `studies/held-out.jsonl`, `studies/fresh-data.jsonl` | the records beside the studies: what was set aside and opened, every held-out block a study declared, every proposal of fresh data |
 | `knowledge-queue/` | one drafted page waiting for a person, with the queue's index |
+| `waiting.md` | what waited on a person before the practice lock, from `tools/waiting.py` |
 | `judging/` | two judging packets: what a model judge would be given for the review of the lead and for STUDY-B's plan. No model was asked |
 | `data/`, `request.md`, `review.md` | the record, the request the exploration began with, and the review of its lead |
 
@@ -28,11 +29,11 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 3. Proposes the fresh data from the metadata (the record's own data file, offered instead, is refused), starts the exploration setting aside exactly that, the year 2025, and writes a fit note.
 4. Looks, and is refused each look that reaches for the set-aside year, by any of the routes the fence closes; draws a figure; records a choice and a note.
 5. Writes the lead, and is refused a lead before a reviewer is named, a number no look printed, and words that mislead; corrects one phrase; is refused a review by the agent that explored, or under a name nobody named; a review that says "clearly" is flagged by the overclaiming check.
-6. Asks a person so what: an agent drafts the question and is refused the answer; a practice so what says try instead, then worth confirming.
+6. Asks a person so what: an agent drafts the question and is refused the answer; a practice so what says try instead, then worth confirming. `tools/waiting.py` lists the so what as waiting on a person, then the direction as waiting for an agent.
 7. Hands over (the proposal and the figures go with it), starts a study, and checks that the study keeps the fence.
 8. Promotes `looks/gain.py` to a method in a scratch copy of the definition: its tests reproduce both looks, and the validator refuses it until the change log records it.
 9. Writes who did what, drafts a page into a queue for the wiki carrying it, and builds two judging packets.
-10. Takes a system trial through its tests (with a figure) to a lock request that shows the fit note and the figure, shows the three standings an act can have, and records a practice lock.
+10. Takes a system trial through its tests (with a figure) to a lock request that shows the fit note and the figure, lists the request and the draft as waiting on a person, shows the three standings an act can have, and records a practice lock.
 
 Each step prints its refusals. **Practice at the end**, because a scratch folder has no pull request to merge; a practice study never closes as signed. The pull request route is tested in `tools/sf.py selftest` and `factory/harnesses/github/record_act.py --selftest`, in a throwaway git repository.
 

@@ -21,12 +21,12 @@ cp -r science-factory/tools science-factory/factory science-factory/methods my-s
 mkdir -p my-science/examples/stand-alone
 cp -r science-factory/examples/stand-alone/system-trial my-science/examples/stand-alone/
 cd my-science
-sed -e 's|example-org/example-studies|OWNER/REPO|' -e 's|^version: 0\.16\.0 |version: 0.16.1 |' \
+sed -e 's|example-org/example-studies|OWNER/REPO|' -e 's|^version: 0\.17\.0 |version: 0.17.0+local.1 |' \
   factory/factory.yaml > factory.yaml.new
 mv factory.yaml.new factory/factory.yaml
 uv run tools/sf.py log-change --study studies/SETUP --by human:YOUR-ID --log factory/change-log.jsonl \
   --problem "the definition names the example repository" \
-  --change "repository: under both acts names OWNER/REPO, as version 0.16.1" \
+  --change "repository: under both acts names OWNER/REPO, as version 0.17.0+local.1" \
   --rationale "the acts are verified on the repository where the studies live" \
   --predicted "check_factory.py says VALID"
 uv run tools/check_factory.py
