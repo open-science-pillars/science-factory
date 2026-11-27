@@ -14,7 +14,7 @@ uv run tools/sf.py selftest
 uv run examples/stand-alone/run.py
 ```
 
-The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, and takes a study to its lock; it ends with `stand-alone example: PASS` (about three minutes) and prints a scratch folder holding everything it made. Nothing is left in the repository.
+The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, and takes a study to its lock; it ends with `stand-alone example: PASS` (about three minutes) and prints a scratch folder holding everything it made; nothing is left in the repository.
 
 ## How it works, in one paragraph
 
@@ -53,4 +53,4 @@ Reference: [the words](docs/WORDS.md), [compared with Warp Factories](docs/WARP-
 
 The repository keeps no runs. Your own studies live in the repository where your science lives.
 
-A personal open-source project, under the Apache License 2.0.
+A personal open-source project; Apache License 2.0.
