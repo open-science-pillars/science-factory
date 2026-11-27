@@ -7,8 +7,8 @@ A factory is defined as code: `factory/`, rooted at `factory.yaml`, says which a
 **The repository where your science lives holds its own copy of `tools/`, `factory/` and, with the built-in method, `methods/` and `examples/stand-alone/system-trial/`** (the shipped benchmarks name that plan; drop both if you drop it). The workflow runs the tools from there, the lock binds them there, and the verification reads the repository name there.
 
 1. **Get the tools.** Clone this repository, run the README's three commands, and note the commit.
-2. **Copy and name the definition.** Copy those four folders into your repository. In `factory/factory.yaml` set `name`, `alias`, a new `version`, the `home` block, and `repository:` under both acts to your owner/name on GitHub. That changes the acts by people, so record it with `sf.py log-change`, which names them by checksum ([FIRST-STUDY.md](FIRST-STUDY.md) shows the commands).
-3. **Validate it**, from your repository: `uv run tools/check_factory.py`. Put that and `uv run tools/check_factory.py --summary git:HEAD^:factory factory` in your checks.
+2. **Copy and name the definition.** Copy those four folders into your repository. In `factory/factory.yaml` set `name`, `alias`, a new `version`, the `home` block, and `repository:` under both acts to your owner/name on GitHub. That changes the acts by people, so record it with `sf.py log-change`, which names them by checksum ([FIRST-STUDY.md](FIRST-STUDY.md) shows the commands). Then pin the copy (`tools/factory_update.py pin`), so it can receive fixes (below).
+3. **Validate it**, from your repository: `uv run tools/check_factory.py`. Copy `factory/harnesses/github/factory-check.workflow.yml` to `.github/workflows/`: on every pull request touching `factory/` it validates and posts the summary of the change, failing on invalid and on not validated.
 4. **Protect the branch** and install the two acts, once, by the checklist in [factory/harnesses/github/README.md](../factory/harnesses/github/README.md), which also makes the labels and the Project board.
 5. **Run the system trial** ([FIRST-STUDY.md](FIRST-STUDY.md)). One right verdict on a kind case is a first sign, not proof; the blind test (below) is the wider measure.
 
@@ -91,6 +91,8 @@ Every scorer declares what it `reads`, from a list split at the first opening:
 
 **The firewall.** What an opening showed must never reach what changes how the next opening runs, or the factory would drift toward agreeing with its claims. The validator refuses a judge reading the right-hand column, `selfImprovement: true` on any scorer that does, and a benchmark case that is real fresh data. Outcomes may still be counted, shown to people and fed to the knowledge loop.
 
+**The report.** `uv run tools/report.py --workspace .` counts a workspace's studies and explorations by stage and by outcome, the time at each stage and waiting on a person, the models the logs record beside those declared, any token or cost figures agents' events declare (`--cost`, optional) and the checks' results; `--html FILE` writes one page for GitHub Pages. It ranks no factory by findings supported, and says why first.
+
 ![Measure and improve: what is written before any opening feeds the judges and may feed a proposal; what an opening produced is counted and shown to people, behind a wall.](diagrams/measure-and-improve.svg)
 
 ## Benchmarks: the blind test, as suites
@@ -119,6 +121,10 @@ The plan, the code, the request, the test receipts, the fresh-data proposal, and
 ## What a file can change, and how a change is made
 
 Editing `factory.yaml` can add, remove or reorder stages built from the checks above, change who does a stage, and allow or refuse an opening without verification (under a new version with a change-log record; the lock request then says so in capitals); scorers choose the checks and add judges; an agent's file changes what it may do, which the summary makes hard to miss. A new kind of check, study, decision rule or material needs code, with a self-test that fails without it. A change is a pull request: `sf.py log-change` records the problem, the change and its prediction before it is tried, and what it did after. Nothing is adopted automatically; the intended rule, which no tool enforces yet, is a pass on the acceptance set. Tag and release each definition version beside the change log.
+
+## Receiving fixes: the pin and the update
+
+`factory-pin.yaml`, at the top of your repository, names the source, the version and commit your copy came from, and the checksums of its definition and tools. `uv run tools/factory_update.py status --repo . --source ../science-factory` says whether the source has moved and what an update would do; `update` writes it on a branch: your own edits kept (the repository's name, your settings), a field or lines changed on both sides refused by name, `tools/` taken from upstream, the version `<upstream>+local.<n>`, the pin moved, a change-log record added, and the pull request's description written (`--body-out`): the summary of the change and upstream's change-log records between the two versions. It refuses while a study is locked and not closed, because a locked study is bound to its definition, unless you carry it on its old version (`--carry-on-old-version studies/NAME`; it is then opened from a checkout of the commit before the update). `update.workflow.yml` does this weekly and opens the pull request; it has never run on GitHub. `methods/` and `examples/` are not touched.
 
 ## Compared with Warp Factories
 

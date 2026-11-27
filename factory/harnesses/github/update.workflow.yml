@@ -1,0 +1,57 @@
+# The factory, kept up to date by pull request. A template: copy it to .github/workflows/factory-update.yml in the
+# repository where the studies live, once `factory-pin.yaml` is there (`tools/factory_update.py pin`). This workflow has
+# never run on GitHub; `tools/factory_update.py selftest` tests what it runs, in throwaway git repositories.
+#
+# On a schedule it clones the science factory, asks `factory_update.py status` whether the source has moved past the
+# pinned commit with a change to the definition or the tools, and if so writes the update on a branch
+# (`factory_update.py update`: this repository's own edits kept, a field changed on both sides refused, a locked study
+# that is not closed refused, the pin moved, a record added to the change log) and opens a pull request whose
+# description is the summary of the change and the change-log records between the two versions. A refused update opens
+# nothing: the job fails and its summary says why. Nobody's act is made here: the pull request is reviewed and merged by
+# people, and the check in factory-check.workflow.yml runs on it.
+name: factory update
+
+on:
+  schedule:
+    - cron: "41 7 * * 1"        # once a week
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write           # pushes the branch with the update
+      pull-requests: write      # opens the pull request
+    env:
+      SOURCE: https://github.com/open-science-pillars/science-factory   # the source the pin names
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: The science factory, cloned beside this repository
+        run: git clone --quiet "$SOURCE" "$RUNNER_TEMP/science-factory"
+      - name: Has the source moved?
+        id: status
+        run: |
+          uv run tools/factory_update.py status --repo . --source "$RUNNER_TEMP/science-factory" --json > "$RUNNER_TEMP/status.json" || true
+          python3 -I -c 'import json, sys
+          s = json.load(open(sys.argv[1]))
+          print("needed=" + ("yes" if s.get("update_needed") else "no"))
+          print("version=" + str((s.get("to") or {}).get("version")))' "$RUNNER_TEMP/status.json" >> "$GITHUB_OUTPUT"
+      - name: Write the update on a branch, and open the pull request
+        if: steps.status.outputs.needed == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="factory-update/${{ steps.status.outputs.version }}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then echo "the branch $branch is already open"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          uv run tools/factory_update.py update --repo . --source "$RUNNER_TEMP/science-factory" --by platform:github \
+            --branch "$branch" --body-out "$RUNNER_TEMP/body.md" | tee -a "$GITHUB_STEP_SUMMARY"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" --title "Update the factory to ${{ steps.status.outputs.version }}" --body-file "$RUNNER_TEMP/body.md"

@@ -245,6 +245,16 @@ def main() -> int:
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+
+        def waiting_now() -> dict:
+            return json.loads(tool("waiting.py", "--workspace", work, "--json", answer=True))
+
+        def waiting_for(what: str, path: str) -> list:
+            return [i for g in waiting_now()["groups"] if g["path"] == path for i in g["items"] if i["what"] == what]
+
+        asked = waiting_for("so-what-wanted", "explorations/EXPLORATION-A")
+        step("what waits on a person (tools/waiting.py) lists the reviewed lead once, for a person's so what, with the lines of the "
+             "comment on the tracking issue", len(asked) == 1 and asked[0]["who"] == "people" and f"lead: {lead_read()[:16]}" in asked[0]["next_step"]["do"])
         # the person's so what: is the reviewed lead worth confirming? An agent drafts the question; only a person answers
         step("the exploration cannot end as a lead before a person has said the reviewed lead is worth confirming",
              "worth confirming" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
@@ -265,6 +275,9 @@ def main() -> int:
              "--read-lead", lead_read(), "--local-practice")
         step("try-instead sends the exploration back to exploring, with the person's direction as its next question",
              json.loads(tool("explore.py", "status", *E, answer=True))["next_question"].startswith("look at the low end"))
+        step("the so what leaves the waiting list, and the direction waits there for an agent to pick it up",
+             not waiting_for("so-what-wanted", "explorations/EXPLORATION-A")
+             and len(waiting_for("try-instead-not-picked-up", "explorations/EXPLORATION-A")) == 1)
         tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), "--local-practice")
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the agent that explored cannot make the hand-over",
@@ -442,9 +455,17 @@ def main() -> int:
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
+        waits = waiting_now()
+        step("the lock request waits on people, and the drafted page waits on the steward, each once, oldest first, in plain words too",
+             len(waiting_for("lock-request-not-merged", "studies/STUDY-B")) == 1
+             and len(waiting_for("draft-awaiting-the-steward", "explorations/EXPLORATION-A")) == 1
+             and "lock-request/EVIDENCE.md" in tool("waiting.py", "--workspace", work, answer=True)
+             and [g["path"] for g in waits["groups"]][0] == "explorations/EXPLORATION-A")
+        (work / "waiting.md").write_text(tool("waiting.py", "--workspace", work, answer=True))
         step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
              "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
         tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
+        step("once the lock is recorded the request leaves the waiting list", not waiting_for("lock-request-not-merged", "studies/STUDY-B"))
         credit = tool("sf.py", "contribution", *S)
         step("the study's contribution statement credits the practice lock to the name typed, the tests to the analysis agent with its declared model, "
              "and lists the steps with no event yet",
@@ -465,6 +486,71 @@ def main() -> int:
              and practice["acts"]["lock"]["standing"] == "practice" and checked["acts"]["lock"]["standing"] == "practice"
              and "nothing to verify" in checked["acts"]["lock"]["said"] and checked["acts"]["signature"]["standing"] is None)
         standings_shown = f"{practice['acts']['standings'].split('.')[0]}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
+
+        # The factory updated: a throwaway pair of git repositories, the science factory and a study repository copied from
+        # it, as docs/FIRST-STUDY.md sets one up. Upstream then changes an agent's file; the update keeps the study
+        # repository's own edits, moves the pin, and writes the pull request's description.
+        pair = work / "update-pair"
+        upstream, mine = pair / "science-factory", pair / "my-science"
+
+        def git_in(repo: Path, *words) -> str:
+            return ran(["git", "-C", str(repo), "-c", "user.name=stand-alone", "-c", "user.email=stand-alone@example.invalid",
+                        "-c", "commit.gpgsign=false", *words], answer=True)
+        for repo in (upstream, mine):
+            for part in ("factory", "tools", "methods"):
+                shutil.copytree(ROOT / part, repo / part, ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(HERE / "system-trial", repo / "examples" / "stand-alone" / "system-trial")
+            git_in(repo, "init", "-q", "-b", "main")
+        git_in(upstream, "add", "-A")
+        git_in(upstream, "commit", "-q", "-m", "the science factory")
+        version = yaml.safe_load((ROOT / "factory" / "factory.yaml").read_text())["version"]
+        fy = mine / "factory" / "factory.yaml"
+        fy.write_text(fy.read_text().replace("example-org/example-studies", "owner/my-science").replace(f"version: {version} ", f"version: {version}+local.1 ", 1))
+        here_tools = mine / "tools"
+        ran(["uv", "run", str(here_tools / "sf.py"), "log-change", "--study", str(mine / "studies" / "SETUP"), "--by", person,
+             "--log", str(mine / "factory" / "change-log.jsonl"), "--factory", str(mine / "factory"), "--problem", "the definition names the example repository",
+             "--change", f"repository: under both acts names owner/my-science, as version {version}+local.1",
+             "--rationale", "the acts are verified on the repository where the studies live", "--predicted", "check_factory.py says VALID"])
+        ran(["uv", "run", str(here_tools / "factory_update.py"), "pin", "--repo", str(mine), "--source", str(upstream)])
+        git_in(mine, "add", "-A")
+        git_in(mine, "commit", "-q", "-m", "the factory, copied, named and pinned")
+        review_file = upstream / "factory" / "agents" / "review" / "agent.md"
+        review_file.write_text(review_file.read_text() + "\nRead the request before the plan.\n")
+        ufy = upstream / "factory" / "factory.yaml"
+        ufy.write_text(ufy.read_text().replace(f"version: {version} ", "version: 99.0.0 ", 1))
+        ran(["uv", "run", str(upstream / "tools" / "sf.py"), "log-change", "--study", str(pair / "CHANGE-99"), "--by", coordinator, "--model", MODEL,
+             "--log", str(upstream / "factory" / "change-log.jsonl"), "--factory", str(upstream / "factory"),
+             "--problem", "the review agent reads the plan before the request", "--change", "Definition 99.0.0: the review agent reads the request first.",
+             "--rationale", "a review starts from what was asked", "--predicted", "check_factory.py says VALID"])
+        git_in(upstream, "add", "-A")
+        git_in(upstream, "commit", "-q", "-m", "upstream 99.0.0")
+        status = json.loads(ran(["uv", "run", str(here_tools / "factory_update.py"), "status", "--repo", str(mine), "--source", str(upstream), "--json"], answer=True))
+        step("the study repository's pin sees that the science factory has moved, and that the update keeps the repository's own name",
+             status["moved"] and status["update_needed"] and not status["refused"]
+             and {"field": "procedure.acts_by_people.lock.repository", "value": '"owner/my-science"'} in status["factory"]["fields_kept_here"])
+        body = pair / "PULL_REQUEST.md"
+        ran(["uv", "run", str(here_tools / "factory_update.py"), "update", "--repo", str(mine), "--source", str(upstream), "--by", person,
+             "--body-out", str(body), "--git-identity", "stand-alone <stand-alone@example.invalid>"])
+        merged = yaml.safe_load(fy.read_text())
+        step("the update is written on a branch: upstream's change in, the repository's name kept, a local version, the pin moved, and a "
+             "pull request description with the summary of the change and the change-log record between the two versions",
+             git_in(mine, "rev-parse", "--abbrev-ref", "HEAD").strip() == "factory-update/99.0.0"
+             and "Read the request before the plan." in (mine / "factory" / "agents" / "review" / "agent.md").read_text()
+             and merged["procedure"]["acts_by_people"]["lock"]["repository"] == "owner/my-science" and merged["version"] == "99.0.0+local.1"
+             and yaml.safe_load((mine / "factory-pin.yaml").read_text())["version"] == "99.0.0"
+             and "Definition 99.0.0: the review agent reads the request first." in body.read_text() and "**valid**" in body.read_text()
+             and "check-factory: VALID" in ran(["uv", "run", str(here_tools / "check_factory.py")], answer=True))
+
+        # What the workspace did, counted: a report in Markdown and as one page of HTML
+        tool("report.py", "--workspace", work, "--out", work / "report.md", "--html", work / "report.html")
+        said = (work / "report.md").read_text()
+        counted = json.loads(tool("report.py", "--workspace", work, "--json", answer=True))
+        step("the report counts the studies and the exploration by stage and outcome, the time at each stage and waiting on a person, "
+             "the models recorded, says no cost was recorded, and first says why it scores nothing",
+             said.splitlines()[2] == counted["why_no_score"] and "## Time at each stage" in said and "## Waiting on a person" in said
+             and "none was recorded" in said and counted["totals"]["by_outcome"]["lead"] == 1
+             and {x["id"] for x in counted["studies"]} >= {"STUDY-A", "STUDY-B"} and MODEL in json.dumps(counted["totals"]["models_by_stage"])
+             and (work / "report.html").read_text().startswith("<!DOCTYPE html>") and "<script" not in (work / "report.html").read_text())
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
@@ -488,8 +574,12 @@ def main() -> int:
                                 what the platform answers when `sf.py verify-acts` asks it. Neither can be shown here.
   studies/openings.jsonl        the record of what has been set aside and opened, beside the studies
   knowledge-queue/              a drafted knowledge page waiting for a person, with the queue's index
+  waiting.md                    what waited on a person before the practice lock (tools/waiting.py), in plain words
   judging/                      two judging packets (JUDGE.md, packet.json, material/): what a model judge would be given
                                 to judge the review of the lead and the clarity of the plan; no model was asked
+  report.md, report.html        what the workspace did, counted by tools/report.py: by stage and outcome, time, models
+  update-pair/                  a throwaway science factory and a study repository copied from it, pinned, then updated on
+                                a branch by tools/factory_update.py; PULL_REQUEST.md is the description it wrote
   data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0

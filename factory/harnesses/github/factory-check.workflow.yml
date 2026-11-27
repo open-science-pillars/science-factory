@@ -1,0 +1,70 @@
+# The check on a pull request that changes the factory. A template: copy it to .github/workflows/factory-check.yml in
+# the repository where the studies live, and make `factory-check` a required status check on the protected branch. This
+# workflow has never run on GitHub; the validator it runs is tested by `tools/check_factory.py --selftest`.
+#
+# On every pull request that touches factory/ (or tools/), it validates the definition the pull request would merge
+# and posts, on the pull request and in the job summary, what merging would do to it, in plain words
+# (`check_factory.py --summary` of the protected branch's definition against the pull request's). It fails on
+# `invalid` and on `not validated`, which is never a pass. The validator is the pull request's own tools/check_factory.py,
+# because a newer definition is valid only under the tools it comes with; when the pull request changes tools/, the
+# comment says so in capitals, and CODEOWNERS makes that change one people review.
+name: factory check
+
+on:
+  pull_request:
+    paths: ["factory/**", "tools/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  factory-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write      # the comment with the summary
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+      - uses: astral-sh/setup-uv@v5
+      - name: Validate the definition, and say what merging would do to it
+        run: |
+          set +e
+          {
+            echo "## What this pull request does to the factory's definition"
+            echo
+            if ! diff -rq base/tools head/tools >/dev/null; then
+              echo "TAKE NOTE: THIS PULL REQUEST CHANGES tools/, SO THE VALIDATOR THAT JUDGED IT CAME FROM THE PULL REQUEST ITSELF."
+              echo
+            fi
+            (cd head && uv run tools/check_factory.py --summary ../base/factory factory)
+            echo
+            echo '```'
+          } > "$RUNNER_TEMP/summary.md"
+          (cd head && uv run tools/check_factory.py) > "$RUNNER_TEMP/check.txt" 2>&1
+          code=$?
+          tail -n 20 "$RUNNER_TEMP/check.txt" >> "$RUNNER_TEMP/summary.md"
+          echo '```' >> "$RUNNER_TEMP/summary.md"
+          case $code in
+            0) echo "The definition is valid." >> "$RUNNER_TEMP/summary.md" ;;
+            1) echo "The definition is INVALID: this check fails." >> "$RUNNER_TEMP/summary.md" ;;
+            *) echo "The definition was NOT VALIDATED, which is never a pass: this check fails." >> "$RUNNER_TEMP/summary.md" ;;
+          esac
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "$code" > "$RUNNER_TEMP/code"
+      - name: Show the summary on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s "$RUNNER_TEMP/summary.md" || exit 0
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --edit-last --body-file "$RUNNER_TEMP/summary.md" \
+            || gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file "$RUNNER_TEMP/summary.md"
+      - name: Fail on invalid and on not validated
+        run: test "$(cat "$RUNNER_TEMP/code")" = 0

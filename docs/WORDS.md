@@ -89,6 +89,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **driver**: the script that drives the blind test (`methods/gain/system_trial.py blind-test`, `tools/benchmark.py`).
 - **validator**: `tools/check_factory.py`: valid, invalid, or not validated, which is never a pass.
 - **change log**: `factory/change-log.jsonl`, every change to the definition with its prediction and what it did.
+- **factory pin**: `factory-pin.yaml` in a study repository: where its factory came from, by version, commit and checksum; `tools/factory_update.py` moves it.
+- **waiting on a person**: what `tools/waiting.py` lists: everything in a workspace that wants a person, or is stuck, with its next step.
 
 ## Measuring
 
@@ -96,6 +98,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **judge**: a rubric for a model, reading only what was written before any opening.
 - **scorer**: a file in `scorers/`, of either kind.
 - **scorecard**: the nine checks for one study (`sf.py scorecard`).
+- **report**: `tools/report.py`, what a workspace's studies and explorations did, counted by stage, outcome and time; it scores no factory by findings supported.
 - **overclaiming check**: flags words that claim more than the work shows ("good agreement", "clearly", "proves", a number finer than its uncertainty) in leads, reviews and findings; it warns, never blocks.
 - **firewall**: what an opening showed never reaches a judge or a proposal to change the factory.
 - **benchmark**: a suite of sealed cases run under two versions of the definition and compared.

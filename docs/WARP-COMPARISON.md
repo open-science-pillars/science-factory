@@ -18,12 +18,12 @@ What became of each Warp concept: **kept**, **translated** (the same idea in ano
 | A harness and a model per agent | the same, declared; every agent event records the model | translated, built |
 | Runner files for compute | runner files with a job contract; only a local one is built | translated |
 | Per-agent secrets and network policy | nothing yet | missing, and important |
-| A dashboard of throughput, autonomy, cycle time and cost | a scorecard per study; no page across studies | missing; see below |
+| A dashboard of throughput, autonomy, cycle time and cost | a scorecard per study, and `tools/report.py` across a workspace: studies by stage and outcome, time at each stage and waiting on a person, models and any declared cost; no score of a factory by findings supported | translated, built |
 | Scorers: sampled model judges over finished runs | deterministic checks, and judges over pre-opening material only | changed |
 | Benchmarks: fixed tasks under several configurations | sealed planted-truth cases under two definitions, in a design and an acceptance set | translated, built |
 | Benchmark tasks made from past runs | never: a closed study's data has been opened | changed |
 | Self-improvement: failures past a threshold become a pull request | the flag and the firewall only; no loop | missing, on purpose for now |
-| A validator with three results; a summary of what a change does | the same | translated, built |
+| A validator with three results; a summary of what a change does | the same, and a pull request check that posts it (`factory-check.workflow.yml`) | translated, built |
 
 ## What Warp has that this project had not thought about
 
@@ -35,7 +35,7 @@ What became of each Warp concept: **kept**, **translated** (the same idea in ano
 
 **A different model for review**, "to reduce shared blind spots": cheap, and checkable now that models are recorded.
 
-**The page that matters is what is waiting on a person**, not the dashboard: a steward's queue of locks, signatures and drafts is otherwise invisible.
+**The page that matters is what is waiting on a person**, not the dashboard: a steward's queue of locks, signatures and drafts is otherwise invisible. Built as `tools/waiting.py` (Warp's Home, "Waiting on you"), with a workflow that keeps a label in step on each tracking issue.
 
 ## Where a science factory must differ in kind
 

@@ -4957,7 +4957,7 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, allow_abbrev=False)  # no option is taken by its first letters: `--b` is not `--by`
         p.add_argument("--exploration", required=True, help="the exploration directory")
         if by in args:
-            args = (*args, model)
+            args = (*args, model, cost)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
@@ -4966,6 +4966,8 @@ def build_parser() -> argparse.ArgumentParser:
     by = (["--by"], {"required": True, "help": "who acts: agent:<id> (or human:<id> for a person exploring)"})
     model = (["--model"], {"default": None, "help": "the model that acts, when an agent does: required with --by agent:<id>, declared by "
                                                     "the caller and recorded in the event; a person's event needs none"})
+    cost = (["--cost"], {"default": None, "help": "optional, for an agent's event: what its step cost, as NAME=NUMBER pairs ("
+                                                  + ", ".join(sf.COST_KEYS) + "), declared by the caller like the model and proven by nothing"})
     add("start", cmd_start, by, (["--id"], {"required": True}), (["--question"], {"required": True}),
         (["--request"], {"required": True, "help": "the request, in the scientist's own words; bound by checksum"}),
         (["--subject"], {"required": True, "help": "key=value,key=value: what the data is about. The keys are yours to choose "
@@ -5067,6 +5069,9 @@ def main() -> int:
         x.model = getattr(a, "model", None)
         if str(getattr(a, "by", "")).startswith("agent:") and not x.model:
             raise Refused(sf.NO_MODEL)  # said before anything is run or written
+        x.cost = sf.parse_cost(getattr(a, "cost", None))
+        if x.cost and not str(getattr(a, "by", "")).startswith("agent:"):
+            raise Refused("--cost is declared for an agent's event, beside its model")
         a.fn(x, a)
     except Refused as r:
         print(f"REFUSED: {r}", file=sys.stderr)
