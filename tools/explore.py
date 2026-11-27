@@ -62,6 +62,9 @@ beside `studies/`, and the record is `studies/openings.jsonl`.
 Commands.
 
   start          set data aside, bind the request, write the record
+  fit            the coordinating agent's fit note at intake, before the first
+                 look: how well the question suits agents, a verdict, and what
+                 it needs from a person; advice that blocks nothing
   known          list the knowledge that bears on the question (calls
                  knowledge.py) and log what was listed; the first look is
                  refused until this has run
@@ -333,7 +336,8 @@ FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in 
 ID_PREFIX = re.compile(r"^[A-Za-z]{2,10}[-_:]")      # the agency in front of a site number (USGS-, usgs:)
 COMPARISONS = re.compile(r"^comparisons:\s*(\d+)\s*$", re.I | re.M)
 DEPTHS = ("whole", "skimmed")
-NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.named", "so-what.asked", "so-what.recorded", "so-what.verification")  # kinds that do not make their actor part of the exploring
+NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.named", "so-what.asked", "so-what.recorded", "so-what.verification",
+                "fit.noted")  # kinds that do not make their actor part of the exploring
 # A look runs in a scratch folder of its own, which holds its script and the files its command names and nothing else.
 PATTERN = set("*?[]{}")  # what a script could expand into names the tool never read
 JOINS = re.compile(r"[,:;@|]")  # what joins several paths into one word, or hides one behind a sign
@@ -2176,6 +2180,7 @@ def cmd_hand_over(x: Exploration, a) -> None:
         + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
         "Names are typed, not proven: whether the reviewer was a separate agent with a fresh context is in the run's record, not in this line.", "",
         f"**The so what.** {so_what_in_words(ev, said)}.", "",
+        f"**The fit note.** {' '.join(sf.fit_in_words(last(ev, 'fit.noted'))[:2])}", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
     held = {"pair": sa["subject"], "why_this_window": sa.get("why")}
@@ -2420,6 +2425,7 @@ def stage_of(x: Exploration) -> dict:
                                "standing": so_what_standing(ev, e)} for e in given]
     counts["looks_by_fence"] = fence_counts(ev)
     counts["working_data_declared"] = (start["set_aside"].get("working") or {}).get("places") or []
+    counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
             "models_recorded": {"by_actor": sf.models_recorded(ev), "note": "declared by whoever called the tool; nothing proves which model answered"},
             "set_aside": {k: start["set_aside"][k] for k in ("how", "window", "sites", "releases")},
@@ -2534,6 +2540,15 @@ def cmd_check_log(x: Exploration, a) -> None:
     print(f"check-log: PASS ({WAY}; {len(ev)} events, fingerprint {ev[-1]['seq']}:{ev[-1]['hash']}). As with the study log, "
           "a rewritten log shows only against a fingerprint posted outside the workspace or, in git, against the last commit and no "
           "earlier one: a log rewritten and then committed again passes this check.")
+
+
+def cmd_fit(x: Exploration, a) -> None:
+    """The coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person."""
+    ev = x.events()
+    x.started()
+    data = sf.record_fit(x, ev, a.by, a.file)
+    x.add(a.by, "fit.noted", data)
+    print(f"fit note recorded ({WAY}; advice, it blocks nothing): " + sf.fit_in_words(last(x.events(), "fit.noted"))[0])
 
 
 def cmd_contribution(x: Exploration, a) -> None:
@@ -3382,11 +3397,20 @@ def selftest() -> int:
 
         # ---- the person's so what on a reviewed lead ------------------------------------------------
         sw = fresh("E-SO-WHAT", subject="reach_id=R40,gauge=G40")
+        ff = tmp / "fit.yaml"
+        ff.write_text(yaml.safe_dump({"answer_is": "a judgement", "data_at_hand": "partly", "mostly": "judgement",
+                                      "person_must_supply": "what would make agreement between A and B surprising",
+                                      "verdict": "fit-with-a-person-steering", "why": "the counting is easy and the question is what matters",
+                                      "taste_needed": "someone who knows how A and B are maintained"}))
+        quiet(cmd_fit, sw, A(by="agent:tester-coordinating", file=str(ff)))
+        ok("the coordinating agent's fit note is recorded at intake and shown in status, and writing it does not make it part of the work",
+           "fit-with-a-person-steering" in stage_of(sw)["fit"] and "agent:tester-coordinating" not in did_the_work(sw.events()))
         known(sw)
         ssw = script(sw, "rows.py", "import json, sys\nd = json.load(open(sys.argv[1]))\nprint('rows', len(d['rows']))\n")
         sfig = script(sw, "draw.py", "from pathlib import Path\nPath('figures').mkdir(exist_ok=True)\n"
                                      "Path('figures/a-on-b.svg').write_text('<svg xmlns=\"http://www.w3.org/2000/svg\"/>')\nprint('drawn')\n")
         look(sw, ["{python}", sfig], why="a picture of A against B, every row")
+        ok("a fit note once the first look has run is refused", "work has started" in said(cmd_fit, sw, A(by="agent:tester-coordinating", file=str(ff))))
         look(sw, ["{python}", ssw, str(data)])
         swf = sw.d / "lead.yaml"
         swf.write_text(yaml.safe_dump(rl))
@@ -3447,8 +3471,8 @@ def selftest() -> int:
            and "| reviewing | agent:tester-review (an AI agent, model selftest-model as declared) | 3 |" in said_c
            and "What the logs cannot show" in said_c and "a lead, not a finding" in said_c
            and json.loads((sw.d / "contribution.json").read_text())["rows"][0]["work"] == "asking the question")
-        ok("the hand-over carries the so what, who gave it and its standing, and the log checks out",
-           "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "standing: practice" in swho
+        ok("the hand-over carries the so what, who gave it and its standing, and the fit note, and the log checks out",
+           "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "**The fit note.** **fit-with-a-person-steering**" in swho and "standing: practice" in swho
            and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
         no = fresh("E-SO-WHAT-NO", subject="reach_id=R41,gauge=G41")
         known(no)
@@ -3817,6 +3841,7 @@ def build_parser() -> argparse.ArgumentParser:
         (["--working-window"], {"default": None, "help": "START:END of the data that will be explored"}),
         (["--time-keys"], {"default": None, "help": "the keys under which a data file carries its times (default: " + ",".join(TIME_KEYS) + ")"}),
         (["--studies"], {"default": None, "help": "the folder of confirming studies, where the record is (default: ../../studies from the exploration)"}))
+    add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(sf.FIT_KEYS)}))
     add("known", cmd_known, by, (["--wiki", "--bundle"], {"dest": "bundle", "action": "append", "required": True,
                                                          "help": "a wiki: a directory of Markdown pages; repeatable"}),
         (["--drafts"], {"action": "append", "default": None, "help": "a queue of drafted pages, listed as drafts; repeatable"}),

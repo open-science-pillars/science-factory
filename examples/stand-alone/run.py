@@ -119,6 +119,14 @@ def main() -> int:
              "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--set-aside-window", "2025-01-01:2025-12-31",
              "--why", "the following year: the request says only 2024 has been looked at", "--working", "the 2024 record", "--working-window", "2024-01-01:2024-12-31",
              "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md", "--fresh-data", proposal)
+        fit = work / "fit.yaml"
+        fit.write_text(yaml.safe_dump({"answer_is": "checkable", "data_at_hand": "yes", "mostly": "computation",
+                                       "person_must_supply": "what the scientist has already looked at, and the difference that matters",
+                                       "verdict": "fit-with-a-person-steering", "why": "the gain is a number a rule can test; which readings to trust needs someone who knows the gauge",
+                                       "taste_needed": "someone who knows what a degraded flag means at low stage, and which result would be unremarkable"}))
+        tool("explore.py", "fit", *E, "--by", coordinator, "--file", fit)
+        step("before any look the coordinating agent writes a fit note: a verdict and what the work needs from a person, shown in status as advice",
+             "fit-with-a-person-steering" in json.loads(tool("explore.py", "status", *E, answer=True))["fit"])
         step("the exploration sets aside exactly what was proposed, and its log binds the proposal by checksum",
              json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["fresh_data"]["sha256"]
              == hashlib.sha256(proposal.read_bytes()).hexdigest())
@@ -351,6 +359,11 @@ def main() -> int:
         (trial / "analysis-plan.yaml").write_text(yaml.safe_dump(trial_plan, sort_keys=False))
         S = ("--study", trial)
         tool("sf.py", "start", *S, "--id", "STUDY-B", "--question", trial_plan["question"], "--by", coordinator)
+        fit.write_text(yaml.safe_dump({"answer_is": "exact", "data_at_hand": "yes", "mostly": "computation",
+                                       "person_must_supply": "nothing but the lock and the reading of the sealed answer",
+                                       "verdict": "good-fit", "why": "a system trial on a synthetic case: the answer is a number the sealed truth settles",
+                                       "taste_needed": "a person who looks at the rehearsal's figure before the lock"}))
+        tool("sf.py", "fit", *S, "--by", coordinator, "--file", fit)
         step("a second study, a system trial on a synthetic record, is started and its plan is complete",
              "the analysis plan is complete" in tool("sf.py", "check-plan", *S))
         step("its opening is refused before the lock",
@@ -385,6 +398,7 @@ def main() -> int:
         # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
+        step("the lock request shows the fit note from intake", "**good-fit**, noted by agent:coordinating-a" in asked)
         step("the lock request shows the rehearsal's figure as a picture with its caption, asks the person to look at it, and binds it",
              "## The figures: look at each one yourself" in asked and "](../figures/rehearsal-case.svg)" in asked and "Look at each figure yourself" in asked
              and "figures/rehearsal-case.svg" in json.loads((trial / "lock-request" / "manifest.json").read_text())["figures"])

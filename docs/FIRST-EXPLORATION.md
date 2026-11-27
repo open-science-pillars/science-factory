@@ -58,6 +58,12 @@ uv run tools/explore.py start --exploration $X --id EXPLORATION-1 --by $ME \
 
 From here on 2025 is not looked at, by any route. The tool refuses a look that names it.
 
+Before the first look the coordinator writes a fit note from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml`: is the answer exact, checkable or a judgement, is the data at hand, is the work mostly computation, what must a person supply, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`) and the taste the work will need. It is advice and blocks nothing; it is refused once a look has run:
+
+```
+uv run tools/explore.py fit --exploration $X --by $COORDINATOR --model "$M" --file fit.yaml
+```
+
 ## 4. Record what you read
 
 ```

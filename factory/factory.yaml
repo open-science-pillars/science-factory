@@ -68,9 +68,10 @@ procedure:
 
   request:       # what the scientist gives, in their own words (templates/request.md); `sf.py start --request` binds it by checksum
     fields: [what I want to know, the thing, why it matters, the difference that matters and where it comes from, what I have already looked at,
-             data I have not looked at, what I will do with each answer, by when, how I expect it to be fooled, who is on it, what I want back,
+             data I have not looked at, what I will do with each answer, by when, how I expect it to be fooled, what I can bring that an agent cannot, who is on it, what I want back,
              anyone else's product involved]
     questions_back: "four, asked by the analysis agent, then stop (templates/kinds-of-question.yaml)"
+    fit_note: "before any work starts the coordinating agent writes a fit note (skill note-the-fit; explore.py fit, sf.py fit): how well the question suits agents, a verdict and what it needs from a person. Advice that blocks nothing; status, the hand-over and the lock request show it"
     # where fresh data for an independent check can come from; the analysis agent proposes one from metadata only
     # (tools/fresh_data.py, the skill propose-fresh-data) and people approve it at the lock
     ways_to_hold_data_out: [the next data release, a later period, another site or region, a random set aside, a product never opened, forecasts scored later]

@@ -40,6 +40,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 
 - **study**: one question taken from request to signed finding or recorded no; one folder.
 - **request**: what the scientist asks, in their own words (`factory/templates/request.md`, or the issue form).
+- **fit note**: the coordinating agent's advice at intake, before any work: how well the question suits agents, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`), and what taste or expertise it needs from a person; it blocks nothing.
 - **tracking issue**: the GitHub issue a study's request became; fingerprints are posted there.
 - **analysis plan**: `analysis-plan.yaml`: what is estimated, on which data, and what counts for and against.
 - **the difference that matters**: the smallest difference that would change what you do.

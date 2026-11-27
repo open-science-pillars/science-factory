@@ -40,7 +40,7 @@ When a lead is to become a finding that others rely on, it is tested once on the
 
 | Stage | What happens |
 |---|---|
-| 1. Ask | You write a request in your own words (`factory/templates/request.md`, or the issue form on GitHub). The analysis agent asks four questions back, and the study starts with the request bound to it by checksum. |
+| 1. Ask | You write a request in your own words (`factory/templates/request.md`, or the issue form on GitHub). The coordinating agent answers with a fit note: how well the question suits agents and what it will need from you, as advice. The analysis agent asks four questions back, and the study starts with the request bound to it by checksum. |
 | 2. Plan | The analysis agent searches the wiki for anything that already answers or limits the question, reads only metadata, proposes the fresh data, and writes the analysis plan: what is estimated, on which data, and what result counts for or against the idea. |
 | 3. Test on known answers | The plan check, the known-answer tests (synthetic data with the truth put in, including cases where the idea is false and cases right at the smallest difference you care about), the working data and the rehearsals of the opening, repeated freely. |
 | The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words and every figure the work drew, for them to look at themselves. |

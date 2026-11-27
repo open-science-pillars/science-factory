@@ -52,6 +52,7 @@ sed -e 's/^study: .*/study: TRIAL-1/' -e 's|\.\./\.\./\.\./methods|../../methods
   $T/analysis-plan.yaml > $W/analysis-plan.yaml
 sf start --study $W --id TRIAL-1 --by agent:coordinating --model $M \
   --question "In the blind test case, is the gain that was put in within five percent of one?"
+sf fit --study $W --by agent:coordinating --model $M --file fit.yaml
 sf log-change --study $W --by agent:coordinating --model $M --log $C \
   --problem "the factory has not run end to end with a person's lock and signature" \
   --change "The system trial: TRIAL-1 through every stage." \
@@ -71,7 +72,7 @@ git commit -m "TRIAL-1: tests passed, lock requested"
 git push -u origin trial-1
 ```
 
-What to expect: `started TRIAL-1`; `change recorded under ...`; `plan check: the analysis plan is complete`; `known-answer tests: pass (exit 0)` after a minute or two; `working data: pass (exit 0)`; `rehearsal opening-path: pass (exit 0)`; `note NOTE-001 recorded`; `curation list: 1 open note(s) across 1 subject(s)`; and `lock request written`. Then open a pull request from `trial-1` into `main` on GitHub.
+`fit.yaml` is the coordinating agent's fit note, from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml` (for a system trial, `good-fit`: the answer is exact). What to expect: `started TRIAL-1`; `fit note recorded`; `change recorded under ...`; `plan check: the analysis plan is complete`; `known-answer tests: pass (exit 0)` after a minute or two; `working data: pass (exit 0)`; `rehearsal opening-path: pass (exit 0)`; `note NOTE-001 recorded`; `curation list: 1 open note(s) across 1 subject(s)`; and `lock request written`. Then open a pull request from `trial-1` into `main` on GitHub.
 
 ## 2. You: read, approve, merge. That is the lock.
 

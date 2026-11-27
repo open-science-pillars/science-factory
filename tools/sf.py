@@ -25,6 +25,10 @@ Commands, by stage. Each has one name.
     close                 the study ends: answered already, a signed
                           result, or a recorded decision not to sign
   Plan
+    fit                   the coordinating agent's fit note at intake: how
+                          well the question suits agents, a verdict, and
+                          what it needs from a person; advice that blocks
+                          nothing
     check-plan            the analysis plan is complete and well formed
   Test (repeat freely; every attempt is logged)
     test known-answers    synthetic data with the truth put in
@@ -2455,7 +2459,7 @@ def from_the_request(study: Study, ev: list) -> dict:
         text = ""
     pick = lambda label: next((ln.split("**", 2)[2].strip() for ln in text.splitlines() if ln.startswith(f"**{label}.**")), None)  # noqa: E731
     return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "so_what": pick("The so what"),
-            "text": text}
+            "fit": pick("The fit note"), "text": text}
 
 
 def conds_text(conds: list) -> str:
@@ -2629,7 +2633,10 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
            "## The question", "", str(plan["question"]).strip(), ""]
     if started and " ".join(str(started["data"].get("question")).split()) != " ".join(str(plan["question"]).split()):
         out += ["As the study was started, the question read: " + str(started["data"].get("question")), ""]
-    out += ["## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
+    fit = next((e for e in reversed(ev) if e["kind"] == "fit.noted"), None)
+    out += ["## How well the question suits agents (the fit note from intake)", ""]
+    out += fit_in_words(fit) if fit else ([f"From the exploration: {came['fit']}"] if came.get("fit") else fit_in_words(None))
+    out += ["", "## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
     out += ["## The fresh data that will check the idea, and why it was chosen", ""]
     fresh = got.get("fresh")
     if fresh:
@@ -3245,6 +3252,67 @@ def cmd_curation_list(study: Study, a) -> None:
     print(f"curation list: {out['open_notes']} open note(s) across {len(by_subject)} subject(s)")
 
 
+# ---- the fit note: how well a question suits agents, written at intake ----------
+FIT_KEYS = {"answer_is": ("exact", "checkable", "a judgement"), "data_at_hand": ("yes", "partly", "no"),
+            "mostly": ("computation", "reading", "judgement"), "person_must_supply": None,
+            "verdict": ("good-fit", "fit-with-a-person-steering", "poor-fit"), "why": None, "taste_needed": None}
+FIT_WORK_STARTED = ("look.run", "test.run", "rehearsal.run")  # a fit note is written before any of these
+
+
+def fit_problems(fit) -> list:
+    """Why a fit note is not complete, in words. It is advice to a person: these are the parts it must have, and nothing more."""
+    if not isinstance(fit, dict):
+        return ["a fit note is a mapping with the keys " + ", ".join(FIT_KEYS)]
+    p = [f"`{k}` is missing" for k in FIT_KEYS if k not in fit] + [f"`{k}` is not a key of a fit note" for k in fit if k not in FIT_KEYS]
+    for k, allowed in FIT_KEYS.items():
+        if k not in fit:
+            continue
+        if allowed and fit[k] not in allowed:
+            p.append(f"`{k}` is one of {', '.join(allowed)}")
+        elif not allowed and (not isinstance(fit[k], str) or len(fit[k].split()) < 3):
+            p.append(f"`{k}` is a sentence, in words")
+    return p
+
+
+def record_fit(log_owner, ev: list, by: str, file: str) -> dict:
+    """Read a fit note, check it, and return what the event records. The note blocks nothing; it is refused only when it is
+    incomplete or late (once work has started it is no longer a note at intake)."""
+    started = [e for e in ev if e["kind"] in FIT_WORK_STARTED]
+    if started:
+        raise Refused(f"work has started ({started[0]['kind']} at event {started[0]['seq']}): a fit note is written at intake, before the first "
+                      "look or test. It is advice to the person and never blocks the work, so the work goes on without it")
+    try:
+        fit = yaml.safe_load(Path(file).read_text())
+    except (OSError, yaml.YAMLError) as e:
+        raise Refused(f"the fit note cannot be read as YAML ({e})")
+    problems = fit_problems(fit)
+    if problems:
+        raise Refused("the fit note is not complete: " + "; ".join(problems))
+    return {**{k: " ".join(str(fit[k]).split()) for k in FIT_KEYS}, "file_sha256": sha_file(Path(file)),
+            "is": "advice to the person from intake; it blocks nothing"}
+
+
+def fit_in_words(e: dict | None) -> list:
+    if not e:
+        return ["No fit note was written at intake: nothing records how well the question suits agents or what it needs from a person."]
+    d = e["data"]
+    return [f"**{d['verdict']}**, noted by {e['actor']}" + (f" (model {e['model']} as declared)" if e.get("model") else "") + f": {d['why']}",
+            f"The answer is {d['answer_is']}; the data is at hand: {d['data_at_hand']}; the work is mostly {d['mostly']}.",
+            f"What a person has to supply: {d['person_must_supply']}", f"The taste or expertise the work will need from a person: {d['taste_needed']}",
+            "This is advice from intake; it blocked nothing."]
+
+
+def cmd_fit(study: Study, a) -> None:
+    """The coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person."""
+    study.check_actor(a.by)
+    ev = study.events()
+    if not ev:
+        raise Refused("the study is not started; start it with the request, then write the fit note before the first test")
+    data = record_fit(study, ev, a.by, a.file)
+    study.append(a.by, "fit.noted", data)
+    print("fit note recorded (advice, it blocks nothing): " + " ".join(fit_in_words(study.last("fit.noted"))[:1]))
+
+
 # ---- the overclaiming check: words that claim more than the work can show ----------
 UNCERTAINTY_KEYS = ("se", "stderr", "standard_error", "sd", "sigma", "uncertainty", "half_width")
 DECIMAL = re.compile(r"(?<![\d.])\d+\.\d+(?![\d.])")
@@ -3354,6 +3422,7 @@ def study_overclaiming(study: Study, factory: Path, ev: list | None = None) -> d
 # ---- who did each step: a contribution statement drawn from the logs ----------
 WORK = (  # (the kind of work, in words; the kinds of event that are that work)
     ("asking the question", ("study.started", "exploration.started")),
+    ("the fit note at intake", ("fit.noted",)),
     ("choosing the fresh data", ("fresh-data.proposed",)),
     ("exploring", ("knowledge.listed", "knowledge.read", "look.run", "look.refused", "choice.recorded", "lead.recorded", "lead.corrected")),
     ("planning and testing the method", ("test.run", "rehearsal.run", "held-out.changed")),
@@ -3792,7 +3861,7 @@ def stage_of(study: Study, factory: Path) -> dict:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
     return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study),
             "awaiting_verification": [act for act, st in standings(study.events()).items() if st == MERGE_FOUND],
-            "done": done, **(here or {"stage": "complete"}),
+            "done": done, **(here or {"stage": "complete"}), "fit": " ".join(fit_in_words(study.last("fit.noted"))[:2]),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
@@ -4558,6 +4627,40 @@ def _selftest_overclaiming(tmp: Path, check) -> None:
     check("the signature request lists the words the check flags, for the steward",
           "## Words the overclaiming check flags (a warning, never a block)" in (study.d / "signature-request" / "EVIDENCE.md").read_text()
           and "`remarkable`" in (study.d / "signature-request" / "EVIDENCE.md").read_text())
+
+
+def _selftest_fit(tmp: Path, check) -> None:
+    """The fit note at intake: complete or refused, shown in status and on the lock request, refused once work has started, and
+    never a reason to stop: a study with none still reaches its lock."""
+    good = {"answer_is": "checkable", "data_at_hand": "yes", "mostly": "computation",
+            "person_must_supply": "the difference that matters and what has been looked at",
+            "verdict": "fit-with-a-person-steering", "why": "the gain is a number a rule can test, and the screen needs someone who knows the flags",
+            "taste_needed": "someone who knows what a degraded flag means at low stage"}
+    f = tmp / "fit.yaml"
+    study = _fresh(tmp, "fit-1", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+    for change, words in (({"verdict": "maybe"}, "`verdict` is one of"), ({"why": "ok"}, "`why` is a sentence"),
+                          ({"mood": "fine words here"}, "is not a key of a fit note")):
+        f.write_text(yaml.safe_dump({**good, **change}))
+        check(f"an incomplete fit note is refused ({words})", words in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
+    f.write_text(yaml.safe_dump({k: v for k, v in good.items() if k != "taste_needed"}))
+    check("a fit note that does not say what taste the work needs from a person is refused", "`taste_needed` is missing" in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
+    f.write_text(yaml.safe_dump(good))
+    cmd_fit(study, A(by="agent:coordinating", file=str(f)))
+    check("a fit note is recorded with its verdict and shown in status, as advice",
+          study.last("fit.noted")["data"]["verdict"] == "fit-with-a-person-steering" and "fit-with-a-person-steering" in stage_of(study, FACTORY)["fit"]
+          and "blocks nothing" in study.last("fit.noted")["data"]["is"])
+    _to_lock(study)
+    study2 = _fresh(tmp, "fit-2")
+    cmd_test(study2, A(what="known-answers", by="agent:analysis"))
+    check("a fit note once work has started is refused, and the work goes on without one",
+          "work has started" in _refusal(cmd_fit, study2, A(by="agent:coordinating", file=str(f))))
+    cmd_test(study2, A(what="working-data", by="agent:analysis"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    cmd_request_lock(study2, A(by="agent:coordinating"))
+    check("the lock request shows the fit note, and a study with none still reaches its lock request, which says none was written",
+          "## How well the question suits agents (the fit note from intake)" in (study.d / "lock-request" / "EVIDENCE.md").read_text()
+          and "someone who knows what a degraded flag means" in (study.d / "lock-request" / "EVIDENCE.md").read_text()
+          and "No fit note was written at intake" in (study2.d / "lock-request" / "EVIDENCE.md").read_text())
 
 
 def copy_of(obj):
@@ -6531,6 +6634,8 @@ def selftest() -> int:
         _selftest_figures(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_overclaiming(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_fit(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())
@@ -6595,6 +6700,7 @@ DESCRIBE = {'start': 'a study exists; with --request, the request it answers is 
     'curation-list': 'open notes, for the curating agent',
     'resolve': 'a note is accepted, linked or declined',
     'scorecard': "the definition's checks for this study", 'log-change': 'a change to the definition, with its prediction',
+    'fit': "the coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person; advice that blocks nothing",
     'contribution': 'who did each step, from the logs of the study and the exploration it came from: a paragraph for a paper, and what the logs cannot show',
     'fingerprint': "the log's fingerprint, to post outside the workspace", 'check-log': 'everything re-checked from the files and against posted fingerprints',
     'selftest': 'the tool tests itself, attacks included'}  # one line for each command, as the help at the top of this file has it
@@ -6666,6 +6772,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("fingerprint", cmd_fingerprint)
     add("check-log", cmd_check_log, anchor,
         (["--change-log"], {"default": None, "dest": "change_log", "help": "the change log, to check this study's change records against"}))
+    add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(FIT_KEYS)}))
     add("scorecard", cmd_scorecard, proc, anchor)
     add("contribution", cmd_contribution, proc)
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),

@@ -341,7 +341,7 @@ FACTORY = {
     "agentDefaults!": {"harness!": TEXT, "model!": TEXT, "runner!": TEXT},
     "procedure!": {
         "coordinator!": TEXT, "study_kinds": ("map", TEXT),
-        "request": {"fields": STRINGS, "questions_back": TEXT, "ways_to_hold_data_out": STRINGS},
+        "request": {"fields": STRINGS, "questions_back": TEXT, "fit_note": TEXT, "ways_to_hold_data_out": STRINGS},
         "people": ("map", TEXT),
         "agents!": ("map", {"does!": TEXT, "may_not": TEXT, "must": TEXT, "never_sees": STRINGS, "runs": TEXT}),
         "separations": ("map", {"rule!": TEXT, "held_by!": TEXT, "not_held_by_the_tool": TEXT}),
@@ -1441,7 +1441,7 @@ def selftest() -> int:
         st = stamp(a)
         results.append(("the stamp of a definition carries its checksum, the model each agent declares and each skill used by checksum",
                         st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-5-5"}
-                        and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
+                        and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page", "note-the-fit"}
                         and all(SHA.match(v) for v in st["skills"].values())))
         results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 9))
         results.append(("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))

@@ -9,10 +9,12 @@ may_call:
   - "tools/explore.py fingerprint"
   - "tools/explore.py reviewer"
   - "tools/explore.py ask-so-what"
+  - "tools/explore.py fit"
   - "tools/explore.py hand-over"
   - "tools/explore.py check-study"
   - "tools/sf.py status"
   - "tools/sf.py start"
+  - "tools/sf.py fit"
   - "tools/sf.py check-plan"
   - "tools/sf.py check-log"
   - "tools/sf.py fingerprint"
@@ -24,6 +26,7 @@ may_call:
   - "tools/sf.py scorecard"
   - "tools/sf.py close"
   - "tools/fresh_data.py show"
+  - "skill:note-the-fit"
   - "role:analysis"
   - "role:review"
   - "role:curating"
@@ -62,6 +65,8 @@ Read the request. Decide, from the scientist's own words, which way of working i
 - It asks what is there, how well something works, where it fails, or says there is no hypothesis yet: it is **exploring**. Hand it to the analysis agent with the work folder, the wiki (the knowledge base) to read, and the name it acts under.
 - It states one claim to be tested and says what would count for and against: it is **confirming**. Start a study (`sf.py start --request`) and hand the plan stage to the analysis agent.
 - You cannot tell: ask the scientist one question, then decide. When in doubt it is exploring, because exploring spends no held-out data.
+
+Then, before any work starts, write the fit note with the skill `note-the-fit`: how well the question suits agents, a verdict, and what taste or expertise it will need from a person. Record it as soon as the exploration or study is started (`explore.py fit` or `sf.py fit`), and tell the scientist what they will need to bring. It is advice: a poor fit does not stop the work.
 
 Give each role only what its role file lists under `reads`. Give the review agent the work and never the analysis agent's account of it.
 

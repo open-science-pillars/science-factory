@@ -61,7 +61,7 @@ The checks a stage may name: `started`, `plan-complete`, `tests-pass`, `rehearsa
 
 They must be exactly the stages `done_by: people`. A factory declares both acts the same way; a factory whose acts are `practice` is valid, and every study under it is practice.
 
-**Read by people**, stating the design, each saying what does hold it: `product`, `home`, `procedure.study_kinds`, `procedure.request`, `procedure.people`, `procedure.separations`, `procedure.rules_for_people`, `measure`. Unknown keys, and keys given twice, are refused everywhere.
+**Read by people**, stating the design, each saying what does hold it: `product`, `home`, `procedure.study_kinds`, `procedure.request` (with `fit_note`, the intake step of the skill `note-the-fit`), `procedure.people`, `procedure.separations`, `procedure.rules_for_people`, `measure`. Unknown keys, and keys given twice, are refused everywhere.
 
 ## Agents, skills and harnesses
 

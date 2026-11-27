@@ -59,6 +59,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.25 | A lock request shows every figure the exploration's looks kept (copied by the hand-over and bound by checksum when the study starts) and every figure the plan's tests and rehearsals declare, as a picture with its caption; a signature request shows the opening's. A declared figure not drawn fails its step, a picture changed since it was kept refuses the request, and both manifests bind them. |
 | 1.26 | An attached finding carries a statement of who did each kind of work, drawn by the tool from the study's log and the log of the exploration it came from, with each agent's declared model and what the logs cannot show. A draft from an exploration or a study is refused without a paragraph that begins **Who did what.** |
 | 1.27 | Every lead and its reviews, and every finding and its reviews, are read for the phrases of the factory's list (`scorers/overclaiming-in-leads/phrases.yaml`) and for numbers stated more finely than the uncertainty beside them or in the opening's receipt; `confirms` is flagged unless the locked rules gave `supported`. Each flag names the phrase and the line, at `lead`, `review` and `attach`, in status, on the scorecard and in the signature request. It warns and never blocks. |
+| 1.28 | A fit note is complete (the five answers, a verdict from the three, why, and the taste the work needs) or refused, and refused once the first look or test has run; status, the hand-over and the lock request show it, and say so when there is none. It never blocks work. |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -89,6 +90,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 25. `sf.py selftest`: the checks of `_selftest_figures`; `explore.py selftest`: "the hand-over carries every figure the looks kept"; `verify_request.py --selftest`: "points each figure at the head of the pull request".
 26. `sf.py selftest`: "the finding carries who did each step", "the contribution statement of a study"; `explore.py selftest`: "the contribution statement of a lead"; `knowledge.py selftest`: "does not say who did the work it rests on".
 27. `sf.py selftest`: the checks of `_selftest_overclaiming`; `explore.py selftest`: "a lead that claims more than an exploration can show"; `check_factory.py --selftest`: "an overclaiming check that names no list of phrases", "a list of phrases with a pattern that does not compile".
+28. `sf.py selftest`: the checks of `_selftest_fit`; `explore.py selftest`: "the coordinating agent's fit note is recorded at intake", "a fit note once the first look has run is refused".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 
@@ -132,6 +134,7 @@ Nothing checks these. An agent is told, and the log shows afterwards what the to
 
 - Which model wrote an event: declared by the caller, recorded, proven by nothing. A contribution statement says so, and cannot show thinking that left no event.
 - That the people at the lock and the signature look at each figure: the request shows them, and the GitHub check points each at the pull request's head so the comment shows it, which has never run.
+- That a fit note is a fair reading of the request: the tool checks its form, not its judgement.
 - That a word the overclaiming check flags is rewritten, and that words it does not list do not overclaim: it warns, and the list is the factory's.
 - That only knowledge is read before data is set aside; that nothing is looked at outside the tool; that a choice is written down when it is made; that every comparison inside a look is declared.
 - That the agent proposing the fresh data opened no data file first; that a metadata file holds no values under the names the tool allows; that the reasons in a proposal are true; and that a confirmatory plan names a proposal at all (the lock request says so when it does not).
