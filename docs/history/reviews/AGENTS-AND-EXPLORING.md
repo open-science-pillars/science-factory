@@ -1,5 +1,7 @@
 # The agents, the exploring loop and the knowledge loop: the detail behind the register
 
+*History: kept as written; the register of every finding and its disposition today is [docs/reviews/README.md](../../reviews/README.md).*
+
 *History, kept as it was written on 2026-11-26, in the words of that day ("assistant" for what is now called an agent). Sections 1 to 4 name files by the paths of the day and cite records that are at the branch `records-2026-11` (docs/history/RENAMES.md); sections 5 to 7 use today's paths. The register, with a unique label for every finding and what is owed now, is `docs/reviews/README.md`.*
 
 

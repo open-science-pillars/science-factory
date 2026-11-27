@@ -27,7 +27,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: science-factory
-version: 0.16.0                           # the content of this definition; every change to it is in the change log
+version: 0.16.1                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before the fresh data that checks it is opened, once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding, or a recorded negative result
@@ -149,20 +149,19 @@ procedure:
       done_when: [closed]
       does: "sf.py close with the outcome; schedule the re-test the plan names"
 
-  # The two acts no agent may call. The validator fails unless these are exactly the stages done by people.
-  # Each act is a pull request: a tool writes the request into the study (an evidence summary in plain words and a
-  # manifest of checksums), and the act itself is a person approving and merging that pull request on the protected
-  # branch of the repository where the study lives. Who a person is, is decided there, by the platform, and not by a
-  # name typed on a machine that agents share. harnesses/github/ holds the workflow, the two scripts it calls and the
-  # checklist a person follows once. `practice` is the other way, for trying the tools out, the examples and the
-  # self-tests: the act is typed at a command line (`--local-practice`), the study says so in its status, on its
-  # scorecard and in its finding, and it never closes as a signed finding.
-  # An act has one of three standings, shown wherever it is shown. `practice`: typed. `merge found, people not
-  # verified`: git on this machine shows a merge of the request on a branch with the protected branch's name, which
-  # is all git can show, and which a local clone can make by itself. `verified`: the platform was asked
-  # (`sf.py verify-acts`) and said that the commit is the merge of a pull request into the protected branch of the
-  # repository named here, approved on the request as merged by enough accounts other than its author. No file in
-  # the work tree moves an act past the second standing. The held-out data is opened on a verified lock only.
+  # The two acts no agent may call; the validator fails unless these are exactly the stages done by people.
+  # Each is a pull request: a tool writes the request into the study (an evidence summary in plain words and a
+  # manifest of checksums), and the act is a person approving and merging it on the protected branch of the
+  # repository where the study lives, where the platform, not a name typed on a shared machine, decides who a person
+  # is. harnesses/github/ holds the workflow, its two scripts and the one-time checklist. `practice` is for trying the
+  # tools, the examples and the self-tests: typed (`--local-practice`), said so in status, scorecard and finding, and
+  # never closed as a signed finding.
+  # Three standings, shown wherever an act is. `practice`: typed. `merge found, people not verified`: git here shows
+  # a merge of the request on a branch with the protected branch's name, all git can show and a clone can make alone.
+  # `verified`: the platform, asked wherever the standing is used, said the commit merged a pull request into the
+  # protected branch of the repository named here, approved on the request as merged by enough accounts other than
+  # its author. Nothing in the work tree, a logged verification included, moves an act past the second standing.
+  # Held-out data opens on a lock verified at the opening only.
   acts_by_people:
     lock:
       who: [scientist, steward]
@@ -195,13 +194,11 @@ procedure:
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
       not_held_by_the_tool: "who approved, and that the approver is the steward: the platform says who approved when `sf.py verify-acts` asks it, and the repository's code owners say who the steward is. Until it is verified the signature stands as `merge found, people not verified` and the study is awaiting verification, not signed"
 
-  # A person's "so what" on a reviewed lead: is it worth confirming? Agents' results are often technically right and
-  # scientifically unremarkable until someone who knows the field says why they matter, so no lead goes to a
-  # confirming study without a person's answer. It is not an act on a plan or on fresh data, so it is lighter than
-  # the two acts above: on the platform it is a comment by a person on the tracking issue, recorded by the job that
-  # follows the comment and confirmed by asking the platform about that comment (docs/WHAT-IS-ENFORCED.md says why).
-  # Typed at a command line it is practice, and says so. Its three standings: `practice`, `comment recorded, person
-  # not verified`, `verified`.
+  # A person's "so what" on a reviewed lead: is it worth confirming? Agents' results are often right and unremarkable
+  # until someone who knows the field says why they matter, so no lead goes to a confirming study without a person's
+  # answer. It spends no fresh data and binds no plan, so it is lighter than the acts: a person's comment on the
+  # tracking issue, recorded by the job that follows it and confirmed by asking the platform (docs/WHAT-IS-ENFORCED.md
+  # says why). Typed, it is practice. Standings: `practice`, `comment recorded, person not verified`, `verified`.
   so_what:
     who: [scientist]
     command: "tools/explore.py so-what"

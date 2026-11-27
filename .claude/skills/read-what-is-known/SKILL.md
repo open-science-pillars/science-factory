@@ -5,16 +5,14 @@ description: "Before any work on a question: find the knowledge that bears on it
 
 # Read what is known
 
-Work starts from what is already known, pitfalls included. This skill is the procedure for that. It carries no facts about any dataset: every fact is read from the knowledge at the time, so a page added or corrected yesterday is found today.
+Work starts from what is already known, pitfalls included. This skill carries no facts about any dataset: every fact is read from the knowledge at the time, so yesterday's page is found today.
 
-The knowledge base is a wiki in the Open Knowledge Format v0.2: a directory of Markdown pages, each with a small front matter block (`type`, and where present `generated`, `sources`, `verified`, `status`, `stale_after`), an `index.md`, a `log.md` and a `quickstart.md` to start from. In this repository it is `openwiki/`. Any other knowledge base kept in that form is read the same way, by naming its directory.
-
-There are two ways to read it, and they give the same pages:
+The knowledge base is a wiki in the Open Knowledge Format v0.2: Markdown pages with small front matter (`type`, and where present `generated`, `sources`, `verified`, `status`, `stale_after`), an `index.md`, a `log.md` and a `quickstart.md`. Here it is `openwiki/`; any other in that form is read the same way, by naming its directory. Two ways to read it give the same pages:
 
 - **When the tools `openwiki_search` and `openwiki_read` are available, use them.** Search with the question, then read every page the search returns. They are read-only.
 - **Otherwise read the files**: start at `<wiki>/quickstart.md`, and use the command in step 1, which lists the pages that bear on a question.
 
-Before an exploration is started, use `knowledge.py about` (step 1): it reads pages and never data, and it is the only reading done before data is set aside. Once the exploration is started, run `explore.py known` in either case: it is what writes the list into the exploration log.
+Before an exploration starts, use `knowledge.py about` (step 1): it reads pages, never data, and is the only reading before data is set aside. Once it has started, run `explore.py known` either way: it writes the list into the log.
 
 ## Steps
 
@@ -28,9 +26,9 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
 
    Inside a started exploration use `uv run tools/explore.py known --exploration <dir> --by <you> --model <your model> --wiki ... [--drafts ...]`: it lists the same pages and writes what was listed into the exploration log. The first look is refused until this has run and a page is recorded as read.
 
-   Add `--tag` for a product, a quantity or a place the question implies and does not say. Run it again with other words if the list looks thin. An empty list is a result: say so.
+   Add `--tag` for a product, quantity or place the question implies and does not say. Run it again with other words if the list looks thin. An empty list is a result: say so.
 
-2. **Read every page listed**, whole, including the ones that came in only by a link. Read the pages a page points at when they bear on the question: the search matches on shared words, so it lists some pages that do not bear on the question and can miss one that a listed page leans on. A page that plainly came in on a stray word may be skimmed, and you say so.
+2. **Read every page listed**, whole, those that came in only by a link included, and the pages they point at that bear on the question: the search matches shared words, so it lists some that do not bear on it and can miss one a listed page leans on. A page that plainly came in on a stray word may be skimmed, and you say so.
 
 3. **Say what each page is before you lean on it.** The list says, for each page, its status and who signed it.
    - **Signed** (the page's own signature lines name a person: a `verified` event by a person in its front matter, or a `Signed-by: human:...` line): established for this organization. Follow it. If the work would contradict it, stop and raise a note; do not quietly do otherwise.
@@ -42,11 +40,11 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
    - what it **rules out**: something the question as asked would have you do that the page refuses;
    - what it **warns about**: a pitfall that makes a wrong answer look right.
 
-   Inside an exploration record each with `uv run tools/explore.py read --exploration <dir> --by <you> --model <your model> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page you did not read whole (`whole` is the default). A page the list did not print, one a listed page leans on, is recorded the same way by its file; the lead says the search did not list it. The lead lists what was read, what was skimmed and what was listed and not read.
+   Inside an exploration record each with `uv run tools/explore.py read --exploration <dir> --by <you> --model <your model> --concept <the path as the list printed it, or the file> --takes "<what it changes here>"`, adding `--depth skimmed` for a page not read whole (`whole` is the default). A page the list did not print is recorded by its file, and the lead says the search did not list it. The lead lists what was read, skimmed, and listed but not read.
 
 5. **Say what is missing.** If the question needs something the knowledge does not have, that is a note (`explore.py note --kind missing`, or `sf.py note`), not something to fill in from memory.
 
-6. **When nothing known applies.** The list may be empty, or hold only pages that came in on a stray word (an example's record, when the question is about another). Record that and go on: `known` logs the list, empty or not; record each page it listed as read, skimmed, with what it changes here (`--takes "bears on nothing here"`); raise a `missing` note for the page that should exist. No page can then give the boundary of the fresh data: take it from the metadata, start without `--boundary-from`, and say in `--why` that no page gave it.
+6. **When nothing known applies**, because the list is empty or holds only stray-word pages (an example's record, for a question about another): `known` logs the list anyway; record each listed page as read, skimmed (`--takes "bears on nothing here"`); raise a `missing` note for the page that should exist. Then no page gives the fresh data's boundary: take it from the metadata, start without `--boundary-from`, and say in `--why` that no page gave it.
 
 ## What comes out
 
