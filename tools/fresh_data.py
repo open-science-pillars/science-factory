@@ -349,6 +349,9 @@ def propose(a) -> dict:
         if later:
             raise Refused(f"the release `{name}` comes after {cut}, and the metadata lists working data after that ({later[0]})")
         rule = {"release": name, "cut_off": cut, "files": {fl["name"]: fl["sha256"] for fl in meta.get("files") or []}}
+        for k, v in (("cadence", declared[0].get("cadence")), ("expected_on", declared[0].get("date"))):
+            if v:  # the confirming study reads these at its opening, to say it is waiting for the release
+                rule[k] = str(v)
         if a.periods is not None:
             cadence = declared[0].get("cadence")
             if not cadence:
@@ -932,6 +935,8 @@ def selftest() -> int:
               and nr["test_size"]["fresh_window"] == {"start": "2025-08-01", "end": "2027-07-31"} and "NOAA" in nr["rule"]["periods"]["per_period_from"]
               and nr["rule"]["files"] == {"monthly.csv": sha_file(csvf)})
         check("and says why it cannot use the record's own variability", "the record's own variability" in nr["test_size"]["not_computed_here"])
+        check("the next release keeps the cadence the metadata declares in its rule, for the confirming study to count the periods it waits for",
+              nr["rule"].get("cadence") == "monthly" and propose(A(kind="next-release", release="next-update", **cbase))["proposal"]["rule"].get("cadence") == "monthly")
         check("a number of periods for a release with no cadence is refused, and says why",
               "declares none" in refused(propose, A(kind="next-release", release="v2", periods=12, **base)))
         # the reviewer's check: written before the work started

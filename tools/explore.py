@@ -2430,7 +2430,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
            f"at {sa['fresh_data']['proposed_at']} from metadata only; the proposal is `hand-over/fresh-data.yaml`, and the lock shows it in words.", ""]
           if sa.get("fresh_data") else []),
         "**Held out.** Only what the exploration set aside: " + (f"{w['start']} to {'onward' if w.get('open_ended') else w['end']}" if w
-                                                               else ", ".join(sa.get("sites") or sa.get("releases") or [])) + f". {sa.get('why')}", "",
+                                                               else ", ".join(sa.get("sites") or sa.get("releases") or []))
+        + (f", after the cut-off {sa['cut_off']}; the study takes the cut-off and the working data's checksums from this exploration's "
+           "start" if sa.get("cut_off") else "") + f". {sa.get('why')}", "",
         f"**The review of the lead.** {verdict['data']['verdict']} ({verdict['data']['file']} in the exploration), recorded "
         f"under the name {verdict['actor']}"
         + (f", who was named as a reviewer by {reviewers(ev, len(ev)).get(verdict['actor'].casefold())} before the lead was recorded"
@@ -2454,6 +2456,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
         held["fresh_data"] = os.path.relpath(out / "fresh-data.yaml", x.record().parent / a.study_id)
     if w:
         held["window"] = {"start": w["start"], "end": "CHOOSE: a date inside the set-aside window" if w.get("open_ended") else w["end"]}
+    if sa.get("cut_off"):  # the release: its window starts the day after the cut-off
+        held["window"] = {"start": (dt.date.fromisoformat(sa["cut_off"]) + dt.timedelta(days=1)).isoformat(),
+                          "end": "CHOOSE: the last day of the last period the plan needs"}
     plan_stub = {"study": a.study_id, "question": stub["question"], "quantity_estimated": stub["quantity_estimated"],
                  "data": {"working": str(sa["working"].get("description") or "") + " Explored in " + start["data"]["id"]
                           + ": already seen, never held out.", "held_out": held},
@@ -2512,6 +2517,12 @@ def study_problems(x: Exploration, study_dir: Path) -> list:
         return ["this exploration was never handed over"]
     if (sf.request_of(sev) or {}).get("sha") != over["data"]["request_sha"]:
         p.append("the study was not started from this exploration's hand-over (its request is not hand-over/request.md)")
+    if sa.get("cut_off"):  # the release the exploration set aside, as its start bound it, is the one the study started with
+        rel = sf.release_of(sev) or {}
+        bound = sorted(b["sha256"] for b in sa.get("bound") or [])
+        if rel.get("cut_off") != sa["cut_off"] or sorted(w["sha256"] for w in rel.get("working") or []) != bound:
+            p.append(f"the exploration set aside the release after {sa['cut_off']} and bound {len(bound)} working file(s) at its start, and "
+                     "the study did not start with that cut-off and those files: start it from hand-over/request.md, which brings them")
     if sf.openings_path(study).resolve() != x.record().resolve():
         p.append(f"the study does not sit beside the record this exploration wrote to ({x.record()}), so the study tool "
                  "would not see what was explored")
@@ -3509,6 +3520,52 @@ def selftest() -> int:
         shutil.copyfile(y.d / "lead.md", study.d / "finding" / "finding.md")
         ok("a lead attached to a study as its finding is refused by the study tool before any opening",
            _refusal(lambda: quiet(sf.cmd_attach, study, argparse.Namespace(by="agent:tester-analysis", file=str(study.d / "finding" / "finding.md")))) != "")
+
+        # ---- a release set aside, carried into the confirming study (the first real run's shape, made-up numbers) ----------
+        monthly_ho = tmp / "monthly-ho"
+        monthly_ho.mkdir()
+        (monthly_ho / "monthly.csv").write_text(rows)
+        xh = fresh("E-REL-HO", how="a new release", set_aside_window=None, set_aside_release=["next-update"], working_window=None,
+                   subject="reach_id=R72,gauge=G72", working_data=[str(monthly_ho)], release_cut_off="2024-12-31")
+        known(xh)
+        look(xh, ["{python}", script(xh, "tail.py", "import sys\nprint(open(sys.argv[1]).read().splitlines()[-1])\n"), str(monthly_ho / "monthly.csv")])
+        hlead = {**lead, "evidence": ["LOOK-001"], "choices_that_would_change_it": [], "choices_that_would_not": [],
+                 "what_looks_true": "The series rises through the year."}
+        (xh.d / "lead.yaml").write_text(yaml.safe_dump(hlead))
+        quiet(cmd_lead, xh, A(file=str(xh.d / "lead.yaml")))
+        quiet(cmd_review, xh, RA(xh, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        so_what(xh)
+        quiet(cmd_end, xh, A(outcome="lead", summary="the series rises; worth a test on the next update"))
+        quiet(cmd_hand_over, xh, A(by="agent:tester-coordinating", study_id="STUDY-REL", local_practice=True))
+        hreq = xh.d / "hand-over" / "request.md"
+        ok("the hand-over of a release says its cut-off, and that the study takes it from the exploration's start",
+           "after the cut-off 2024-12-31; the study takes the cut-off" in hreq.read_text())
+
+        def study_from(name: str, request: Path, **kw):
+            s_ = sf.Study(work / "studies" / name)
+            quiet(sf.cmd_start, s_, argparse.Namespace(id=name, question=hlead["proposed_plan"]["question"], by="agent:tester-coordinating",
+                                                       request=str(request), asked_by=None, **kw))
+            return s_
+
+        srel = study_from("STUDY-REL", hreq)
+        rel = srel.events()[0]["data"].get("release") or {}
+        ok("a study started from the hand-over of a release takes the cut-off and the working file's checksum from the exploration's "
+           "start, and says them in the words the lock uses", rel.get("cut_off") == "2024-12-31" and rel.get("exploration") is True
+           and [w["sha256"] for w in rel.get("working") or []] == [sf.sha_file(monthly_ho / "monthly.csv")]
+           and f"fresh data is the release after 2024-12-31; the data seen while exploring was monthly.csv with checksum "
+               f"{sf.sha_file(monthly_ho / 'monthly.csv')}" in sf.release_in_words(rel)
+           and not any("did not start with that cut-off" in q for q in study_problems(xh, srel.d)))
+        ok("a cut-off or working data an agent gives at the start of a study from a hand-over is refused: they come from the exploration",
+           "not given with a hand-over" in _refusal(lambda: study_from("STUDY-REL-1", hreq, fresh_data=str(rp_), working_data=None))
+           and not (work / "studies" / "STUDY-REL-1").exists())
+        (monthly_ho / "monthly.csv").write_text(rows + "A,2025-01,9.9\n")
+        ok("a study from the hand-over of a release whose working file has changed since the exploration started is refused at its start",
+           "has changed since the exploration started" in _refusal(lambda: study_from("STUDY-REL-2", hreq)))
+        (monthly_ho / "monthly.csv").write_text(rows)
+        (tmp / "copied").mkdir()
+        shutil.copyfile(hreq, tmp / "copied" / "request.md")
+        ok("check-study refuses a study started from a copy of the request, which brought no cut-off",
+           any("did not start with that cut-off" in q for q in study_problems(xh, study_from("STUDY-REL-C", tmp / "copied" / "request.md").d)))
 
         # ---- notes for curating, status, the log ------------------------------------------------------
         quiet(cmd_curation_list, y, A())
