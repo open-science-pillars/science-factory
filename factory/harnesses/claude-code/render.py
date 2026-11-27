@@ -125,8 +125,8 @@ def render_agent(name: str, fm: dict, body: str, default: dict | None = None) ->
         "---", yaml.safe_dump(head, sort_keys=False, width=1000, allow_unicode=True).rstrip(), "---", "",
         NOTICE.format(name=name), "",
         "## What the role file allows", "",
-        f"You are the {name} assistant of a science factory. You act under the name `agent:{name}` (or `agent:{name}-<suffix>` "
-        "when the coordinating assistant gives you one) in every `--by`"
+        f"You are the {name} agent of a science factory. You act under the name `agent:{name}` (or `agent:{name}-<suffix>` "
+        "when the coordinating agent gives you one) in every `--by`"
         + (f", and you give `--model {model}` beside it: the model this file asks Claude Code to run you as, which the log records "
            "and nothing checks, so say it truthfully and say so if you know you are another" if model else "") + ". Run every command from the repository root. "
         "Each tool call you make is checked against your role file before it runs, and what the file does not allow is blocked.", "",

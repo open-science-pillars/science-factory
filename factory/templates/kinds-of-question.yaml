@@ -1,4 +1,4 @@
-# Kinds of question: what an analysis assistant offers when a request arrives.
+# Kinds of question: what an analysis agent offers when a request arrives.
 # For each kind: how people say it, the quantity estimated and the rule it becomes,
 # what the known-answer tests must contain, and where honest held-out data can come from.
 # `the_tool_today` says what exists today. The study tool judges any rule written as
@@ -78,7 +78,7 @@ kinds:
     known_answer_tests: ["a feature put in that the diagnostics must find, so a blank result means something"]
     held_out_data: ["whatever is held out before exploring starts"]
     the_tool_today: "needs the exploratory study, which is designed and not built"
-questions_back:   # the analysis assistant asks these four and stops
+questions_back:   # the analysis agent asks these four and stops
   - "What number would change what you do, and where does it come from?"
   - "What have you already looked at?"
   - "What will you do with each answer: holds, does not hold, cannot tell?"

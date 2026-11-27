@@ -1,11 +1,11 @@
 # Science Factory: red team register
 
-*History. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
+*History. Its labels are read with a prefix in the register (docs/reviews/README.md): P1 for the first pass, P2 for the second, P3 for the third round and P4 for the check of its fixes. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
 
 *The first two rounds of this register were written on 2026-11-25 in the package's earlier vocabulary and were put into the present words later the same day; their findings, numbers and dispositions were meant to stay as they were, and the originals are not kept in this package. The third round, at the end, was written in the present words. WORDS.md maps the earlier words to the present ones, for anyone comparing this with older material.*
 
 
-The first draft of this package (a concept document and an architecture document, both now part of DESIGN.md, a build plan, now PLAN.md, and a working study tool) was given to three independent reviewers at once, each told to break it and to prove every point by running code or citing a file: a statistician attacking the method and the ladder, a tester trying to reach "ready for the steward's signature" while cheating, and a skeptical OSP maintainer checking facts, doctrine and deliverability against the repositories. They returned 33 findings, 8 of them blockers. A fresh verifier then checked the revised package cold and returned 15 more, 3 of them blockers. Every blocker is fixed in the files or, where the fix is work in another repository, scheduled as a deliverable and held by a planned rehearsal that the lock requires. One is neither: a hostile interpreter environment cannot be refused from inside the process, and is recorded as a limit with its control (R1 and V2). The reviewers were language models, so this is the factory's own review stage applied to itself and carries the same caveat: advisory until a person reads it.
+The first draft of this package (a concept document and an architecture document, both now part of DESIGN.md, a build plan, now PLAN.md, and a working study tool) was given to three independent reviewers at once, each told to break it and to prove every point by running code or citing a file: a statistician attacking the method and the ladder, a tester trying to reach "ready for the steward's signature" while cheating, and a skeptical maintainer of the larger project this was then part of checking facts, doctrine and deliverability against the repositories. They returned 33 findings, 8 of them blockers. A fresh verifier then checked the revised package cold and returned 15 more, 3 of them blockers. Every blocker is fixed in the files or, where the fix is work in another repository, scheduled as a deliverable and held by a planned rehearsal that the lock requires. One is neither: a hostile interpreter environment cannot be refused from inside the process, and is recorded as a limit with its control (R1 and V2). The reviewers were language models, so this is the factory's own review stage applied to itself and carries the same caveat: advisory until a person reads it.
 
 The single most useful finding was the maintainer's: rehearse the finding on working data before the lock, because a run receipt that cannot be cited cannot be repaired after the one opening of the held-out data is spent. (A run receipt is the record a run writes, with its code and inputs by checksum and every number it produced, so anyone can re-check the result without trusting whoever ran it; below, a receipt.) It became a step of the ladder.
 
@@ -55,9 +55,9 @@ Attacks the first draft already refused, confirmed by the tester: an opening bef
 
 **M3, blocker. Third-party handling was out of order.** The first draft signed before delivering and treated the public repository as private. *Changed:* the opening and everything after it run in a private clone; the result is delivered before any public reference and before the steward's signature is made public; the non-affiliation line is required; whether the steward's own affiliations call for review or disclosure is a listed decision. *Remains:* these documents quote 2024 working-data numbers about a named product; whether that needs the same handling is put to the steward.
 
-**M4, blocker. A wrong fact and an unacknowledged doctrine change.** OSP's ingest loop already has assistants draft a concept at once and open a concept issue; the first draft said there was no channel and had working assistants never touching knowledge. *Changed:* the note is a structured record beside the ingest loop, not a replacement; the curating assistant is the reader across studies; nothing in the doctrine is reversed.
+**M4, blocker. A wrong fact and an unacknowledged doctrine change.** the larger project's ingest loop already has assistants draft a concept at once and open a concept issue; the first draft said there was no channel and had working assistants never touching knowledge. *Changed:* the note is a structured record beside the ingest loop, not a replacement; the curating assistant is the reader across studies; nothing in the doctrine is reversed.
 
-**M5, blocker. The roadmap block was invalid and used retired numbered sessions.** *Changed:* one initiative with eight deliverables (ten after the scientist review) in `roadmap-initiative.yaml`, validated against the roadmap schema; the build plan is written against deliverable ids and `/osp-session`.
+**M5, blocker. The roadmap block was invalid and used retired numbered sessions.** *Changed:* one initiative with eight deliverables (ten after the scientist review) in a roadmap file (since removed), validated against the roadmap schema; the build plan is written against deliverable ids and the larger project's session command.
 
 **M6, major. The ablation was quoted against its own caveat.** *Changed:* quoted with the caveat: it removed concept files, not skills.
 
@@ -75,7 +75,7 @@ Attacks the first draft already refused, confirmed by the tester: an opening bef
 
 **M13, major. Effort was understated.** *Changed:* the build plan has two parts and adopts the reviewer's estimate for the second.
 
-**M14, major. Overclaims.** Known-answer testing is not new to OSP; "cannot fail" and "the blind test the field lacks" were too strong. *Changed:* stated as a generalization of the existing calibration report; the blind test of the system is described as measuring the study tool and the method.
+**M14, major. Overclaims.** Known-answer testing is not new to the larger project; "cannot fail" and "the blind test the field lacks" were too strong. *Changed:* stated as a generalization of the existing calibration report; the blind test of the system is described as measuring the study tool and the method.
 
 **M15 and M16, minor. Exhibit inconsistencies and writing.** *Changed:* the exhibits were regenerated with assistants as actors and relative paths, with the prediction in the change log written before the run; terms are defined at first use; the wording gate runs clean; tables are narrower. The first practice run was kept as history and labelled (since removed).
 
@@ -110,6 +110,8 @@ A fresh verifier, which saw none of the above, was given the revised package and
 After both passes the package was read by three more reviewers, each held to one role: a research scientist who runs a group, an applied scientist who must defend a decision, and a modeler with a large pipeline. They were not asked to break the study tool but to say how they would ask it for work and where it would lose them. Their fifteen objections and what each changes are in SCIENTISTS.md. The ones that reach back into this register: the difference that matters must have a source that is the requester's (S4, now a field in the request); "unseen" is rarely true, so exposure is declared and spatial and prospective holdouts are named (under held-out data in the concept document, now part of DESIGN.md); inconclusive needs a consequence written into the plan; exploration needs a first-class kind of study that fences data before it explores; and five scale limits in the study tool (blocking openings, whole-file hashing, environment identity, one scalar per rule, cheap known-answer tests) are confirmed against the code and scheduled, not fixed.
 
 ## What still stood after both passes
+
+*Superseded by the pull request route and the three standings: see docs/WHAT-IS-ENFORCED.md.*
 
 *Kept as it was written. Its first limit names a control that does not answer it, which the third round showed (B12); the section at the end of this register replaces it.*
 
@@ -255,6 +257,8 @@ What was done. The tool findings were fixed in code, each with a self-test check
 **C22, minor. Two places forgot the first limit where a reader would assume protection.** *Corrected in the documents:* a paragraph under Part B's prompt and a sentence in the workflow adapter.
 
 ## What still stands after three rounds
+
+*Superseded by the pull request route and the three standings: see docs/WHAT-IS-ENFORCED.md.*
 
 Four limits, as the study tool states them at the top of its file. Public data can be read outside the access gate, and nothing built answers that: only an analysis assistant with no route to the withheld values would. Names are typed, not proven; the control is an approving review and a protected branch, outside the tool. A study log can be rewritten, cut short or added to by hand until it is committed and its fingerprints are posted; the control is those commits and posts. A hostile interpreter can rewrite anything; the control is a clean place for the opening, and none is built.
 

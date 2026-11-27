@@ -17,4 +17,4 @@ How to read it. Use the `openwiki_search` and `openwiki_read` tools when you hav
 
 What a page is worth. Every page here is working memory at status draft. None is signed: a page is signed only when its own `verified` lines name a person, and only a person adds those. Use a draft, say that it is a draft, and check it against your data before leaning on it.
 
-Assistants do not write into this directory. What they learn goes to a queue of drafts beside the work, in the same form, and a page enters the wiki only when a person accepts it.
+Agents do not write into this directory. What they learn goes to a queue of drafts beside the work, in the same form, and a page enters the wiki only when a person accepts it.

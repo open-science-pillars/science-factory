@@ -1,4 +1,4 @@
-# A harness: what starts an agent. This one starts none: a person, or one assistant playing the roles in turn,
+# A harness: what starts an agent. This one starts none: a person, or one agent playing the roles in turn,
 # asks for one command, one write or one read at a time, and the same decision the Claude Code harness uses says
 # yes or no.
 description: "Checks one command, one write or one read at a time against an agent's file, with no agent started."

@@ -1,6 +1,6 @@
 # Request
 
-*Written for this example by the assistant that built it, in the voice of a river scientist. No person asked this: it stands in for a request so that the assistants have something real to work on. The data and the knowledge it points at are real.*
+*Written for this example by the agent that built it, in the voice of a river scientist. No person asked this: it stands in for a request so that the agents have something real to work on. The data and the knowledge it points at are real.*
 
 **What I want to know.** How well does SWOT river height follow the Baton Rouge gauge, and where does it not? No hypothesis yet beyond "probably well at high water". I want to know what is there before I decide what is worth testing.
 

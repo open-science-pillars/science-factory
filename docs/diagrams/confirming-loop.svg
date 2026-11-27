@@ -1,76 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 750" width="960" height="750" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
-  <title id="title">The confirming loop: five stages and two acts by people</title>
-  <desc id="desc">A scientist's request goes down through five numbered stages inside the study log: Ask, Plan, Test on known answers, Open the held-out data once, and Review, sign and learn. Two acts by people stand between them, each a pull request approved and merged on a protected branch: the lock, between Test and Open, and the steward's signature, after Review. For each the platform is asked who approved; until it has confirmed an act the act stands as a merge found with the people not verified, and the study is not signed. The result is a finding or a recorded no. Beside the stages are the procedure, read at Ask and changed after Review; the shared knowledge, read at Plan and fed by notes; and where the computing runs, which the stages do not call yet.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
+  <title id="title">The confirming loop</title>
+  <desc id="desc">The definition, factory/, sets the stages and who does each. Nine steps run from left to right and down: ask, plan, test on known answers, the lock by people, check once on fresh data, review, the signature by people, learn, close. Agents do the labor of the stages in blue. The two acts in amber are pull requests people approve and merge on GitHub. The fresh data, in red, is opened once, by the tool, after the lock. The study log records every step.</desc>
   <defs>
     <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="8.5" refY="4" orient="auto">
       <path d="M 0 0 L 9 4 L 0 8 Z" fill="#374151"/>
     </marker>
-    <marker id="arrow-back" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="0.5" refY="4" orient="auto">
-      <path d="M 9 0 L 0 4 L 9 8 Z" fill="#374151"/>
-    </marker>
   </defs>
-  <rect x="0" y="0" width="960" height="750" fill="#FFFFFF"/>
-  <rect x="220" y="20" width="360" height="44" rx="6" fill="#FFFFFF" stroke="#374151" stroke-width="1.25"/>
-  <text x="400.0" y="42.0" text-anchor="middle" dy="0.35em" font-size="14">A scientist's request, in their own words</text>
-  <rect x="20" y="88" width="600" height="518" rx="6" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="2 4"/>
-  <text x="36" y="108.0" text-anchor="start" dy="0.35em" font-size="14">The study log:</text>
-  <text x="36" y="126.0" text-anchor="start" dy="0.35em" font-size="14">every stage is</text>
-  <text x="36" y="144.0" text-anchor="start" dy="0.35em" font-size="14">written to it</text>
-  <path d="M 400 64 L 400 104" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="104" width="360" height="44" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="400.0" y="126.0" text-anchor="middle" dy="0.35em" font-size="14">1  Ask: four questions back</text>
-  <path d="M 400 148 L 400 170" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="170" width="360" height="44" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="400.0" y="192.0" text-anchor="middle" dy="0.35em" font-size="14">2  Plan: the analysis plan</text>
-  <path d="M 400 214 L 400 236" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="236" width="360" height="62" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="400.0" y="249.0" text-anchor="middle" dy="0.35em" font-size="14">3  Test on known answers: known-answer</text>
-  <text x="400.0" y="267.0" text-anchor="middle" dy="0.35em" font-size="14">tests, working data, rehearsals;</text>
-  <text x="400.0" y="285.0" text-anchor="middle" dy="0.35em" font-size="14">repeated freely</text>
-  <path d="M 400 298 L 400 320" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="320" width="360" height="44" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
-  <text x="400.0" y="333.0" text-anchor="middle" dy="0.35em" font-size="14">The lock: people approve a pull request;</text>
-  <text x="400.0" y="351.0" text-anchor="middle" dy="0.35em" font-size="14">the platform is asked who approved</text>
-  <path d="M 400 364 L 400 386" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="386" width="360" height="62" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="400.0" y="408.0" text-anchor="middle" dy="0.35em" font-size="14">4  Open the held-out data once,</text>
-  <text x="400.0" y="426.0" text-anchor="middle" dy="0.35em" font-size="14">through the access gate</text>
-  <path d="M 400 448 L 400 470" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="470" width="360" height="44" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="400.0" y="492.0" text-anchor="middle" dy="0.35em" font-size="14">5  Review, sign and learn</text>
-  <path d="M 400 514 L 400 536" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="536" width="360" height="44" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
-  <text x="400.0" y="549.0" text-anchor="middle" dy="0.35em" font-size="14">The steward's signature, by pull request;</text>
-  <text x="400.0" y="567.0" text-anchor="middle" dy="0.35em" font-size="14">not signed until the platform confirms it</text>
-  <path d="M 400 580 L 400 630" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="220" y="630" width="360" height="44" rx="6" fill="#FFFFFF" stroke="#374151" stroke-width="1.25"/>
-  <text x="400.0" y="652.0" text-anchor="middle" dy="0.35em" font-size="14">A finding, or a recorded no</text>
-  <rect x="40" y="392" width="140" height="50" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
-  <text x="110.0" y="417.0" text-anchor="middle" dy="0.35em" font-size="14">Held-out data</text>
-  <path d="M 180 417 L 220 417" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <rect x="730" y="96" width="210" height="60" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="835.0" y="117.0" text-anchor="middle" dy="0.35em" font-size="14">The procedure</text>
-  <text x="835.0" y="135.0" text-anchor="middle" dy="0.35em" font-size="14">(factory/factory.yaml)</text>
-  <rect x="730" y="166" width="210" height="60" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="835.0" y="196.0" text-anchor="middle" dy="0.35em" font-size="14">Shared knowledge</text>
-  <rect x="730" y="250" width="210" height="80" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="835.0" y="272.0" text-anchor="middle" dy="0.35em" font-size="14">Where it runs:</text>
-  <text x="835.0" y="290.0" text-anchor="middle" dy="0.35em" font-size="14">local today; cluster,</text>
-  <text x="835.0" y="308.0" text-anchor="middle" dy="0.35em" font-size="14">cloud and MAAP designed</text>
-  <path d="M 730 118 L 580 118" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <path d="M 730 186 L 580 186" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <path d="M 580 267 L 730 267" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-  <path d="M 580 417 L 690 417 L 690 312 L 730 312" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
-  <path d="M 580 484 L 702 484 L 702 212 L 730 212" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <path d="M 580 500 L 714 500 L 714 144 L 730 144" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
-  <text x="628" y="472.0" text-anchor="start" dy="0.35em" font-size="14">notes</text>
-  <text x="628" y="516.0" text-anchor="start" dy="0.35em" font-size="14">what to change</text>
-  <rect x="30" y="706" width="28" height="18" rx="4" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
-  <text x="66" y="715.0" text-anchor="start" dy="0.35em" font-size="14">the factory's own parts</text>
-  <rect x="245" y="706" width="28" height="18" rx="4" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
-  <text x="281" y="715.0" text-anchor="start" dy="0.35em" font-size="14">an act by people</text>
-  <rect x="430" y="706" width="28" height="18" rx="4" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
-  <text x="466" y="715.0" text-anchor="start" dy="0.35em" font-size="14">held-out data</text>
-  <path d="M 580 715 L 608 715" fill="none" stroke="#374151" stroke-width="1.25" stroke-dasharray="6 4"/>
-  <text x="616" y="715.0" text-anchor="start" dy="0.35em" font-size="14">planned, not built</text>
+  <rect x="0" y="0" width="960" height="520" fill="#FFFFFF"/>
+  <rect x="250" y="24" width="460" height="54" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="480.0" y="41.9" text-anchor="middle" dy="0.35em" font-size="14">The definition (factory/): the stages,</text>
+  <text x="480.0" y="60.1" text-anchor="middle" dy="0.35em" font-size="14">who does each, and what ends each</text>
+  <rect x="40" y="140" width="190" height="64" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="135.0" y="172.0" text-anchor="middle" dy="0.35em" font-size="14">1. Ask</text>
+  <rect x="270" y="140" width="190" height="64" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="365.0" y="162.9" text-anchor="middle" dy="0.35em" font-size="14">2. Plan, and propose</text>
+  <text x="365.0" y="181.1" text-anchor="middle" dy="0.35em" font-size="14">the fresh data</text>
+  <path d="M 230 172 L 270 172" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="500" y="140" width="190" height="64" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="595.0" y="162.9" text-anchor="middle" dy="0.35em" font-size="14">3. Test on</text>
+  <text x="595.0" y="181.1" text-anchor="middle" dy="0.35em" font-size="14">known answers</text>
+  <path d="M 460 172 L 500 172" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="730" y="140" width="190" height="64" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="825.0" y="162.9" text-anchor="middle" dy="0.35em" font-size="14">The lock,</text>
+  <text x="825.0" y="181.1" text-anchor="middle" dy="0.35em" font-size="14">by people</text>
+  <path d="M 690 172 L 730 172" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="730" y="290" width="190" height="64" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="825.0" y="312.9" text-anchor="middle" dy="0.35em" font-size="14">4. Check once,</text>
+  <text x="825.0" y="331.1" text-anchor="middle" dy="0.35em" font-size="14">on fresh data</text>
+  <rect x="500" y="290" width="190" height="64" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="595.0" y="322.0" text-anchor="middle" dy="0.35em" font-size="14">5. Review</text>
+  <path d="M 730 322 L 690 322" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="270" y="290" width="190" height="64" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="365.0" y="312.9" text-anchor="middle" dy="0.35em" font-size="14">The signature,</text>
+  <text x="365.0" y="331.1" text-anchor="middle" dy="0.35em" font-size="14">by people</text>
+  <path d="M 500 322 L 460 322" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="40" y="290" width="190" height="64" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="135.0" y="312.9" text-anchor="middle" dy="0.35em" font-size="14">Learn,</text>
+  <text x="135.0" y="331.1" text-anchor="middle" dy="0.35em" font-size="14">then close</text>
+  <path d="M 270 322 L 230 322" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 825 204 L 825 290" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 480 78 L 480 110 L 135 110 L 135 140" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="268.2" y="99.5" width="123.5" height="21.0" fill="#FFFFFF"/>
+  <text x="330.0" y="110.0" text-anchor="middle" dy="0.35em" font-size="14">sets the stages</text>
+  <rect x="40" y="420" width="280" height="60" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="180.0" y="440.9" text-anchor="middle" dy="0.35em" font-size="14">Agents do the labor, four</text>
+  <text x="180.0" y="459.1" text-anchor="middle" dy="0.35em" font-size="14">of them, each from its file</text>
+  <rect x="340" y="420" width="280" height="60" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="480.0" y="440.9" text-anchor="middle" dy="0.35em" font-size="14">People make the two acts:</text>
+  <text x="480.0" y="459.1" text-anchor="middle" dy="0.35em" font-size="14">pull requests on GitHub</text>
+  <rect x="640" y="420" width="280" height="60" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="780.0" y="440.9" text-anchor="middle" dy="0.35em" font-size="14">The fresh data is opened</text>
+  <text x="780.0" y="459.1" text-anchor="middle" dy="0.35em" font-size="14">once, by the tool</text>
+  <text x="480.0" y="385.0" text-anchor="middle" dy="0.35em" font-size="14">Every step is written to the study log, which is only ever added to.</text>
 </svg>

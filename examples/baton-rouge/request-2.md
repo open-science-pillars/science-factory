@@ -1,6 +1,6 @@
 # Request
 
-*Written for this example by the assistant that built it, in the voice of a river scientist. No person asked this. It is a second, different question on the same record, asked after the first exploration ended and its notes were drafted.*
+*Written for this example by the agent that built it, in the voice of a river scientist. No person asked this. It is a second, different question on the same record, asked after the first exploration ended and its notes were drafted.*
 
 **What I want to know.** Does the river width SWOT reports for the Baton Rouge reach tell me anything about stage? If width rose and fell with the gauge I could use it as a check on the height. I have no idea whether a leveed reach like this one widens at all.
 
