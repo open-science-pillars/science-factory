@@ -5,7 +5,7 @@ description: "Turn notes and leads from explorations and studies into draft know
 
 # Draft a knowledge page
 
-What a piece of work learned about the data goes back into the shared knowledge as pages a steward reads and signs. This skill is the procedure for drafting them. It carries no facts about any dataset: what a page says comes from the notes, the receipts and the sources.
+What work learned about the data goes back into the shared knowledge as pages a steward reads and signs. This skill drafts them, and carries no facts about any dataset: a page's words come from the notes, receipts and sources.
 
 **When you start.** Start on an exploration only when `explore.py status` says it has ended (stage `learn`, `hand-over` or `ended`). Before that its notes can still change and its lead can still be revised after a review, and `explore.py resolve` refuses. On a study, start when `sf.py status` says `learn`.
 
@@ -23,21 +23,21 @@ What a piece of work learned about the data goes back into the shared knowledge 
 
 ## Drafting
 
-Write each page into the queue, in a folder named for its type the way the wiki is laid out (`<queue>/pitfalls/`, `<queue>/datasets/`, `<queue>/recipes/`). Start from `page-template.md` beside this skill. Read two or three real pages of the same type in the wiki first and follow their shape.
+Write each page into the queue in a folder named for its type, as the wiki is laid out (`<queue>/pitfalls/`, `<queue>/datasets/`, `<queue>/recipes/`), from `page-template.md` beside this skill, following the shape of two or three real pages of that type.
 
 Front matter the queue requires (the tool refuses a draft without them):
 
 - `type`, `spheres`, `title`, `description`, `tags`: as the wiki's pages have them. The title states the thing, not the topic.
-- `generated: {by: <platform>/<model>, at: <now, UTC, from the clock>}`. The knowledge format takes the platform and the model here (for example `claude-code/<model>`), not the name you act under, and the format's checker refuses anything else. A time later than the clock is refused: the stamp is read as a clock reading.
+- `generated: {by: <platform>/<model>, at: <now, UTC, from the clock>}`: the platform and model (such as `claude-code/<model>`), not the name you act under, which the format's checker refuses. A time later than the clock is refused: the stamp is a clock reading.
 - `status: draft`. Never anything else.
 - No `verified` key at all. A steward's signing tool adds it after the merge.
-- `sources`: one entry per source, each with an `id`, a `resource` (an address: the provider's page, the record's address, or the receipt's path in the repository at a commit) and a `title` saying what was read there and when. Every statement in the body carries a footnote to a source id. The tool checks that every footnote the body cites is a source in the header and that every source is cited; it cannot check that a statement has a footnote or that the source says what the statement says, so reread each one against its source before you run the check. When the repository has no commit to point at, give the receipt's path and put its checksum in the title.
-- `drafted_from`: the exploration or study, the notes or the lead, and you (`{exploration: <ID>, notes: [NOTE-001], log: <the log fingerprint from the curation list>, by: <the name you act under, agent:curating-...>}`). `by` is the same name you give `resolve --by`, so the page and the log name one actor.
-- `seen_while: exploring` when it comes from an exploration, and the body says so in its first paragraph: where, when, on which data, how many observations.
-- `relates_to`: one entry for every page in the wiki this page bears on: `{concept: <the page's path below the wiki>, relation: extends | narrows | corrects | contradicts | beside, why: <words>}`. `beside` is for a page on the same subject that makes another point and conflicts with nothing. If the page would only repeat a concept, do not draft it: link the note.
-- `stale_after`: a date, when what it says can go out of date.
+- `sources`: per source an `id`, a `resource` (the provider's page, the record's address, or the receipt's path at a commit) and a `title` saying what was read there and when. Every statement in the body footnotes a source id. The tool checks that every cited footnote is a header source and every source is cited, not that each statement has one or that the source says it, so reread each against its source first. With no commit to point at, give the receipt's path and put its checksum in the title.
+- `drafted_from`: the exploration or study, the notes or the lead, and you (`{exploration: <ID>, notes: [NOTE-001], log: <the log fingerprint from the curation list>, by: <the name you act under, agent:curating-...>}`); `by` is the name you give `resolve --by`, so page and log name one actor.
+- `seen_while: exploring` for a page from an exploration, whose first paragraph says where, when, on which data, how many observations.
+- `relates_to`: an entry per wiki page it bears on, `{concept: <the page's path below the wiki>, relation: extends | narrows | corrects | contradicts | beside, why: <words>}` (`beside`: the same subject, another point, no conflict). A page that would only repeat a concept is not drafted: link the note.
+- `stale_after`: a date, when it can go out of date.
 
-The body: what happens (the mechanism, if known, and say when it is not), what was measured (numbers with units, counts and the receipt they come from), how it makes a wrong answer look right, what to do, and how someone else could check it. Keep one case's numbers as that case's numbers. End with a paragraph that begins **Who did what.**: run `uv run tools/explore.py contribution --exploration <x>` (or `uv run tools/sf.py contribution --study <s>`), take its paragraph and its sentence on what the log cannot show, and do not add credit the log does not show. The tool refuses a draft from an exploration or a study without it.
+The body: what happens (the mechanism if known, and say when it is not), what was measured (numbers with units, counts and their receipt), how it makes a wrong answer look right, what to do, how someone else could check it. One case's numbers stay that case's. End with a paragraph beginning **Who did what.**: run `uv run tools/explore.py contribution --exploration <x>` (or `uv run tools/sf.py contribution --study <s>`) and take its paragraph and its sentence on what the log cannot show, adding no credit the log does not show; a draft from an exploration or study without it is refused.
 
 ## After drafting
 
@@ -45,7 +45,7 @@ The body: what happens (the mechanism, if known, and say when it is not), what w
 uv run tools/knowledge.py check-drafts --queue <queue> --wiki <wiki> [--checker <the format's checker>]
 ```
 
-It applies the rules of the queue, runs the checker of the knowledge format when `--checker` names it, and writes the queue's index when everything passes. The checker is run only when the checksum of the file is pinned in `factory/checkers.yaml`; any other file is refused and not run. A source whose `resource` is a path must name a file that exists, read from the top of the repository, from the draft's own folder or from its place in the wiki; an address (`https:`, `doi:`) is not fetched. Fix what it refuses. Then record what became of each note:
+It applies the queue's rules, runs the format's checker when `--checker` names it (only a checker whose checksum is pinned in `factory/checkers.yaml`; any other is refused, not run), and writes the queue's index when all passes. A `resource` that is a path names an existing file, read from the top of the repository, the draft's folder or its place in the wiki; an address (`https:`, `doi:`) is not fetched. Fix what it refuses, then record what became of each note:
 
 ```
 uv run tools/explore.py resolve --exploration <x> --by <you> --model <your model> --note NOTE-001 --disposition drafted --ref <queue path of the page>
