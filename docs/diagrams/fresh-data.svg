@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
+  <title id="title">Fresh data, chosen by an agent and approved by people</title>
+  <desc id="desc">From left to right: a metadata file, which lists what data exists and no measured value; the analysis agent proposes the fresh data from it, with the kind, exactly what, why it suits, what would make it unfair and the size of the test; the review agent checks the choice is fair and came before any look; people approve it with the plan at the lock; only then does the tool open the fresh data, once. Below: for a random set aside the tool draws the members from a seed it makes, records only the seed's hash, and reveals the seed at the lock so anybody can draw again.</desc>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="8.5" refY="4" orient="auto">
+      <path d="M 0 0 L 9 4 L 0 8 Z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="420" fill="#FFFFFF"/>
+  <rect x="20" y="70" width="172" height="90" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="106.0" y="96.8" text-anchor="middle" dy="0.35em" font-size="14">Metadata only:</text>
+  <text x="106.0" y="115.0" text-anchor="middle" dy="0.35em" font-size="14">dates, places,</text>
+  <text x="106.0" y="133.2" text-anchor="middle" dy="0.35em" font-size="14">versions, counts</text>
+  <rect x="208" y="70" width="172" height="90" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="294.0" y="96.8" text-anchor="middle" dy="0.35em" font-size="14">The analysis agent</text>
+  <text x="294.0" y="115.0" text-anchor="middle" dy="0.35em" font-size="14">proposes it, with</text>
+  <text x="294.0" y="133.2" text-anchor="middle" dy="0.35em" font-size="14">its reasons</text>
+  <path d="M 192 115 L 208 115" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="396" y="70" width="172" height="90" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="482.0" y="96.8" text-anchor="middle" dy="0.35em" font-size="14">The review agent</text>
+  <text x="482.0" y="115.0" text-anchor="middle" dy="0.35em" font-size="14">checks it is fair</text>
+  <text x="482.0" y="133.2" text-anchor="middle" dy="0.35em" font-size="14">and came first</text>
+  <path d="M 380 115 L 396 115" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="584" y="70" width="172" height="90" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="670.0" y="105.9" text-anchor="middle" dy="0.35em" font-size="14">People approve it</text>
+  <text x="670.0" y="124.1" text-anchor="middle" dy="0.35em" font-size="14">at the lock</text>
+  <path d="M 568 115 L 584 115" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="772" y="70" width="172" height="90" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="858.0" y="105.9" text-anchor="middle" dy="0.35em" font-size="14">The fresh data,</text>
+  <text x="858.0" y="124.1" text-anchor="middle" dy="0.35em" font-size="14">opened once</text>
+  <path d="M 756 115 L 772 115" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="120" y="240" width="720" height="90" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="480.0" y="266.8" text-anchor="middle" dy="0.35em" font-size="14">A random set aside: the tool draws the members from a seed it makes,</text>
+  <text x="480.0" y="285.0" text-anchor="middle" dy="0.35em" font-size="14">the proposal keeps only the seed's hash, and the lock request</text>
+  <text x="480.0" y="303.2" text-anchor="middle" dy="0.35em" font-size="14">reveals the seed so anybody can draw again and get the same members</text>
+  <path d="M 294 160 L 294 240" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="480.0" y="370.0" text-anchor="middle" dy="0.35em" font-size="14">The next release, a later period, another site or region, or a random set aside.</text>
+</svg>

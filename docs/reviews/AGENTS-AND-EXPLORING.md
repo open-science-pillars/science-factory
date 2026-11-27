@@ -1,6 +1,6 @@
-# The assistants, the exploring loop and the knowledge loop: review register
+# The agents, the exploring loop and the knowledge loop: the detail behind the register
 
-*History. The records this document cites (practice runs, study and exploration logs, receipts, drafted pages, the demo's runs) were removed from `main` and are at the branch `records-2026-11` of this repository; every path in it is as it was on the day it was written.*
+*History, kept as it was written on 2026-11-26, in the words of that day ("assistant" for what is now called an agent). Sections 1 to 4 name files by the paths of the day and cite records that are at the branch `records-2026-11` (docs/history/RENAMES.md); sections 5 to 7 use today's paths. The register, with a unique label for every finding and what is owed now, is `docs/reviews/README.md`.*
 
 
 **Said first, because it decides how to read the rest.** Seven things are recorded here, and they are not the same kind of evidence.
@@ -191,29 +191,6 @@ Made by a reviewer who had not built the tools, against a private copy of the pa
 
 **What the fixes cost.** A real study needs a network and a read token at the opening and at the verification, and the definition names the repository on the platform. A study signed where nobody can reach the platform stays "awaiting verification" until somebody can. A definition's checksum changed for every tree, since it now binds modes.
 
-## What still stands
+## What still stands, and what is owed
 
-- **A fourth independent attack is owed.** The first is section 4, the second section 5 and the third section 7. The fixes for the third were again made and tested by one author, and nobody else has attacked them or the verification.
-- **The pull request route has never run on a platform, and the verification has never asked one.** Sections 6 and 7 say what was tested and what was not.
-- **The kernel fence was built and tested on one Linux machine.** Nothing is known about it elsewhere. On a machine without it, the fence around a look is the scratch folder and the reading of what comes back, and the receipt says so.
-- **Nothing built here keeps a person or an assistant with a shell from reading set-aside data outside the tool.** That is the study tool's first limit, and no fix in section 4 changes it.
-- **The Claude Code runner has not been run against Claude Code.** Its scripts test themselves. The run by separate assistants held the roles by instruction and the role file, not through the runner.
-- **No assistant has been started from `assistants/coordinating.md`.** The coordinating role was played by the person's session.
-- **The hand-over has not been made by separate assistants.** The only hand-over is the single-instance run's.
-- **One model was behind every role.** Separate contexts found what self-review missed; they do not make separate minds.
-- **A script can still reach what its command does not name** over the network, in the system's folders and in shared memory, and, where there is no kernel fence, anywhere its user can read or write, the tools included. A tool of this package called from inside the script is refused.
-- **The reading of dates is a second line and has a list of forms.** A time kept as a number outside a time key, a day of the year, a month in another language and data that is not text are outside it. Data that is not text is refused unless it is a figure in `figures/`, which the fence cannot read either.
-- **A site under a wholly different name** (another agency's identifier for the same gauge) is not matched.
-- **What is read before data is set aside** is known to the tool only as the page it is given.
-- **Nothing was run against the OpenWiki tool.**
-- **A9, A10 and A11 of the builder's round**: a lead attached as a finding after a real opening unless `check-study` is run; a reviewer is a typed name, now one that must be in the log before the lead; subjects are matched by text.
-- **The overlap check cannot read meaning**, and no tool checks that a source supports a statement.
-- **Open for the hydrology capability and its steward**, not for this package: what the values of `reach_q` mean; where the gauge sits in the reach; a fixture that carries the processing identifier, the bitwise flag and the observed fraction; the yardstick for a change score; whether the two pages of the first run are merged into one, as the hydrologist asked.
-
-## The review that is owed
-
-A fourth independent attack, to be given to an assistant or a person that has not seen this work and made none of the fixes of sections 4, 5 and 7, with the repository and nothing else. The brief below is the third attack's, kept as it was given; a fourth adds: make the tool call an act `verified`, or a study signed, without the platform having said so, and run `sf.py verify-acts` against a real repository on the platform.
-
-**The tester.** "You are testing a research tool. In this repository, `tools/sf.py` takes a study from a plan to the opening of held-out data, `tools/explore.py` lets an assistant explore data after setting some aside, `tools/fence.py` is how both run a script they do not trust, `tools/knowledge.py` checks drafted knowledge pages, `factory/agents/` defines four roles, `factory/harnesses/claude-code/allow.py` decides what each role may do, and `factory/harnesses/github/` carries the lock and the signature as pull requests. Two earlier attacks found twenty-six holes and each was fixed by one author; `docs/WHAT-IS-ENFORCED.md` says what is now claimed, in three lists. Try to make each line of its first two lists false, and prove every success by running the tool. In particular: get a script that a look or a plan's step runs to write something a tool later runs or imports, to read the study log or set-aside data, or to leave something behind that acts after it, on a machine with the kernel fence and on one without; get the receipt to say `kernel` when the fence did not hold; get data that an exploration did not declare as working data into a look; get a lock or a signature into a study's log that `open-held-out` or `close --outcome finding-signed` accepts and that no person approved, working only on your own machine with git and no access to a platform; get the required check (`verify_request.py`) to pass a pull request whose author is its only approver, or one that changed a bound file after its approval, by writing event payloads; get the recording job (`record_act.py`) to name a person the platform's record does not name; change what a plan holds out without the lock showing it; and get any role, through `allow.py`, to make a call its file does not list or to write where its file does not say. Do not fix anything. Type no person's name but `human:throwaway-placeholder`, and only in scratch folders. Report each hole with the exact command, what happened and what you expected; say which sentences of the documents your results make untrue; and say separately what the documents admit is only instruction, and whether that is worse than the words suggest. If you can, install the workflow in a repository of your own on the platform and say what happened there, because nobody has."
-
-Its findings go in this file as a further table, with what each changed.
+Kept in one place now: what is enforced is in `docs/WHAT-IS-ENFORCED.md`, and what is owed is under "What is owed now" in `docs/reviews/README.md`, which also gives every finding above a label unique across all the reviews (the prefixes SR, HY and AG for sections 1 to 3, and R1, R2 and R3 for the three attacks).

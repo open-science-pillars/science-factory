@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" role="img" aria-labelledby="title desc" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" fill="#111827">
+  <title id="title">An act by people, and its three standings</title>
+  <desc id="desc">Top row: a tool writes the request (an evidence summary and a manifest) on a branch; a pull request is opened; people approve and merge it on the protected branch, which is the act. Then the recording job writes it into the study log as merge found, people not verified, because git alone shows nothing about people; sf.py verify-acts asks GitHub, and only GitHub's answer makes it verified. Bottom: the three standings, practice (typed at a command line), merge found, people not verified, and verified. Only a verified lock opens the fresh data, unless the definition allows a logged exception.</desc>
+  <defs>
+    <marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="8" refX="8.5" refY="4" orient="auto">
+      <path d="M 0 0 L 9 4 L 0 8 Z" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="960" height="470" fill="#FFFFFF"/>
+  <rect x="20" y="50" width="200" height="80" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="120.0" y="80.9" text-anchor="middle" dy="0.35em" font-size="14">A tool writes</text>
+  <text x="120.0" y="99.1" text-anchor="middle" dy="0.35em" font-size="14">the request</text>
+  <rect x="250" y="50" width="220" height="80" rx="6" fill="#FEF3C7" stroke="#B45309" stroke-width="1.25"/>
+  <text x="360.0" y="71.8" text-anchor="middle" dy="0.35em" font-size="14">People approve and</text>
+  <text x="360.0" y="90.0" text-anchor="middle" dy="0.35em" font-size="14">merge the pull request</text>
+  <text x="360.0" y="108.2" text-anchor="middle" dy="0.35em" font-size="14">on the protected branch</text>
+  <rect x="500" y="50" width="200" height="80" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="600.0" y="71.8" text-anchor="middle" dy="0.35em" font-size="14">Recorded as: merge</text>
+  <text x="600.0" y="90.0" text-anchor="middle" dy="0.35em" font-size="14">found, people</text>
+  <text x="600.0" y="108.2" text-anchor="middle" dy="0.35em" font-size="14">not verified</text>
+  <rect x="730" y="50" width="210" height="80" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="835.0" y="80.9" text-anchor="middle" dy="0.35em" font-size="14">verify-acts asks</text>
+  <text x="835.0" y="99.1" text-anchor="middle" dy="0.35em" font-size="14">GitHub: verified</text>
+  <path d="M 220 90 L 250 90" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 470 90 L 500 90" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <path d="M 700 90 L 730 90" fill="none" stroke="#374151" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="480.0" y="180.0" text-anchor="middle" dy="0.35em" font-size="14" font-weight="600">The three standings, shown wherever an act is shown</text>
+  <rect x="20" y="210" width="290" height="110" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="165.0" y="246.8" text-anchor="middle" dy="0.35em" font-size="14">practice</text>
+  <text x="165.0" y="265.0" text-anchor="middle" dy="0.35em" font-size="14">typed at a command line;</text>
+  <text x="165.0" y="283.2" text-anchor="middle" dy="0.35em" font-size="14">never a signed finding</text>
+  <rect x="335" y="210" width="290" height="110" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="480.0" y="237.7" text-anchor="middle" dy="0.35em" font-size="14">merge found,</text>
+  <text x="480.0" y="255.9" text-anchor="middle" dy="0.35em" font-size="14">people not verified</text>
+  <text x="480.0" y="274.1" text-anchor="middle" dy="0.35em" font-size="14">git shows a merge;</text>
+  <text x="480.0" y="292.3" text-anchor="middle" dy="0.35em" font-size="14">nothing about people</text>
+  <rect x="650" y="210" width="290" height="110" rx="6" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="1.25"/>
+  <text x="795.0" y="246.8" text-anchor="middle" dy="0.35em" font-size="14">verified</text>
+  <text x="795.0" y="265.0" text-anchor="middle" dy="0.35em" font-size="14">GitHub said who approved</text>
+  <text x="795.0" y="283.2" text-anchor="middle" dy="0.35em" font-size="14">the request as merged</text>
+  <rect x="180" y="370" width="600" height="70" rx="6" fill="#FEE2E2" stroke="#B91C1C" stroke-width="1.25"/>
+  <text x="480.0" y="395.9" text-anchor="middle" dy="0.35em" font-size="14">The fresh data is opened only on a verified lock, unless</text>
+  <text x="480.0" y="414.1" text-anchor="middle" dy="0.35em" font-size="14">the definition allows a logged exception</text>
+</svg>

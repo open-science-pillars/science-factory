@@ -10,7 +10,7 @@ triggers:
 idempotency: [question, held-out-window]
 ---
 
-Read the wiki's pages for a `stale_after` date that has passed (`tools/knowledge.py about` lists each page with who signed it). For each signed page that is past its date, write a request (templates/request.md) asking whether the page still holds, naming data that has arrived since as what could be held out, and hand it to the coordinating assistant.
+Read the wiki's pages for a `stale_after` date that has passed (`tools/knowledge.py about` lists each page with who signed it). For each signed page that is past its date, write a request (templates/request.md) asking whether the page still holds, naming data that has arrived since as what could be held out, and hand it to the coordinating agent.
 
 You read knowledge and metadata only. You change no page: a page that is out of date stays as it is until a person decides.
 

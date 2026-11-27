@@ -15,7 +15,7 @@ Each row says what became of a Warp concept here: **kept** as it is, **translate
 | An agent file with execution settings (model, runtime, compute) | an agent file with those, and with permissions Warp has no place for: what it may call, must never see, may write | kept and extended |
 | Exactly one coordinating agent, which also decides when a stage is done | one coordinator, which chooses who works next and never whether a stage is finished: a tool works that out from the log | changed |
 | Stages and transitions as data, judged by a model | stages as data, each ended by named checks a tool evaluates; nothing returns across the opening | changed |
-| Gates: a question a person answers in the conversation | two acts by people, the lock and the signature, recorded with evidence and meant to be pull requests on a protected branch | changed |
+| Gates: a question a person answers in the conversation | two acts by people, the lock and the signature, recorded with evidence; each is a pull request on a protected branch (the workflow has not run on GitHub) | changed |
 | A run keeps the workflow it started with | the lock binds the whole definition, the declared models and the skills by checksum | translated, built |
 | Automations with triggers, filters and schedules | two declared, not wired; they may start only stages agents do before the lock | missing, in part |
 | A harness per agent; a model per agent | the same, declared; every event an agent writes records the model | translated, built |
@@ -30,9 +30,9 @@ Each row says what became of a Warp concept here: **kept** as it is, **translate
 
 ## What Warp has that this project had not thought about
 
-**A barrier that is a field, not a sentence.** This project's design says that the only real answer to "an analysis assistant could read the held-out data elsewhere" is an environment with no route to it, and that this is not built. Warp's definition has both halves of such a barrier as ordinary settings: which secrets an agent is given, and which hosts it may reach, with a denial winning. Declaring the same here would cost little: the data host denied to the agent that builds methods, the data credential given to the opening's job alone, and a validator rule that fails any definition where the two meet. Enforcing it needs a platform or a container runtime. It is the most valuable thing the reading found, and it is not built.
+**A barrier that is a field, not a sentence.** This project's design says that the only real answer to "an analysis agent could read the held-out data elsewhere" is an environment with no route to it, and that this is not built. Warp's definition has both halves of such a barrier as ordinary settings: which secrets an agent is given, and which hosts it may reach, with a denial winning. Declaring the same here would cost little: the data host denied to the agent that builds methods, the data credential given to the opening's job alone, and a validator rule that fails any definition where the two meet. Enforcing it needs a platform or a container runtime. It is the most valuable thing the reading found, and it is not built.
 
-**Kept context, and its opposite.** Warp treats a continuing conversation as a pure good. For exploring it is. For confirming, context is a channel: the review assistant must start fresh, and whoever writes the finding must not carry hopes from before the lock across the opening.
+**Kept context, and its opposite.** Warp treats a continuing conversation as a pure good. For exploring it is. For confirming, context is a channel: the review agent must start fresh, and whoever writes the finding must not carry hopes from before the lock across the opening.
 
 **Not validated is never a pass.** Warp's validator has a third result for "could not tell", and its examples treat it as a failure. This project took that outright.
 

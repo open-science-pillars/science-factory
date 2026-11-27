@@ -1,6 +1,6 @@
 # Bringing a workflow into the factory
 
-*A checklist for a coding assistant (an AI agent) working in the scientist's own repository. Nothing here asks for a rewrite: it adds four entry points around the pipeline that already exists. It has not yet been tried on a pipeline from outside; that is scheduled.*
+*A checklist for a coding agent (an AI agent) working in the scientist's own repository. Nothing here asks for a rewrite: it adds four entry points around the pipeline that already exists. It has not yet been tried on a pipeline from outside; that is scheduled.*
 
 **1. A fetch with two modes.** `fetch --window W --fields metadata` returns only observation metadata: values that cannot move the answer whatever the withheld values turn out to be, given that every choice in the analysis is already fixed. Times, positions, masks, grids, quality flags and processing identifiers usually pass that test. Whether an independent record belongs in this mode is decided for each plan and written into it; where that record is what the product is scored against, it does not belong. `fetch --window W --fields withheld` returns everything, the withheld values included. Both write a manifest: where each input lives and its checksum. The metadata mode may be run before the lock. The withheld mode is to be run only by the access gate, which is a step of the study tool. In your own repository nothing but that rule stops anyone running it: the tool cannot see a fetch made outside it.
 

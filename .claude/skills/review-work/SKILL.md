@@ -7,9 +7,9 @@ description: "Check work you did not do: the record first, then every number aga
 
 A review is by someone who did none of the work and starts from the files. Its job is to pick holes, not to agree. This skill is the procedure. It carries no facts about any dataset.
 
-If you did any part of this work, or were given the reasoning of the assistant that did, stop and say so.
+If you did any part of this work, or were given the reasoning of the agent that did, stop and say so.
 
-**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating assistant goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis assistant's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review assistant can be started.
+**Where you write.** Write the review file in the work's `review/` folder (the exploring tool makes one at the start). `explore.py review` copies it to `verdicts/REVIEW-00N.md` and logs the copy by checksum: the copy is the record, and your file stays as you wrote it. Your account for the coordinating agent goes in `record/review/`, your own place. You never read `record/analysis/`, or any file in `record/` with `analysis` in its name, where the analysis agent's own account is: the harness refuses it, and if you see it by accident you say so and stop, so that a fresh review agent can be started.
 
 ## 1. The record
 
@@ -63,7 +63,7 @@ uv run tools/explore.py review --exploration <x> --by <you> --model <your model>
 uv run tools/sf.py review --study <s> --by <you> --model <your model> --verdict block --file <s>/review/<name>.md
 ```
 
-`no-holes-found` and `approve` say that you looked and found none, and the file still says what you checked. For an exploration, `<you>` is the name the coordinating assistant named as reviewer before the lead was recorded; the tool refuses any other. Your verdict covers the lead as it stands: if its wording is corrected afterwards, it comes back to you.
+`no-holes-found` and `approve` say that you looked and found none, and the file still says what you checked. For an exploration, `<you>` is the name the coordinating agent named as reviewer before the lead was recorded; the tool refuses any other. Your verdict covers the lead as it stands: if its wording is corrected afterwards, it comes back to you.
 
 ## What this skill refuses
 

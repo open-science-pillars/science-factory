@@ -19,7 +19,7 @@ so the server and the command line give the same answer.
 
 Why it exists. The OpenWiki tool is described (its repository's README,
 as relayed to this project) as serving a wiki through two read-only tools
-of these names. An assistant whose instructions say "use openwiki_search,
+of these names. An agent whose instructions say "use openwiki_search,
 then openwiki_read" can then be given either that tool's server or this
 one. What is this project's guess: the arguments (`query` and `limit`;
 `path` and `section`) and the shape of the results. The real tool's may

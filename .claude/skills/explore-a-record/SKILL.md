@@ -9,7 +9,7 @@ Exploring is looking to find out what is there. It is most of the work and nothi
 
 Run every command from the repository root. `<x>` is the exploration's directory, by convention `<work>/explorations/<ID>`; the confirming studies and the record of what has been opened sit beside it in `<work>/studies/`.
 
-A person can explore with the same tool: act as `--by human:<your name>` and follow the same steps. Nothing below needs an assistant.
+A person can explore with the same tool: act as `--by human:<your name>` and follow the same steps. Nothing below needs an agent.
 
 **The order.** Read what is known before you set anything aside, and read only knowledge: signed pages and drafted pages (`knowledge.py about`, then the pages themselves), never data, never the contents of a data file, never an earlier answer to the same question. Take from the knowledge where the boundary of the set-aside should fall. Then propose the fresh data from metadata only (`fresh_data.py propose`, the skill `propose-fresh-data`), and set it aside with `explore.py start --fresh-data`, before any look, naming the page the boundary came from with `--boundary-from`. Then run `explore.py known` and `explore.py read`, which write into the log what was listed and what each page changes; the first look is refused until they have. What is set aside is never narrowed afterwards; if the knowledge gives no boundary, set aside the widest honest window and say so.
 
@@ -98,9 +98,9 @@ Check first whether the knowledge already says it; a pitfall the knowledge names
 
 ## 7. End
 
-**When to end.** After `explore.py lead`, do not call `end`: status names the review assistant, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
+**When to end.** After `explore.py lead`, do not call `end`: status names the review agent, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
 
-A lead needs a reviewer named first. `explore.py lead` is refused until the coordinating assistant has named the reviewer of this exploration (`explore.py reviewer`); `status` shows `before_a_lead` until then. If you reach the lead before that, write `lead.yaml`, stop and hand back. A person exploring by hand asks a colleague who did none of the exploring to name the reviewer.
+A lead needs a reviewer named first. `explore.py lead` is refused until the coordinating agent has named the reviewer of this exploration (`explore.py reviewer`); `status` shows `before_a_lead` until then. If you reach the lead before that, write `lead.yaml`, stop and hand back. A person exploring by hand asks a colleague who did none of the exploring to name the reviewer.
 
 An exploration ends in a lead (use the `write-up-a-lead` skill), a note, a method (`end --outcome method --file <script>`), or a stop. All four are honest outcomes. `uv run tools/explore.py status --exploration <x>` says where it stands and who is next.
 

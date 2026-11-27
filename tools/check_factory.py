@@ -20,7 +20,7 @@ three results. It runs no language model and it edits nothing.
 The tree it reads (the path is the name: a resource is called what its
 folder or file is called, and nothing inside a file can rename it):
 
-  factory.yaml                        identity, defaults, the procedure, the two acts by people
+  factory.yaml                        identity, defaults, the stages, the two acts by people
   agents/<name>/agent.md              one agent: settings and permissions in front matter, instructions in the body
   agents/<name>/skills/<skill>/       a skill that agent alone uses
   skills/<skill>/SKILL.md             a skill two or more agents use
@@ -45,7 +45,7 @@ The rules, by name (the name is printed with each broken rule):
               scorer's agents and a judge's model; a benchmark's
               configurations and cases; a runner's contract (the twelve
               keys factory.yaml lists); a pinned checker's checksum
-  roles       the agent files, the procedure's `agents` block and the
+  roles       the agent files, the `agents` block of factory.yaml and the
               skills say the same thing (every rule of check_roles.py)
   acts        the acts by people are exactly the stages people do, and no
               agent may call them
@@ -1188,7 +1188,7 @@ def selftest() -> int:
         case("the role check's rules are part of the result: an agent may not call the lock",
              lambda d: edit(d, "agents/coordinating/agent.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'), "roles:")
         case("an agent file and a skill that give different orders",
-             lambda d: edit(d, "agents/review/skills/review-work/SKILL.md", "Your account for the coordinating assistant goes in `record/review/`", "Your account goes beside the author's"),
+             lambda d: edit(d, "agents/review/skills/review-work/SKILL.md", "Your account for the coordinating agent goes in `record/review/`", "Your account goes beside the author's"),
              "do not say the same thing")
         nv = copy("no-tools")
         shutil.rmtree(nv.parent / "tools")

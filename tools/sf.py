@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyyaml"]
 # ///
-"""sf: the study tool. It keeps the study log and enforces the procedure.
+"""sf: the study tool. It keeps the study log and holds a study to its stages.
 
 One study is one directory: an analysis plan (analysis-plan.yaml: the
 question, the quantity estimated, which data is working data and which is
@@ -21,7 +21,7 @@ Commands, by stage. Each has one name.
   Ask
     start                 a study exists; with --request, the request it
                           answers is bound to it by checksum
-    status                where the study stands, read from the procedure
+    status                where the study stands, read from the definition's stages
     close                 the study ends: answered already, a signed
                           result, or a recorded decision not to sign
   Plan
@@ -35,7 +35,7 @@ Commands, by stage. Each has one name.
                           plan holds out has changed, and why; without
                           it the tests and the lock refuse a plan whose
                           held-out block is not the one on record
-  Open the held-out data, once
+  Check once, on fresh data (the tools call it held-out data)
     request-lock          write the lock request into the study: an
                           evidence summary in plain words and a manifest
                           of checksums, once the tests have passed on
@@ -81,7 +81,7 @@ Commands, by stage. Each has one name.
                           line says so when the lock is not verified
     show-finding          the finding under a first line that says how
                           its two acts stand now
-    review                a review assistant that did none of the study
+    review                a review agent that did none of the study
                           records approve or block, after the finding
     request-signature     write the signature request into the study:
                           the finding, the review, the outcome, and
@@ -91,10 +91,10 @@ Commands, by stage. Each has one name.
                           carries the request (--record-merge), or, for
                           practice, typed (--local-practice)
     note                  something missing or wrong, with evidence
-    curation-list         open notes, for the curating assistant
+    curation-list         open notes, for the curating agent
     resolve               a note is accepted, linked or declined
-    scorecard             the procedure's process checks for this study
-    log-change            a change to the procedure, with its prediction
+    scorecard             the definition's checks for this study
+    log-change            a change to the definition, with its prediction
   The log
     fingerprint           the log's fingerprint, to post outside the workspace
     check-log             everything re-checked from the files and
@@ -158,58 +158,15 @@ command the tool runs has Python's bytecode cache pointed at a new empty
 folder, so nothing in them is ever loaded. The code is not every imported
 library and it is not the interpreter: both are stated limits.
 
-What it cannot do, said plainly. Four things.
-One. It cannot stop someone reading public data outside the access gate.
-Nothing in the tool answers that, and neither does where the opening runs:
-only an analysis assistant working where it has no route to the withheld
-values would, and that is not built. Until it is, the barrier for public
-data is instruction and evidence. The same holds for a system trial's
-sealed answer: the seal writes it to a file inside the study, the tool
-passes that file to no command, and nothing in the tool stops a locked
-script from opening it. What stands against that is that the code is read
-at the lock by the people who lock it.
-Two. Names of who did what are typed, not proven, and on a machine where
-agents and people share one account nothing typed can be. So the two acts
-by people are not typed: a real study's lock and signature are pull
-requests merged on a protected branch. What the tool can do on a clone is
-find the merge with git (the commit exists, is one of the named branch's
-own commits, is reachable from what is checked out, has two parents and
-brought the request in from the second, and its manifest matches the
-files). That is local evidence: a clone can make all of it by itself, a
-branch with the protected branch's name included, and a file of approvals
-on the same machine is a file anybody there can write. So an act found
-that way stands as `merge found, people not verified`, and the tool never
-says people acted on it. It says `verified` only on what the platform
-answers when asked (`verify-acts`, and the opening asks for itself): that
-the commit is the merge of a pull request into the protected branch of the
-repository the definition names, approved by enough accounts other than
-its author. A verification is in its turn an entry in a log on a machine;
-its worth is that anybody can ask the platform again. Every other name in
-a log is still typed.
-Three. A log that is rewritten from its first line, cut short, or added
-to by hand with the right hashes checks out on its own. A later edit is
-detectable only against a commit or a log fingerprint posted outside the
-workspace, and before the first of those nothing protects the log.
-Four. It cannot defend itself against the Python it runs in. The tool
-starts itself again in a Python that reads no PYTHON variable, no user
-site, no start-up file and not its own folder, and it refuses to run while
-a PYTHON variable other than PYTHONDONTWRITEBYTECODE and PYTHONUNBUFFERED
-is visible; a script it runs cannot write the environment the tool runs
-from where the kernel fence holds. But code that a hostile environment
-loads when Python first starts has already run by then, with the caller's
-rights, and can do anything (two red-team reviews did exactly that). No
-check inside a process survives a hostile process, and on a machine with
-no kernel fence a script the tool ran can have planted such code.
-The second is answered for the two acts by where they are made: on the
-platform, as merged pull requests, and by asking the platform, never a
-file, who approved. The third is answered the way the
-organization already answers it for signatures: the log's fingerprint is
-posted on the tracking issue at the lock and after every opening, and
-`check-log --anchor SEQ:HASH` refuses a log that does not contain what was
-posted.
-The fourth is answered by where the opening runs: somewhere clean that is
-not the workspace where the method was built. The first is not answered by
-where the opening runs.
+What it cannot do, in four lines; docs/WHAT-IS-ENFORCED.md sets each out.
+One: it cannot stop anybody reading public data outside the tool.
+Two: a name typed in a log proves nothing about who acted, so a real
+study's lock and signature are pull requests, and only the platform's own
+answer (`verify-acts`) makes either one `verified`.
+Three: a log rewritten from its first line checks out on its own; a
+rewrite shows only against a commit or a fingerprint posted elsewhere.
+Four: it cannot defend itself against the Python it runs in; it restarts
+itself in a clean one, and what ran before that has already run.
 
 Usage: sf.py <command> --study STUDY_DIR [...]; sf.py selftest
 """
@@ -305,7 +262,7 @@ FACTORY = REPO / "factory"  # this factory's definition: a folder rooted at fact
 INVALID = "the study log or its files do not check out"
 EXPLORATORY = "exploratory study"
 NO_FINDING = "confirmatory study, waiting for the finding to be attached"
-NO_REVIEW = "confirmatory study, waiting for the review assistant"
+NO_REVIEW = "confirmatory study, waiting for the review agent"
 READY = "confirmatory study, ready for the steward's signature"
 SIGNED = "confirmatory study, signed by the steward"  # only with a lock and a signature that are both verified
 AWAITING = "confirmatory study, signature recorded, awaiting verification"  # the steward decided `signed`; the people are not verified
@@ -313,7 +270,7 @@ PRACTICE_SIGNED = "practice study, signature typed at a command line: not a sign
 DECLINED = "confirmatory study, the steward declined to sign"
 ACTS_BY_PEOPLE = ("lock.recorded", "signature.recorded")
 HARNESS_PERSON = "human:blind-test-harness"  # the one named exception: the blind test harness records its own locks
-# events an actor may have recorded and still be a review assistant: reviews, notes and change records
+# events an actor may have recorded and still be a review agent: reviews, notes and change records
 NOT_PART_OF_THE_WORK = ("review.verdict", "note.raised", "note.resolved", "change.recorded")
 # Paths inside a study that no plan may name as something a step writes: the tool or people write them
 PROTECTED = ("study-log.jsonl", "analysis-plan.yaml", "scorecard.json", "curation-list.json", "request.md")
@@ -2599,7 +2556,7 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
 
 def cmd_request_lock(study: Study, a) -> None:
     """Write the lock request into the study: the evidence summary a person reads and the manifest of what the
-    lock would bind. An assistant may do this; it records nothing as locked."""
+    lock would bind. An agent may do this; it records nothing as locked."""
     factory = Path(getattr(a, "factory", None) or FACTORY)
     study.check_actor(a.by)
     got = lock_evidence(study, a)
@@ -2912,7 +2869,7 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
                       "the interpreter inside it: " + "; ".join(planted[:6]) + ". Remove it, or put back the one the lock "
                       "recorded; nothing was opened and the opening is not used up")
     if by.casefold() in ran_tests(ev):
-        raise Refused(f"{by} ran this study's tests or rehearsals; the access gate is not the assistant that built the "
+        raise Refused(f"{by} ran this study's tests or rehearsals; the access gate is not the agent that built the "
                       "method. Open the held-out data as another actor")
     started, voided = openings_of(ev, test)
     used = len(started) - len(voided)
@@ -3085,7 +3042,7 @@ def last_live_opening(ev: list):
 def cmd_review(study: Study, a) -> None:
     ev = study.events()
     if a.by.casefold() in involved(ev):
-        raise Refused("this actor ran part of the study, wrote its finding or decided on it; a review assistant that did "
+        raise Refused("this actor ran part of the study, wrote its finding or decided on it; a review agent that did "
                       "none of it reviews it (names are compared without regard to case)")
     if a.verdict not in ("approve", "block"):
         raise Refused("verdict is approve or block")
@@ -3159,7 +3116,7 @@ def cmd_curation_list(study: Study, a) -> None:
            "acts": standings(study.events()),
            "what_a_draft_says_of_this_study": ("a page drafted from this study says how its two acts stand, in these words: "
                                                + finding_line(study.events())),
-           "contract": "the curating assistant drafts at status draft with its own generated event; "
+           "contract": "the curating agent drafts at status draft with its own generated event; "
                        "it never merges and never signs"}
     (study.d / "curation-list.json").write_text(json.dumps(out, indent=1))
     print(f"curation list: {out['open_notes']} open note(s) across {len(by_subject)} subject(s)")
@@ -3190,7 +3147,7 @@ def cmd_attach(study: Study, a) -> None:
     live = last_live_opening(ev)
     earlier = any(e["kind"] == "review.verdict" and live and e["seq"] > live["seq"] for e in ev)
     print(f"finding attached: finding/{dest.name}" + (" (the reviews recorded before it do not cover it: the review "
-                                                        "assistant reads this finding and records a verdict again)" if earlier else ""))
+                                                        "agent reads this finding and records a verdict again)" if earlier else ""))
 
 
 def attached_finding(ev: list):
@@ -3251,7 +3208,7 @@ def cmd_signature(study: Study, a) -> None:
 
 def cmd_request_signature(study: Study, a) -> None:
     """Write the signature request into the study: the finding, the review, the outcome under the locked rules and
-    what merging the pull request would sign. An assistant may do this; it records nothing as signed."""
+    what merging the pull request would sign. An agent may do this; it records nothing as signed."""
     a.prepare = True
     cmd_signature(study, a)
 
@@ -3278,7 +3235,7 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
     else:
         out += ["No finding is attached."]
     out += ["", "## The review", ""]
-    out += [f"- {who}: {verdict}" for who, verdict in sorted(rep["reviews"].items())] or ["- no review assistant that did none of the study has recorded a verdict on this finding"]
+    out += [f"- {who}: {verdict}" for who, verdict in sorted(rep["reviews"].items())] or ["- no review agent that did none of the study has recorded a verdict on this finding"]
     for e in ev:
         if e["kind"] == "review.verdict" and att and e["seq"] > att["seq"]:
             with contextlib.suppress(OSError):
@@ -3445,7 +3402,7 @@ def stage_checks(study: Study) -> tuple:
         "closed": any(e["kind"] == "study.closed" for e in ev),
     }
     if live_last is not None and att is not None and not truth["reviewed"]:
-        why["reviewed"] = "no review assistant has recorded a verdict since the finding was attached"
+        why["reviewed"] = "no review agent has recorded a verdict since the finding was attached"
     return truth, why
 
 
@@ -3739,13 +3696,13 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     if change_log:
         problems += change_log_problems(study, ev, Path(change_log))
     elif any(e["kind"] == "change.recorded" for e in ev):
-        remarks.append("this study recorded changes to the procedure; pass --change-log to check them against the change log")
+        remarks.append("this study recorded changes to the definition; pass --change-log to check them against the change log")
     outcomes = {c["data"]["test"]: c["data"]["outcomes"] for c in live}
     failed = [t for t, o in outcomes.items() if "run-failed" in o.values()]
     failed += [op["data"]["test"] for op in unfinished if op["data"]["test"] not in failed]
     doers = involved(ev)
     att = attached_finding(ev)
-    verdicts = {}  # each independent review assistant's latest word on the finding in force
+    verdicts = {}  # each independent review agent's latest word on the finding in force
     if att:
         for e in ev:
             if e["kind"] == "review.verdict" and e["seq"] > att["seq"] and e["actor"].casefold() not in doers:
@@ -3906,7 +3863,7 @@ def not_a_change_log(log: Path) -> str | None:
 
 def cmd_log_change(study: Study, a) -> None:
     """Append one record to the change log: what was changed in the
-    procedure, why, what it was predicted to do, and (later) what it did.
+    definition, why, what it was predicted to do, and (later) what it did.
     The record is written first and the event that names it by checksum
     second, so the study log never points at a record that does not exist."""
     log = Path(a.log).resolve()
@@ -4881,7 +4838,7 @@ def selftest() -> int:
         check("the change log cannot be pointed at a study log",
               _refuses(cmd_log_change, study, A(by="agent:curating", log=str(study.log), factory=str(FACTORY), problem="toy",
                                                 change="c", rationale="r", predicted="p", observed=None, model="m")))
-        check("the steward's signature recorded by an assistant is refused",
+        check("the steward's signature recorded by an agent is refused",
               _refuses(cmd_signature, study, A(by="agent:analysis", evidence=URL, decision="signed", anchor=_posted(study), comment=None)))
         check("a signature recorded as signed without the posted log fingerprints is refused",
               _refuses(cmd_signature, study, A(by="human:tester", evidence=URL, decision="signed", anchor=None, comment=None)))
@@ -4889,10 +4846,10 @@ def selftest() -> int:
               _refuses(cmd_close, study, close("finding-signed")) and _refuses(cmd_close, study, close("practice-ended")))
         cmd_review(study, block("agent:second-review"))
         cmd_review(study, approve("agent:third-review"))
-        check("one review assistant's block is not cleared by another's approval",
+        check("one review agent's block is not cleared by another's approval",
               check_log(study, _posted(study))["status"] == "confirmatory study, blocked by review")
         cmd_review(study, approve("agent:second-review"))
-        check("and is cleared when the review assistant that blocked approves",
+        check("and is cleared when the review agent that blocked approves",
               check_log(study, _posted(study))["status"] == READY)
         cmd_signature(study, sign(study))
         check("with the signature recorded the procedure waits on the note's disposition",
@@ -4932,7 +4889,7 @@ def selftest() -> int:
         tests(study)
         check("an opening before the lock is refused", _refuses(cmd_open_held_out, study, opening()))
         check("a test run of the held-out data is refused", _refuses(cmd_test, study, A(what="held-out", by="agent:b")))
-        check("the lock recorded by an assistant is refused", _refuses(cmd_lock, study, A(by="agent:b", evidence=URL)))
+        check("the lock recorded by an agent is refused", _refuses(cmd_lock, study, A(by="agent:b", evidence=URL)))
         check("the lock with no evidence of a person's approval is refused", _refuses(cmd_lock, study, A(by="human:tester", evidence=None)))
         check("process checks that cannot be judged yet say pending, not pass",
               run_checks(study, FACTORY)["independent-review"] == "pending")
@@ -4994,7 +4951,7 @@ def selftest() -> int:
         study = _fresh(tmp, "a7")
         _to_lock(study)
         cmd_open_held_out(study, opening())
-        check("a review by an assistant that ran the work is refused", _refuses(cmd_review, study, approve("agent:x")))
+        check("a review by an agent that ran the work is refused", _refuses(cmd_review, study, approve("agent:x")))
 
         study = _fresh(tmp, "a8", power=0.3)
         tests(study)
@@ -5033,7 +4990,7 @@ def selftest() -> int:
         check("an opening whose fetch failed is used up", _refuses(cmd_open_held_out, study, opening()))
         check("and reads as held-out data opened without a result",
               check_log(study)["status"].startswith("confirmatory study, held-out data opened without a result"))
-        check("an assistant cannot void it",
+        check("an agent cannot void it",
               _refuses(cmd_void_unread, study, A(test="held-out", by="agent:x", evidence=URL, reason="network")))
         cmd_void_unread(study, A(test="held-out", by="human:tester", evidence=URL, reason="the provider was down; no data was written"))
         (study.d / "fetch-is-down").unlink()
@@ -5972,7 +5929,7 @@ def selftest() -> int:
         check("an opening asked for under a name that is neither human:<id> nor agent:<id> is refused before anything is opened",
               "the actor is" in _refusal(cmd_open_held_out, unnamed, A(test="held-out", by="nobody"))
               and not unnamed.last("opening.started") and not (unnamed.d / "data" / "held-out.json").exists())
-        check("the assistant that ran the tests cannot open the held-out data, whatever the case of its name",
+        check("the agent that ran the tests cannot open the held-out data, whatever the case of its name",
               "access gate" in _refusal(cmd_open_held_out, study, opening("agent:runner"))
               and _refuses(cmd_open_held_out, study, opening("agent:Runner")))
         cmd_open_held_out(study, opening("agent:opener"))
@@ -6116,6 +6073,29 @@ def refuse_inside_a_look() -> None:
                       "called by a role, under its own name, outside any look and any step")
 
 
+DESCRIBE = {'start': 'a study exists; with --request, the request it answers is bound to it by checksum',
+    'status': "where the study stands, read from the definition's stages", 'close': 'the study ends: answered already, a signed result, or a recorded decision not to sign',
+    'check-plan': 'the analysis plan is complete and well formed',
+    'test': 'data already looked at',
+    'rehearse': 'a required rehearsal of what the opening depends on (its fetch, the form of the finding)',
+    'held-out-change': 'the coordinating step records that what the plan holds out has changed, and why; without it the tests and the lock refuse a plan whose held-out block is not the one on record',
+    'request-lock': 'write the lock request into the study: an evidence summary in plain words and a manifest of checksums, once the tests have passed on exactly this plan and code and every decision rule has met its criteria. Nothing is locked',
+    'check-request': 'does a request still match the files? (the required check of the pull request)',
+    'lock': "the lock itself, which is a person's act. In a real study it is the merge of the pull request that carries the request, on the protected branch, recorded with --record-merge by the job that follows the merge. What that records is a merge found with git, which says nothing about people. --local-practice records a lock typed at a command line, for trying the tools out: such a study says so everywhere and never closes as a signed finding", 'verify-acts': 'ask the platform (over https, with a token from the environment) whether the lock and the signature are merges of approved pull requests on the protected branch, and record what it said. Only its answer makes an act `verified`; with no network or token the result is `not checked`, never a pass. Anybody can run it, at any time, also on a closed study',
+    'open-held-out': "the access gate fetches the held-out data and runs the locked analysis, once; the opening is used up the moment it starts. It needs a lock that git finds as a merge on the protected branch, reachable from what is checked out, whose manifest matches the files; a definition that has not changed since the lock; and the platform's word, asked at the opening, that people approved that merge. In a place with no network a person may open on the merge alone (--people-not-verified REASON): that is logged, and the study is not signed until somebody verifies it", 'void-unread': 'a person voids an opening whose fetch failed and left nothing behind',
+    'attach': 'the written finding joins the record; its first line says so when the lock is not verified',
+    'show-finding': 'the finding under a first line that says how its two acts stand now',
+    'review': 'a review agent that did none of the study records approve or block, after the finding',
+    'request-signature': 'write the signature request into the study: the finding, the review, the outcome, and what merging would sign. Nothing is signed',
+    'signature': 'the steward signed, or declined, which finding, and where: the merge of the pull request that carries the request (--record-merge), or, for practice, typed (--local-practice)',
+    'note': 'something missing or wrong, with evidence',
+    'curation-list': 'open notes, for the curating agent',
+    'resolve': 'a note is accepted, linked or declined',
+    'scorecard': "the definition's checks for this study", 'log-change': 'a change to the definition, with its prediction',
+    'fingerprint': "the log's fingerprint, to post outside the workspace", 'check-log': 'everything re-checked from the files and against posted fingerprints',
+    'selftest': 'the tool tests itself, attacks included'}  # one line for each command, as the help at the top of this file has it
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Every command and every option, spelled out. No abbreviation is taken (`--b` is not `--by`): a check that
     reads a command before it runs must see the same options the tool will."""
@@ -6123,7 +6103,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def add(name, fn, *args):
-        p = sub.add_parser(name, allow_abbrev=False)
+        p = sub.add_parser(name, allow_abbrev=False, help=DESCRIBE.get(name), description=DESCRIBE.get(name))
         p.add_argument("--study", required=True, help="the study directory")
         if by in args and not any(names == ["--model"] for names, _ in args):
             args = (*args, model)
@@ -6186,7 +6166,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),
         (["--problem"], {"required": True}), (["--change"], {"required": True}), (["--rationale"], {"required": True}),
         (["--predicted"], {"required": True}), (["--observed"], {"default": None}), (["--model"], {"default": None}))
-    sub.add_parser("selftest", allow_abbrev=False)
+    sub.add_parser("selftest", allow_abbrev=False, help="the tool tests itself, attacks included")
     return ap
 
 

@@ -13,12 +13,12 @@ that a newcomer can open an exploration and a study and see what each
 looks like on disk. Nothing is written into the repository.
 
 What this is and is not. It is the tools, driven from the command line the
-way a role would drive them, with each step checked. No assistant runs in
+way a role would drive them, with each step checked. No agent runs in
 it and no language model: it shows that the loops hold together and that
 the refusals refuse, and the checks workflow runs it. Its last part takes
 a study of its own (a system trial on a synthetic record, with this
 repository's own method) through every stage a tool can take, and stops
-where the next step is a person's: the lock. What assistants do with the
+where the next step is a person's: the lock. What agents do with the
 same tools is the optional demo in examples/baton-rouge.
 
   uv run examples/stand-alone/run.py            run, check, and print where the output is
@@ -213,7 +213,7 @@ def main() -> int:
              and "has not ended" in tool("explore.py", "resolve", *E, "--by", curator, "--note", "NOTE-001", "--disposition", "declined", "--comment", "x", expect=2))
         review = work / "review.md"
         review.write_text("# Review (exploring)\n\nChecked the log and both looks. One hole: one year only.\n")
-        step("the assistant that explored cannot review its own lead",
+        step("the agent that explored cannot review its own lead",
              "did part of this exploration" in tool("explore.py", "review", *E, "--by", me, "--verdict", "no-holes-found", "--file", review, expect=2))
         step("a review under a name nobody named as a reviewer before the lead existed is refused",
              "was not named as a reviewer" in tool("explore.py", "review", *E, "--by", "agent:review-fresh", "--verdict", "no-holes-found", "--file", review, expect=2))
@@ -227,7 +227,7 @@ def main() -> int:
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
-        step("the assistant that explored cannot make the hand-over",
+        step("the agent that explored cannot make the hand-over",
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
         tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A")
         hand = json.loads((x / "hand-over" / "hand-over.json").read_text())
@@ -331,17 +331,17 @@ def main() -> int:
         step("the design set of blind cases can be listed, and the acceptance set gives nothing without its keeper's seed",
              "the idea is false" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "built-in-gain")
              and "never invents one" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "acceptance", expect=2))
-        step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no assistant takes it further",
+        step("with its tests and its rehearsal passed the study stands at the lock, which is a person's act: no tool and no agent takes it further",
              trial_status["stage"] == "lock" and "PASS" not in tool("sf.py", "lock", *S, "--by", me, "--evidence", "https://example.invalid/not-a-person", expect=2)
              and not any(json.loads(ln)["kind"] in ("lock.recorded", "held-out.opened", "signature.recorded") for ln in (trial / "study-log.jsonl").read_text().splitlines()))
 
-        # The lock itself. In a real study it is a pull request: an assistant writes the request, and people approve and
+        # The lock itself. In a real study it is a pull request: an agent writes the request, and people approve and
         # merge it on the protected branch of the repository where the study lives (factory/harnesses/github). This
         # example runs in a scratch folder that is no repository and has no branch to merge into, and this repository
         # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
-        step("an assistant can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
+        step("an agent can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
              "## The question" in asked and "## The fresh data that will check the idea, and why it was chosen" in asked
              and "a blind test case that the tool makes and seals at the opening" in asked
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
