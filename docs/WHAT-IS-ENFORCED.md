@@ -22,6 +22,10 @@ Nothing in the work tree moves an act past the second standing. A study whose lo
 
 **The exception for a place with no network.** `open-held-out --people-not-verified REASON` opens fresh data on a lock that is a merge found with git, when GitHub cannot be asked. It is refused unless the definition allows it: `opening_without_verification: allowed-with-a-reason` under the lock in `factory.yaml`. The shipped definition says `refused`. The lock binds the definition by checksum and a changed definition blocks the opening, so allowing it is a change people approve and lock, not something typed at the opening. Where it is allowed, the opening is logged with the reason, the finding must say so in its first line, and the study stays unsigned until a verification succeeds. An answer from GitHub that refutes the lock is never waived.
 
+## The so what: a person's answer to a lead, lighter than an act
+
+After a lead is reviewed, a person says whether it is worth confirming: `worth-confirming`, `try-instead` (a direction, which the exploration takes up as its next question), `not-interesting` (a reason; the exploration ends as a lead noted, not as a failure) or `needs-an-expert` (which kind). We chose to make it a person's comment on the tracking issue, and not a pull request review. The two acts are pull requests because each guards something scarce: the lock spends fresh data, and the signature makes a finding. The so what spends nothing: a lead it lets through still meets a person at the lock, where the same so what is shown. What it needs is to be cheap enough that a scientist gives it on every lead, and to be a person's and not an agent's; a comment is both, and the platform can be asked who wrote it. So it has three standings like an act: `practice` (typed with `--local-practice`), `comment recorded, person not verified` (written into the exploration log under `platform:github` by the workflow's `so-what` job from the comment it was handed) and `verified` (`explore.py verify-so-what` asked GitHub, which said the comment exists in the repository the definition names, by that account, which is a user who belongs to the repository, and is unedited). Typed without `--local-practice` it is refused; a hand-over from a practice so what must say `--local-practice` too, and the lock request shows it.
+
 ## 1. Enforced by the tools, on any machine
 
 These hold wherever Python runs: the tool refuses or records, and nothing else is needed.
@@ -51,6 +55,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.21 | A judging packet holds the material its scorer declares, each file by a checksum recorded before any opening, and nothing written after an opening. |
 | 1.22 | The acceptance set of blind cases gives nothing without its seed, which is not in the repository. |
 | 1.23 | Every command shown in an agent file, a skill or AGENTS.md parses under its tool's options as they are now, and passes `--model` where it acts as an agent. |
+| 1.24 | No exploration ends as a lead, and no lead is handed over, without a person's `worth-confirming` given after the latest review on the lead as it stands, by checksum; a new version, a correction or a later review undoes it. A so what is refused from an agent's name, refused typed unless it says practice, and taken from `platform:github` only from a comment by a user who belongs to the named repository, naming this exploration and this lead. A hand-over from a practice so what must say practice. |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -77,6 +82,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 21. `scorers.py selftest`: the firewall checks.
 22. `benchmark.py selftest`: the acceptance-case checks.
 23. `check_roles.py --selftest`: "a skill shows an agent's command without `--model`", "a skill shows a command with an option the tool does not have".
+24. `explore.py selftest`: the checks under "the person's so what on a reviewed lead"; `verify_acts.py --selftest`: the five checks named "a so what"; `check_factory.py --selftest`: "a definition with no so what", "an agent that may call the so what"; `allow.py --selftest`: "no role may record a person's so what".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 
@@ -109,6 +115,7 @@ Tests, by row: 2.1 `explore.py selftest`, four checks named "N1" (R2-01). 2.2 `e
 | That an act in a study log is such a pull request, and who approved it | GitHub, asked by `sf.py verify-acts`, which anybody with the clone, a network and a read token can run at any time | Each answer is recorded with every address asked and the name of the token's variable (never the token); with no network or token the result is `not checked`, never a pass |
 | That a verification's answer was really GitHub's | Whoever ran it, on the machine it ran on | The entry names the proxy and certificate settings in force. An attestation that needs no such trust is proposed in [proposals/ATTESTED-ACTS.md](proposals/ATTESTED-ACTS.md), not built |
 | Who may approve, and how many; that the branch is protected and nobody bypasses it | The repository's code owners and settings (`factory/harnesses/github/README.md` is the checklist) | `factory.yaml` declares the number; `verify-acts` asks whether the branch is protected, and says what it was not shown |
+| That a lead's so what came from a person | GitHub: a comment on the tracking issue by an account that belongs to the repository | The workflow's `so-what` job records it as handed; `explore.py verify-so-what` asks GitHub about the comment; until then it stands as `comment recorded, person not verified`. Whether the account is the right person to judge the lead is for whoever reads the name |
 | That the fresh data proposed suits the question and is fair | The scientist and the steward, who approve it at the lock, and the review agent before them | The proposal in words, with the tool's caution for its kind and the size of test it allows |
 | That a log was not rewritten before its first commit or posted fingerprint | Fingerprints posted on the tracking issue at the lock and after each opening; a protected branch | `check-log --anchor`. What remains: a log and its whole history rewritten before the first request, on a clone never pushed |
 | That nobody reads the fresh data outside the tool | Nobody, for public data. A place where the analysis agent has no route to the withheld values is not built | Nothing |
@@ -128,4 +135,4 @@ Nothing checks these. An agent is told, and the log shows afterwards what the to
 
 ## What has never run
 
-GitHub: the workflow, the required check and the recording job against real events, and `verify-acts` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher. A real model as one of the three judges. Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.
+GitHub: the workflow, the required check, the recording job and the `so-what` job against real events, and `verify-acts` and `verify-so-what` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher. A real model as one of the three judges. Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.

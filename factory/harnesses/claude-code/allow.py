@@ -594,6 +594,12 @@ def selftest() -> int:
     ok("analysis may not make the hand-over", blocked("analysis", "Bash", command=f"uv run tools/explore.py hand-over --exploration {x} --by agent:analysis --study-id S"))
     ok("no role may lock", all(blocked(r, "Bash", command=f"uv run tools/sf.py lock --study s --by agent:{r} --evidence https://e.org/1") for r in ("coordinating", "analysis", "review", "curating")))
     ok("no role may sign", all(blocked(r, "Bash", command=f"uv run tools/sf.py signature --study s --by agent:{r} --decision signed") for r in ("coordinating", "analysis", "review", "curating")))
+    ok("no role may record a person's so what on a lead, typed or as the platform",
+       all(blocked(r, "Bash", command=f"uv run tools/explore.py so-what --exploration {x} --by {who} --answer worth-confirming {how}")
+           for r in ("coordinating", "analysis", "review", "curating")
+           for who, how in ((f"agent:{r}", "--local-practice"), ("human:someone", "--local-practice"), ("platform:github", "--record-comment c.json"))))
+    ok("the coordinating role may draft the question a person is asked about a reviewed lead",
+       not blocked("coordinating", "Bash", command=f"uv run tools/explore.py ask-so-what --exploration {x} --by agent:coordinating --model claude-sonnet-5-5 --file q.yaml --read-lead {'a' * 64}"))
     ok("review may record a review", not blocked("review", "Bash", command=f"uv run tools/explore.py review --exploration {x} --by agent:review --verdict holes-found --file r.md"))
     ok("review may recheck a look", not blocked("review", "Bash", command=f"uv run tools/explore.py recheck --exploration {x} --look LOOK-001"))
     ok("review may not run a look", blocked("review", "Bash", command=f"uv run tools/explore.py look --exploration {x} --by agent:review --why w -- uv run looks/a.py"))

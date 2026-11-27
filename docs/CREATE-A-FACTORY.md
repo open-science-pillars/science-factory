@@ -56,6 +56,7 @@ The checks a stage may name: `started`, `plan-complete`, `tests-pass`, `rehearsa
 | `procedure.coordinator` | the agent that follows `sf.py status` and starts the others |
 | `procedure.agents` | what each agent does, in a sentence its file quotes word for word |
 | `procedure.acts_by_people` | the lock and the signature: `who`, the `command` no agent may call, the `route` (`pull-request` or `practice`), and for a pull request the `harness`, `protected_branch`, `approvals`, `repository` (owner/name), `merge_methods` (`merge`, `squash`; never a rebase), `opening_needs` and `shows` |
+| `procedure.so_what` | a person's answer to a reviewed lead: `who`, the `command` no agent may call, the `route` (`comment` on the platform, through a `harness` and for a `repository`, or `practice`) and the four `answers` |
 | `where_it_runs`, `runner_contract.keys` | runner files, and the twelve keys every runner fills in |
 
 They must be exactly the stages `done_by: people`. A factory declares both acts the same way; a factory whose acts are `practice` is valid, and every study under it is practice.

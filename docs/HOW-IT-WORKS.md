@@ -30,7 +30,7 @@ The one rule is to say that it was exploring. The exploring tool (`tools/explore
 2. **Set the fresh data aside.** The agent proposes it from metadata (`tools/fresh_data.py`), and the exploration starts by setting exactly that aside. Everything else is working data.
 3. **Look, as often as you like.** Every look is a script run through the tool, logged with its inputs and output by checksum, with any figure it draws. A look that reaches for what was set aside is refused.
 4. **Record choices and notes as you go.** Each choice is logged with its alternatives, and the log keeps how many looks had run when it was written down.
-5. **Write up the lead, have it reviewed, and hand it over or stop.** The lead says what looks true, how many things were tried, and which choices would change it. A reviewer who did none of the work picks holes in it first. A lead is never a finding.
+5. **Write up the lead, have it reviewed, and ask a person so what.** The lead says what looks true, how many things were tried, and which choices would change it. A reviewer who did none of the work picks holes in it first. Then a person who knows the field answers: worth confirming, try this instead, not interesting, or it needs an expert. Only `worth-confirming` lets it go to a confirming study. A lead is never a finding.
 
 ![The exploring loop: read what is known, set the fresh data aside, look, record choices, write up a lead and have it reviewed.](diagrams/exploring-loop.svg)
 

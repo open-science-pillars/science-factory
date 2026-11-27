@@ -97,7 +97,7 @@ from pathlib import Path
 import yaml
 
 KEYS = ("description", "may_call", "must_never_see", "reads", "writes", "hands_on")
-ACTS_OF_PEOPLE = ("tools/sf.py lock", "tools/sf.py signature", "tools/sf.py void-unread")
+ACTS_OF_PEOPLE = ("tools/sf.py lock", "tools/sf.py signature", "tools/sf.py void-unread", "tools/explore.py so-what")
 SAME_WORDS = {  # a role, the label that begins a paragraph of its file, and the skills that carry the same paragraph
     "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"]},
     "review": {"**Where you write.**": ["review-work"]},
@@ -454,6 +454,8 @@ def selftest(root: Path) -> int:
         case("a role may call the lock", lambda d: edit(d, "factory/agents/coordinating/agent.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/sf.py lock"'),
              "an act of people")
         case("a role may call the signature", lambda d: edit(d, "factory/agents/curating/agent.md", '  - "tools/sf.py resolve"', '  - "tools/sf.py resolve"\n  - "tools/sf.py signature"'),
+             "an act of people")
+        case("a role may record a person's so what on a lead", lambda d: edit(d, "factory/agents/coordinating/agent.md", '  - "tools/sf.py close"', '  - "tools/sf.py close"\n  - "tools/explore.py so-what"'),
              "an act of people")
         case("the review role may run a look", lambda d: edit(d, "factory/agents/review/agent.md", '  - "tools/explore.py recheck"', '  - "tools/explore.py look"'),
              "does the work it is there to check")

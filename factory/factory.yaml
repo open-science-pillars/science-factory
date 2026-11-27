@@ -27,7 +27,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: science-factory
-version: 0.12.0                           # the content of this definition; every change to it is in the change log
+version: 0.13.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before the fresh data that checks it is opened, once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding, or a recorded negative result
@@ -192,6 +192,23 @@ procedure:
               the lock this rests on, problems and remarks from the log check]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
       not_held_by_the_tool: "who approved, and that the approver is the steward: the platform says who approved when `sf.py verify-acts` asks it, and the repository's code owners say who the steward is. Until it is verified the signature stands as `merge found, people not verified` and the study is awaiting verification, not signed"
+
+  # A person's "so what" on a reviewed lead: is it worth confirming? Agents' results are often technically right and
+  # scientifically unremarkable until someone who knows the field says why they matter, so no lead goes to a
+  # confirming study without a person's answer. It is not an act on a plan or on fresh data, so it is lighter than
+  # the two acts above: on the platform it is a comment by a person on the tracking issue, recorded by the job that
+  # follows the comment and confirmed by asking the platform about that comment (docs/WHAT-IS-ENFORCED.md says why).
+  # Typed at a command line it is practice, and says so. Its three standings: `practice`, `comment recorded, person
+  # not verified`, `verified`.
+  so_what:
+    who: [scientist]
+    command: "tools/explore.py so-what"
+    route: comment                             # or practice: every so what under this definition is typed, and says so
+    harness: github                            # the harness whose verifier asks the platform about the comment
+    repository: example-org/example-studies    # a placeholder, as for the acts above
+    answers: [worth-confirming, try-instead, not-interesting, needs-an-expert]
+    evidence: "the comment on the tracking issue, as the platform records it: its author, that the author belongs to the repository, and its words unedited"
+    not_held_by_the_tool: "that the author is the right person to judge the lead: the platform says who wrote the comment, and whoever reads the name judges that. That an agent did not post the comment from a person's account: nothing on the platform tells the two apart"
 
   rules_for_people:      # for people: not checked by the tool here; each says what does hold it
     - "Tests are repeated freely. Held-out data is never reopened until it agrees (held by the openings allowed and the record of what has been opened)."

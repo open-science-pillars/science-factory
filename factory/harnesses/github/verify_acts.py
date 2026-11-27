@@ -32,6 +32,9 @@ that the commit is on that branch now; and that the branch is protected. Where t
 rules they are held to the definition too (a pull request required, as many approvals, the check `request-check`
 required); where it may not, the answer says the rules were not shown.
 
+It also asks about one comment that carries a person's so what on a lead (`verify_comment`, called by
+`explore.py verify-so-what`): GET /repos/{repository}/issues/comments/{id}.
+
 What it does not mean: that the approving accounts are the right people (whoever reads the names judges that; the
 repository's code owners say who may approve), or that whoever ran the verification ran this code on an honest
 machine. The answer is recorded in the study log with every endpoint that was asked, and anybody can ask again.
@@ -380,6 +383,47 @@ def verify(call, api: str, token: str, expect: dict) -> dict:
     return out
 
 
+PEOPLE = ("OWNER", "MEMBER", "COLLABORATOR")  # the platform's words for an account that belongs to the repository
+
+
+def verify_comment(call, api: str, token: str, expect: dict) -> dict:
+    """Ask the platform about one comment that carries a person's so what on a lead (explore.py verify-so-what), and
+    judge it: {"result", "problems", "told", "asked", "answers_sha256"}. One question:
+      GET /repos/{repository}/issues/comments/{id}    the comment: who wrote it, what it says, where it is
+    `verified` means: the platform holds that comment in the repository the definition names, its author is the
+    account the job recorded, the platform calls that account a user (not a bot) that belongs to the repository,
+    and the comment says now, byte for byte, what it said when it was recorded. It does not mean that the account is
+    the right person to judge the lead: whoever reads the name judges that."""
+    path = f"/repos/{expect['repository']}/issues/comments/{int(expect['id'])}"
+    got = call(api, path, token)
+    status, body = got.get("status"), got.get("body")
+    out = {"result": NOT_CHECKED, "problems": [], "told": {}, "asked": [{"endpoint": path, "status": status}],
+           "answers_sha256": hashlib.sha256(json.dumps(got, sort_keys=True, default=str).encode()).hexdigest()}
+    if status in NOT_REACHED:
+        out["problems"].append(f"the platform did not answer, or this token may not ask it (status {status}): nothing is verified")
+        return out
+    if status != 200 or not isinstance(body, dict):
+        out.update(result=REFUTED, problems=[f"the platform holds no such comment in {expect['repository']} (status {status})"])
+        return out
+    user = body.get("user") if isinstance(body.get("user"), dict) else {}
+    text = str(body.get("body") or "")
+    out["told"] = {"author": _login(user), "author_type": user.get("type"), "association": body.get("author_association"),
+                   "created_at": body.get("created_at"), "updated_at": body.get("updated_at"), "url": body.get("html_url")}
+    p = out["problems"]
+    if _login(user).casefold() != str(expect.get("author") or "").casefold():
+        p.append(f"the platform says the comment was written by {_login(user) or 'nobody it names'}, not {expect.get('author')}")
+    if user.get("type") != "User" or _login(user).endswith("[bot]"):
+        p.append("the platform does not call the comment's author a user: an app or a bot gives no person's so what")
+    if str(body.get("author_association") or "") not in PEOPLE:
+        p.append(f"the comment's author does not belong to the repository (the platform says `{body.get('author_association')}`)")
+    if hashlib.sha256(text.encode()).hexdigest() != expect.get("body_sha256"):
+        p.append("the comment says something else now than when it was recorded: it was edited, and the answer recorded is not the one it holds")
+    if not str(body.get("html_url") or "").startswith(f"https://github.com/{expect['repository']}/issues/"):
+        p.append("the comment's address is not an issue of the repository the definition names")
+    out["result"] = REFUTED if p else VERIFIED
+    return out
+
+
 # ---- recorded answers, for the self-tests of this file and of the study tool ----------------
 def _filled(obj, fill: dict):
     text = json.dumps(obj)
@@ -528,6 +572,27 @@ def selftest() -> int:
     renamed = verify(lambda api, path, token: {"status": 301, "body": None}, API, "a-token", EXPECT)
     ok("a repository that answers with a redirect is `not checked`, and the answer says to name it as it is called now",
        renamed["result"] == NOT_CHECKED and "has moved or been renamed" in renamed["problems"][0])
+    comment = {"id": 41, "html_url": "https://github.com/example-org/example-studies/issues/3#issuecomment-41",
+               "user": {"login": "a-scientist", "type": "User"}, "author_association": "MEMBER", "created_at": "2026-11-26T10:00:00Z",
+               "body": "so-what: worth-confirming\nexploration: EXPLORATION-1\nlead: 0123456789ab\n"}
+    ask = {"repository": FILL["REPOSITORY"], "id": 41, "author": "a-scientist", "body_sha256": hashlib.sha256(comment["body"].encode()).hexdigest()}
+
+    def answering(body, status=200):
+        return lambda api, path, token: ({"status": status, "body": body} if path == "/repos/example-org/example-studies/issues/comments/41"
+                                         else {"status": 404, "body": {"message": "Not Found"}})
+    fine = verify_comment(answering(comment), API, "a-token", ask)
+    ok("a so what given as a comment is verified when the platform holds the comment in the named repository, by the recorded user, "
+       "unedited", fine["result"] == VERIFIED and fine["told"]["association"] == "MEMBER" and fine["asked"][0]["endpoint"].endswith("/comments/41"))
+    ok("a so what whose comment was edited after it was recorded is refuted",
+       verify_comment(answering({**comment, "body": comment["body"].replace("worth-confirming", "not-interesting")}), API, "a-token", ask)["result"] == REFUTED)
+    ok("a so what whose comment a bot wrote is refuted",
+       "not call the comment's author a user" in " ".join(verify_comment(answering({**comment, "user": {"login": "helper[bot]", "type": "Bot"}}), API, "a-token",
+                                                                     {**ask, "author": "helper[bot]"})["problems"]))
+    ok("a so what by an account that does not belong to the repository is refuted",
+       verify_comment(answering({**comment, "author_association": "NONE"}), API, "a-token", ask)["result"] == REFUTED)
+    ok("a so what whose comment the platform does not hold is refuted, and one it does not answer for is `not checked`",
+       verify_comment(answering(None, 404), API, "a-token", ask)["result"] == REFUTED
+       and verify_comment(answering(None, 0), API, "a-token", ask)["result"] == NOT_CHECKED)
     for name, passed in results:
         print(("ok    " if passed else "FAIL  ") + name)
     good_n = sum(1 for _n, p in results if p)

@@ -30,6 +30,8 @@ The lock and the steward's signature are the two acts no agent makes. On one mac
 
 The signature goes the same way, with `sf.py request-signature --decision signed` (or `declined`) and the folder `signature-request/`.
 
+**A person's so what on a lead** is lighter: a comment on the tracking issue that begins `so-what: <answer>`, with lines `exploration: explorations/<name>` and `lead: <the first 16 characters of the lead's sha256>` (and `direction:`, `reason:` or `expertise:` where the answer needs words; `explore.py ask-so-what` writes the exact lines into the question). The workflow's job `so-what` reads the comment from GitHub, records it with `explore.py so-what --by platform:github --record-comment`, asks GitHub about it with `explore.py verify-so-what`, and commits the exploration log. It takes a comment only from an account GitHub calls a user that belongs to the repository. It has never run on GitHub.
+
 ## The checklist, done once for a repository
 
 1. Put copies of `tools/`, `factory/` and, for the built-in method, `methods/` and `examples/stand-alone/system-trial/` in the repository where the studies live, by a pull request (`docs/CREATE-A-FACTORY.md`, "Start in five steps").

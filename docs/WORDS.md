@@ -18,6 +18,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **exploring**: looking at data to find out what is there; it ends in a lead, a note, a method or a stop.
 - **confirming**: testing one claim, stated in advance, once, on fresh data.
 - **lead**: what an exploration found that looks true and is worth testing; never a finding.
+- **so what**: a person's answer to a reviewed lead: `worth-confirming`, `try-instead`, `not-interesting` or `needs-an-expert`; no agent records it.
+- **lead noted**: how an exploration ends when a person says its lead is not interesting; not a failure.
 - **finding**: the signed result of a confirming study, and nothing else.
 - **the wall**: data used to explore is never used to confirm what the exploring found.
 

@@ -315,6 +315,8 @@ TEXT, NUMBER, WHOLE, FLAG, ANY = "text", "number", "whole number", "true or fals
 # so who acted is the platform's record. `practice`: typed at a command line, for trying the tools out; a study
 # whose acts were made that way never closes as a signed finding.
 ACT_ROUTES = ("pull-request", "practice")
+SO_WHAT_ROUTES = ("comment", "practice")  # a person's so what on a reviewed lead: a comment on the platform, or typed
+SO_WHAT_ANSWERS = ("worth-confirming", "try-instead", "not-interesting", "needs-an-expert")  # the answers explore.py takes, and no others
 # How the platform may bring an approved pull request onto the protected branch, and what the study tool accepts.
 # `merge`: a merge commit with two parents, the request reachable from the second parent only; git shows that shape.
 # `squash`: one new commit with one parent, which git alone cannot tell from an ordinary commit, so it stands as
@@ -348,6 +350,8 @@ FACTORY = {
                                     "approvals": WHOLE, "opening_needs": ("one", OPENING_NEEDS),
                                     "opening_without_verification": ("one", UNVERIFIED_OPENING), "shows": STRINGS, "evidence!": TEXT,
                                     "not_held_by_the_tool": TEXT}),
+        "so_what": {"who!": STRINGS, "command!": TEXT, "route!": ("one", SO_WHAT_ROUTES), "harness": TEXT, "repository": TEXT,
+                    "answers!": STRINGS, "evidence!": TEXT, "not_held_by_the_tool": TEXT},
         "rules_for_people": STRINGS},
     "where_it_runs": {"default!": TEXT, "tests": TEXT, "opening_held_out_data": TEXT},
     "runner_contract!": {"keys!": ("map", TEXT), "rules_for_every_runner": STRINGS},
@@ -724,6 +728,29 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
     if len({(a or {}).get("route") for a in acts.values() if isinstance(a, dict)}) > 1:
         bad("acts", "factory.yaml: one act is a pull request and the other is practice: a study with a typed act never closes as a signed "
                     "finding, so a factory declares both acts the same way")
+
+    # ---- the so what: a person's answer to a reviewed lead, which no agent may call
+    so = proc.get("so_what")
+    if so is None:
+        bad("acts", "factory.yaml: `procedure.so_what` is missing: it says who answers whether a reviewed lead is worth confirming, and by "
+                    "which route; the exploring tool hands no lead over without that answer")
+    elif isinstance(so, dict):
+        for name, fm in agents.items():
+            if fm and str(so.get("command")) in [str(c) for c in fm.get("may_call") or []]:
+                bad("acts", f"agents/{name}/agent.md: may_call holds `{so.get('command')}`, the so what: a person's answer, and no agent may call it")
+        if so.get("command") != "tools/explore.py so-what":
+            bad("acts", "factory.yaml: `so_what.command` is `tools/explore.py so-what`, the one command that records it")
+        if list(so.get("answers") or []) != list(SO_WHAT_ANSWERS):
+            bad("acts", f"factory.yaml: `so_what.answers` are the four the exploring tool takes, in order: {', '.join(SO_WHAT_ANSWERS)}")
+        if so.get("route") == "comment":
+            api = ((harnesses.get(so.get("harness")) or {}).get("platform") or {}).get("api") if isinstance(harnesses.get(so.get("harness")), dict) else None
+            if not str(api or "").startswith("https://"):
+                bad("acts", f"factory.yaml: the so what is a comment on the platform, and its `harness` ({so.get('harness')}) is not a folder in "
+                            "harnesses/ that names a `platform.api` beginning with https://: nothing could ask the platform about the comment")
+            if not REPOSITORY.fullmatch(str(so.get("repository") or "")):
+                bad("acts", "factory.yaml: the so what is a comment on the platform, and `repository` does not name the repository as owner/name")
+        elif so.get("route") == "practice" and any(k in so for k in ("harness", "repository")):
+            bad("acts", "factory.yaml: the so what is declared as practice (typed) and still names a harness or a repository: say one or the other")
 
     # ---- skills: one name, one scope, and the scope is true
     seen = {}
@@ -1234,6 +1261,20 @@ def selftest() -> int:
         case("an act that is a pull request and names no repository on the platform",
              lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
              "`repository` does not name the repository on the platform")
+        case("a definition with no so what for a reviewed lead",
+             lambda d: write(d, "factory.yaml", "\n".join(ln for ln in (d / "factory.yaml").read_text().split("\n  so_what:\n")[0].split("\n"))
+                            + "\n  rules_for_people:" + (d / "factory.yaml").read_text().split("\n  rules_for_people:", 1)[1]), "`procedure.so_what` is missing")
+        case("an agent that may call the so what, a person's answer",
+             lambda d: edit(d, "agents/coordinating/agent.md", '  - "tools/explore.py status"', '  - "tools/explore.py status"\n  - "tools/explore.py so-what"'),
+             "the so what: a person's answer")
+        case("a so what with an answer the exploring tool does not take",
+             lambda d: edit(d, "factory.yaml", "answers: [worth-confirming, try-instead, not-interesting, needs-an-expert]", "answers: [worth-confirming, maybe]"),
+             "`so_what.answers`")
+        case("a so what on the platform whose harness cannot ask the platform",
+             lambda d: edit(d, "factory.yaml", "    harness: github                            # the harness whose", "    harness: by-hand                           # the harness whose"),
+             "nothing could ask the platform about the comment")
+        case("a so what declared as practice that still names a repository",
+             lambda d: edit(d, "factory.yaml", "    route: comment ", "    route: practice "), "declared as practice (typed) and still names")
         case("an act whose merge methods include a rebase merge, which the study tool does not accept",
              lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]", "      merge_methods: [merge, rebase]", 2), "merge_methods")
         case("an act that is a pull request with no merge method at all",

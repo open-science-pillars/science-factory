@@ -26,7 +26,7 @@ A lead is something that looks true and is worth testing. It is right more often
 
 4. **Hand it back for review, and answer the review.** For each hole: look again, revise the lead and record a new version, or keep the hole in the lead as a stated limit.
 
-   **When to end.** After `explore.py lead`, do not call `end`: status names the review agent, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
+   **When to end.** After `explore.py lead`, do not call `end`: status names the review agent, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed, a person has said it is worth confirming (`status` shows their so what), and you will not revise it further; the tool refuses it earlier. If the person says try instead, their direction is your next question: explore it and write a new version. You never record a so what. An exploration with no lead ends when you choose, as a note, a method or a stop.
 
    The command, when its time comes: `uv run tools/explore.py end --exploration <x> --by <you> --model <your model> --outcome lead --summary "<one sentence>"`.
 

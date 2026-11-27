@@ -2342,7 +2342,8 @@ def from_the_request(study: Study, ev: list) -> dict:
     except OSError:
         text = ""
     pick = lambda label: next((ln.split("**", 2)[2].strip() for ln in text.splitlines() if ln.startswith(f"**{label}.**")), None)  # noqa: E731
-    return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "text": text}
+    return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "so_what": pick("The so what"),
+            "text": text}
 
 
 def conds_text(conds: list) -> str:
@@ -2546,7 +2547,8 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
     out += ["", "## The exploration that led here, and what its reviewer said", ""]
     if came["how_it_was_found"] or came["review_of_the_lead"]:
         out += ["How many things were tried: " + str(came["how_it_was_found"] or "the request does not say."), "",
-                "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), ""]
+                "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), "",
+                "A person's so what on the lead (is it worth confirming?): " + str(came["so_what"] or "the request does not say; ask before you approve."), ""]
     else:
         out += ["This study's request carries no hand-over from an exploration, so nothing is known here about what was tried before it.", ""]
     out += ["Reviews recorded in this study's own log so far: " + ("; ".join(f"{e['actor']} {e['data']['verdict']}" for e in reviews) or "none (a study is reviewed after its opening)") + ".", "",

@@ -226,10 +226,33 @@ def main() -> int:
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+        # the person's so what: is the reviewed lead worth confirming? An agent drafts the question; only a person answers
+        step("the exploration cannot end as a lead before a person has said the reviewed lead is worth confirming",
+             "worth confirming" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
+        question = work / "so-what-question.yaml"
+        question.write_text(yaml.safe_dump({
+            "what_the_lead_shows": f"Over 2024 the second sensor rises and falls with the reference with a gain of {gain:.4f} once degraded readings are left out.",
+            "why_it_might_matter": "A gain this close to one would let the second sensor stand in for the reference where the reference is down.",
+            "what_would_make_it_unremarkable": "If the two sensors are calibrated against each other, a gain near one is what calibration gives and says nothing new."}))
+        tool("explore.py", "ask-so-what", *E, "--by", coordinator, "--file", question, "--read-lead", lead_read())
+        step("an agent drafts the question a person is asked, and cannot record the answer under any name",
+             "What would make it unremarkable" in (x / "so-what" / "QUESTION-001.md").read_text()
+             and "a person's answer" in tool("explore.py", "so-what", *E, "--by", coordinator, "--answer", "worth-confirming", "--read-lead", lead_read(),
+                                              "--local-practice", expect=2))
+        person = "human:throwaway-placeholder"  # nobody: a name for a scratch folder, typed here and nowhere that is kept
+        step("typed at a command line, a person's so what is refused unless it says it is practice: on GitHub it is a comment on the tracking issue",
+             "--local-practice" in tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), expect=2))
+        tool("explore.py", "so-what", *E, "--by", person, "--answer", "try-instead", "--direction", "look at the low end of the record, where the degraded readings sit",
+             "--read-lead", lead_read(), "--local-practice")
+        step("try-instead sends the exploration back to exploring, with the person's direction as its next question",
+             json.loads(tool("explore.py", "status", *E, answer=True))["next_question"].startswith("look at the low end"))
+        tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), "--local-practice")
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the agent that explored cannot make the hand-over",
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
-        tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A")
+        tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A", "--local-practice")
+        step("the hand-over carries the person's so what and its standing",
+             "**The so what.** worth-confirming, by human:throwaway-placeholder" in (x / "hand-over" / "request.md").read_text())
         hand = json.loads((x / "hand-over" / "hand-over.json").read_text())
         stub = yaml.safe_load((x / "hand-over" / "analysis-plan.stub.yaml").read_text())
         step("the hand-over carries the proposal of the fresh data byte for byte, and the plan stub names it",
@@ -347,7 +370,6 @@ def main() -> int:
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
-        person = "human:throwaway-placeholder"  # nobody: a name for a scratch folder, typed here and nowhere that is kept
         step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
              "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
         tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
