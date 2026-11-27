@@ -33,7 +33,7 @@ The path is the name: an agent is called what its folder is called, a runner wha
 | `checkers.yaml` | the checkers `knowledge.py check-drafts` runs, pinned by checksum | `knowledge.py` |
 | `change-log.jsonl` | every change, with its prediction and what it did | people; `sf.py log-change` writes it |
 
-The work (`studies/`, `explorations/`, `record/`, `knowledge-queue/`) lives in your repository, made by the tools. The definition is one folder so it can be copied, reviewed and bound by one checksum.
+The work (`studies/`, `explorations/`, `record/`, `knowledge-queue/`) lives in your repository, made by the tools; the definition is one folder so it can be copied, reviewed and bound by one checksum.
 
 ## `factory.yaml`, key by key
 
@@ -44,7 +44,7 @@ The work (`studies/`, `explorations/`, `record/`, `knowledge-queue/`) lives in y
 | `schemaVersion` | the form of the files; today `science-factory/v1alpha1` |
 | `version` | this definition's content; bump it with every change and record it with `sf.py log-change` |
 | `procedure.stages[].id`, `done_by`, `done_when`, `does` | each stage's name; who does it (agents, or `people`); the checks that end it; one sentence shown at it |
-| `procedure.acts_by_people.lock.opening_without_verification` | `refused` (default) or `allowed-with-a-reason`: may a person open fresh data on a lock GitHub could not be asked about |
+| `procedure.acts_by_people.lock.opening_without_verification` | `refused` (default) or `allowed-with-a-reason`: may a person open fresh data on a lock GitHub could not be asked about; changing it needs a change-log record under a new version |
 
 The checks a stage may name: `started`, `plan-complete`, `tests-pass`, `rehearsals-pass`, `locked`, `openings-complete`, `finding-attached`, `reviewed`, `steward-decided`, `notes-resolved`, `closed`.
 
@@ -65,11 +65,11 @@ The acts must be exactly the stages `done_by: people`, both declared the same wa
 
 ## Agents, skills and harnesses
 
-**An agent file** is front matter, then instructions. `description` is one sentence. `harness`, `model` and `runner` fall back to `agentDefaults`; the model is a concrete name the harness lists, never `auto`. The permissions: `may_call` (`tools/<tool>.py <command>`, `skill:<name>`, agents it may start as `role:<name>`), `must_never_see` (in words, and as `path:<pattern>` where a harness can refuse it), `reads`, `writes` (patterns; every agent that writes has `record/<name>/*.md`) and `hands_on`.
+**An agent file** is front matter, then instructions; `description` is one sentence; `harness`, `model` and `runner` fall back to `agentDefaults`, and the model is a concrete name the harness lists, never `auto`. The permissions: `may_call` (`tools/<tool>.py <command>`, `skill:<name>`, agents it may start as `role:<name>`), `must_never_see` (in words, and as `path:<pattern>` where a harness can refuse it), `reads`, `writes` (patterns; every agent that writes has `record/<name>/*.md`) and `hands_on`.
 
 **What holds an agent to its file.** The validator holds the files to each other (commands exist, no agent calls an act, the review agent does no work, shared paragraphs match, every command shown parses); a harness holds the agent while it works; without one the file is instruction.
 
-**Skills** are procedures with any script beside them and no facts about a dataset. Methods for a kind of data belong to the repository where that science lives; the factory ships one built-in method to exercise its stages.
+**Skills** are procedures, with any script beside them, and no facts about a dataset. Methods for a kind of data belong where that science lives; the factory ships one built-in method to exercise its stages.
 
 **Promoted methods.** `explore.py promote` turns a look's script into `methods/<name>/` with the exploration's runs as known-answer cases, a README (what it computes, on what inputs, known limits), a generated `known_answer_tests.py` and `method.json` with every checksum. The validator refuses it until a change-log record names `methods/<name>` with a prediction; a plan binding it runs `known_answer_tests.py` as a rehearsal before its tests and lock.
 
@@ -81,7 +81,7 @@ A runner is where a job computes (this machine, a cluster, a cloud batch service
 
 ## Checks, judges, and the outcome firewall
 
-A scorer is one file in `scorers/`. A **check** is worked out by a tool from the log (`sf.py scorecard`), `pending` until it can be. Nine ship for studies (`chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated`, `overclaiming-in-findings`) and one for explorations (`overclaiming-in-leads`); the overclaiming checks read `scorers/overclaiming-in-leads/phrases.yaml` (a pattern, why, optionally `when: not-supported` or `unless`) and only warn. A **judge** is a rubric for a model, with `labels`, `passingScore`, `samplingRate`, `model` and the `agents` it scores; three ship (`exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`). In a first trial, agents judging six packets by hand, twice each, matched the key on five and found a fault in the sixth case; the Claude Code path (`scorers.py judge`) has not run. `JUDGE.md` asks for `verdict.yaml`; `scorers.py record` writes the verdict beside the packet and moves the answer out.
+A scorer is one file in `scorers/`. A **check** is worked out by a tool from the log (`sf.py scorecard`), `pending` until it can be. Nine ship for studies (`chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated`, `overclaiming-in-findings`) and one for explorations (`overclaiming-in-leads`); the overclaiming checks read `scorers/overclaiming-in-leads/phrases.yaml` (a pattern, why, optionally `when: not-supported` or `unless`) and only warn. A **judge** is a rubric for a model, with `labels`, `passingScore`, `samplingRate`, `model` and the `agents` it scores; three ship (`exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`). In a first trial agents judged six packets by hand, twice each, matched the key on five and found a fault in the sixth case; the Claude Code path (`scorers.py judge`) has not run. `JUDGE.md` asks for `verdict.yaml`; `scorers.py record` writes the verdict beside the packet and moves the answer out.
 
 Every scorer declares what it `reads`, from a list split at the first opening:
 
@@ -118,7 +118,7 @@ The plan, the code, the request, the test receipts, the fresh-data proposal, and
 
 ## What a file can change, and how a change is made
 
-Editing `factory.yaml` can add, remove or reorder stages built from the checks above, change who does a stage, and allow or refuse an opening without verification; scorers choose the checks and add judges; an agent's file changes what it may do, which the summary makes hard to miss. A new kind of check, study, decision rule or material needs code, with a self-test that fails without it. A change is a pull request: `sf.py log-change` records the problem, the change and its prediction before it is tried, and what it did after. Nothing is adopted automatically; the intended rule, which no tool enforces yet, is a pass on the acceptance set. Tag and release each definition version beside the change log.
+Editing `factory.yaml` can add, remove or reorder stages built from the checks above, change who does a stage, and allow or refuse an opening without verification (under a new version with a change-log record; the lock request then says so in capitals); scorers choose the checks and add judges; an agent's file changes what it may do, which the summary makes hard to miss. A new kind of check, study, decision rule or material needs code, with a self-test that fails without it. A change is a pull request: `sf.py log-change` records the problem, the change and its prediction before it is tried, and what it did after. Nothing is adopted automatically; the intended rule, which no tool enforces yet, is a pass on the acceptance set. Tag and release each definition version beside the change log.
 
 ## Compared with Warp Factories
 
