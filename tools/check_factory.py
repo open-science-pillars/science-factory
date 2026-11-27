@@ -107,6 +107,7 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     sys.path[:] = [p for p in sys.path if p != _own]
 
 import argparse  # noqa: E402
+import contextlib  # noqa: E402
 import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import io  # noqa: E402
@@ -135,7 +136,7 @@ SHA = re.compile(r"^[0-9a-f]{64}$")
 STAGE_CHECKS = ("started", "plan-complete", "tests-pass", "rehearsals-pass", "locked", "openings-complete", "finding-attached",
                 "reviewed", "steward-decided", "notes-resolved", "closed")
 SCORER_CHECKS = ("log-checks-out", "not-exploratory", "openings-within-allowed", "no-failed-opening", "lock-committed-before-opening",
-                 "review-recorded", "acts-recorded-by-people", "notes-on-curation-list")
+                 "review-recorded", "acts-recorded-by-people", "notes-on-curation-list", "overclaiming")
 BEFORE_THE_LOCK = ("started", "plan-complete", "tests-pass", "rehearsals-pass")  # the checks of the stages an automation may start
 
 # The firewall's fixed list: the kinds of material a scorer may say it reads. The line between the two halves is
@@ -144,6 +145,7 @@ MATERIAL = {
     "request": "the scientist's request, as bound when the study or exploration started",
     "plan": "the analysis plan, as the lock bound it (or as it stands, in a study nothing has been opened in)",
     "known-answer-tests": "the receipts of the known-answer tests, the working data and the rehearsals, as run before any opening",
+    "code": "the code the plan binds (the method, its scripts and what they import), each file by the checksum a test, a rehearsal or the lock bound before any opening",
     "pre-lock-log": "the study log up to the first opening of held-out data: the start, the tests, the rehearsals, the lock",
     "exploration-log": "an exploration's log: what was set aside, every look, every choice",
     "lead": "an exploration's lead, as recorded",
@@ -315,6 +317,8 @@ TEXT, NUMBER, WHOLE, FLAG, ANY = "text", "number", "whole number", "true or fals
 # so who acted is the platform's record. `practice`: typed at a command line, for trying the tools out; a study
 # whose acts were made that way never closes as a signed finding.
 ACT_ROUTES = ("pull-request", "practice")
+SO_WHAT_ROUTES = ("comment", "practice")  # a person's so what on a reviewed lead: a comment on the platform, or typed
+SO_WHAT_ANSWERS = ("worth-confirming", "try-instead", "not-interesting", "needs-an-expert")  # the answers explore.py takes, and no others
 # How the platform may bring an approved pull request onto the protected branch, and what the study tool accepts.
 # `merge`: a merge commit with two parents, the request reachable from the second parent only; git shows that shape.
 # `squash`: one new commit with one parent, which git alone cannot tell from an ordinary commit, so it stands as
@@ -338,7 +342,7 @@ FACTORY = {
     "agentDefaults!": {"harness!": TEXT, "model!": TEXT, "runner!": TEXT},
     "procedure!": {
         "coordinator!": TEXT, "study_kinds": ("map", TEXT),
-        "request": {"fields": STRINGS, "questions_back": TEXT, "ways_to_hold_data_out": STRINGS},
+        "request": {"fields": STRINGS, "questions_back": TEXT, "fit_note": TEXT, "ways_to_hold_data_out": STRINGS},
         "people": ("map", TEXT),
         "agents!": ("map", {"does!": TEXT, "may_not": TEXT, "must": TEXT, "never_sees": STRINGS, "runs": TEXT}),
         "separations": ("map", {"rule!": TEXT, "held_by!": TEXT, "not_held_by_the_tool": TEXT}),
@@ -348,6 +352,8 @@ FACTORY = {
                                     "approvals": WHOLE, "opening_needs": ("one", OPENING_NEEDS),
                                     "opening_without_verification": ("one", UNVERIFIED_OPENING), "shows": STRINGS, "evidence!": TEXT,
                                     "not_held_by_the_tool": TEXT}),
+        "so_what": {"who!": STRINGS, "command!": TEXT, "route!": ("one", SO_WHAT_ROUTES), "harness": TEXT, "repository": TEXT,
+                    "answers!": STRINGS, "evidence!": TEXT, "not_held_by_the_tool": TEXT},
         "rules_for_people": STRINGS},
     "where_it_runs": {"default!": TEXT, "tests": TEXT, "opening_held_out_data": TEXT},
     "runner_contract!": {"keys!": ("map", TEXT), "rules_for_every_runner": STRINGS},
@@ -365,7 +371,9 @@ RUNNER = {"description!": TEXT, "platform": {"os!": TEXT, "arch!": TEXT, "linux"
           "status!": ("one", ("built", "specified")), "basis!": TEXT, "for!": STRINGS, "contract!": ("map", TEXT), "open_questions!": STRINGS}
 SCORER = {"description!": TEXT, "type!": ("one", ("deterministic", "judge")), "check": TEXT, "reads!": STRINGS, "selfImprovement!": FLAG,
           "agents": STRINGS, "labels": [{"value!": TEXT, "score!": NUMBER, "description": TEXT}], "passingScore": NUMBER,
-          "samplingRate": NUMBER, "model": TEXT, "harness": TEXT, "applies_to": ("one", ("study", "exploration"))}
+          "samplingRate": NUMBER, "model": TEXT, "harness": TEXT, "applies_to": ("one", ("study", "exploration")), "phrases": TEXT}
+PHRASES = {"phrases!": [{"pattern!": TEXT, "why!": TEXT, "when": ("one", ("not-supported",)), "unless": TEXT}],
+           "precision": {"digits_beyond_uncertainty!": WHOLE}}
 DEFINITION_REF = {"path": TEXT, "ref": TEXT}
 SUITE = {
     "name!": TEXT, "description!": TEXT, "set!": ("one", ("design", "acceptance")),
@@ -423,6 +431,11 @@ def conforms(obj, spec, where: str) -> list:
     return p
 
 
+def sha_of(f: Path) -> str | None:
+    """The sha256 of a plain file, or None when there is none."""
+    return hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() and not f.is_symlink() else None
+
+
 def model_problem(model) -> str | None:
     """Why a value is not a concrete model, or None."""
     m = str(model or "")
@@ -453,7 +466,7 @@ def allowed_path(rel: str) -> bool:
         return True
     if top == "runners" and len(parts) == 2 and rel.endswith(".yaml"):
         return True
-    if top == "scorers" and len(parts) == 3 and parts[2] == "scorer.md":
+    if top == "scorers" and len(parts) == 3 and parts[2] in ("scorer.md", "phrases.yaml"):
         return True
     if top == "automations" and len(parts) == 3 and parts[2] == "automation.md":
         return True
@@ -725,6 +738,29 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         bad("acts", "factory.yaml: one act is a pull request and the other is practice: a study with a typed act never closes as a signed "
                     "finding, so a factory declares both acts the same way")
 
+    # ---- the so what: a person's answer to a reviewed lead, which no agent may call
+    so = proc.get("so_what")
+    if so is None:
+        bad("acts", "factory.yaml: `procedure.so_what` is missing: it says who answers whether a reviewed lead is worth confirming, and by "
+                    "which route; the exploring tool hands no lead over without that answer")
+    elif isinstance(so, dict):
+        for name, fm in agents.items():
+            if fm and str(so.get("command")) in [str(c) for c in fm.get("may_call") or []]:
+                bad("acts", f"agents/{name}/agent.md: may_call holds `{so.get('command')}`, the so what: a person's answer, and no agent may call it")
+        if so.get("command") != "tools/explore.py so-what":
+            bad("acts", "factory.yaml: `so_what.command` is `tools/explore.py so-what`, the one command that records it")
+        if list(so.get("answers") or []) != list(SO_WHAT_ANSWERS):
+            bad("acts", f"factory.yaml: `so_what.answers` are the four the exploring tool takes, in order: {', '.join(SO_WHAT_ANSWERS)}")
+        if so.get("route") == "comment":
+            api = ((harnesses.get(so.get("harness")) or {}).get("platform") or {}).get("api") if isinstance(harnesses.get(so.get("harness")), dict) else None
+            if not str(api or "").startswith("https://"):
+                bad("acts", f"factory.yaml: the so what is a comment on the platform, and its `harness` ({so.get('harness')}) is not a folder in "
+                            "harnesses/ that names a `platform.api` beginning with https://: nothing could ask the platform about the comment")
+            if not REPOSITORY.fullmatch(str(so.get("repository") or "")):
+                bad("acts", "factory.yaml: the so what is a comment on the platform, and `repository` does not name the repository as owner/name")
+        elif so.get("route") == "practice" and any(k in so for k in ("harness", "repository")):
+            bad("acts", "factory.yaml: the so what is declared as practice (typed) and still names a harness or a repository: say one or the other")
+
     # ---- skills: one name, one scope, and the scope is true
     seen = {}
     for rel in rels:
@@ -772,6 +808,27 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         if s.get("type") == "deterministic":
             if s.get("check") not in SCORER_CHECKS:
                 bad("references", f"{where}: the check `{s.get('check')}` is not one the study tool evaluates ({', '.join(SCORER_CHECKS)})")
+            if (s.get("check") == "overclaiming") != ("phrases" in s):
+                bad("references", f"{where}: the check `overclaiming` names its list of phrases (`phrases: <scorer>/phrases.yaml`), and no other check names one")
+            elif "phrases" in s:
+                listing = root / "scorers" / str(s["phrases"])
+                if not re.fullmatch(r"[a-z0-9][a-z0-9-]*/phrases\.yaml", str(s["phrases"])) or not listing.is_file():
+                    bad("references", f"{where}: `phrases` names {s['phrases']}, which is not a phrases.yaml in a scorer's folder")
+                else:
+                    try:
+                        listed = yaml.load(listing.read_text(encoding="utf-8"), Loader=_NoDuplicateKeys)
+                    except (yaml.YAMLError, UnicodeDecodeError) as e:
+                        listed = None
+                        bad("form", f"scorers/{s['phrases']}: does not parse ({type(e).__name__})")
+                    if listed is not None:
+                        for q in conforms(listed, PHRASES, f"scorers/{s['phrases']}"):
+                            bad("form", q)
+                        for i, ph in enumerate((listed or {}).get("phrases") or [] if isinstance(listed, dict) else []):
+                            for key in ("pattern", "unless"):
+                                try:
+                                    re.compile(str((ph or {}).get(key) or "x"))
+                                except re.error:
+                                    bad("form", f"scorers/{s['phrases']}: phrases[{i}].{key} is not a pattern that compiles")
             extra = [k for k in ("labels", "passingScore", "samplingRate", "model", "agents", "harness") if k in s]
             if extra:
                 bad("form", f"{where}: a deterministic scorer has no {', '.join(extra)}: the tool works it out and no model is asked")
@@ -913,6 +970,49 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         for t in a.get("triggers") or []:
             if isinstance(t, dict) and t.get("provider") == "schedule" and "schedule" not in t:
                 bad("form", f"{where}: a schedule trigger carries `schedule` (a name and a cron line)")
+
+    # ---- methods: a method promoted from a look is whole, unchanged, and recorded as a change with a prediction
+    changes = []
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for ln in (root / "change-log.jsonl").read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError):
+                rec = json.loads(ln)
+                if isinstance(rec, dict):
+                    changes.append(rec)
+    for mj in sorted((repository / "methods").glob("*/method.json")) if (repository / "methods").is_dir() else []:
+        folder, where = mj.parent, f"methods/{mj.parent.name}"
+        try:
+            m = json.loads(mj.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError):
+            bad("methods", f"{where}/method.json cannot be read as JSON")
+            continue
+        if not isinstance(m, dict) or m.get("promoted") is not True or m.get("name") != folder.name:
+            bad("methods", f"{where}/method.json does not say it is the promoted method `{folder.name}` (promoted: true, name)")
+            continue
+
+        def same(rel, h, what) -> None:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]*", str(rel or "")) or ".." in str(rel) or sha_of(folder / str(rel)) != h:
+                bad("methods", f"{where}: {what} `{rel}` is missing or is not the file the promotion recorded (its checksum differs)")
+        for key, what in (("script", "the script"), ("tests", "the known-answer tests"), ("readme", "the README")):
+            same((m.get(key) or {}).get("file"), (m.get(key) or {}).get("sha256"), what)
+        if (m.get("tests") or {}).get("file") != "known_answer_tests.py":
+            bad("methods", f"{where}: the known-answer tests are `known_answer_tests.py`, which a study runs as a rehearsal")
+        cases = m.get("cases") if isinstance(m.get("cases"), dict) else {}
+        if not cases:
+            bad("methods", f"{where}: a promoted method has at least one known-answer case, from the looks it came from")
+        for case, files in cases.items():
+            for rel, h in (files.items() if isinstance(files, dict) else []):
+                same(f"known-answers/{case}/{rel}", h, f"the case {case}'s file")
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            text = (folder / "README.md").read_text(encoding="utf-8")
+            for part in ("**What it computes.**", "**On what inputs.**", "**Known limits.**"):
+                if part not in text:
+                    bad("methods", f"{where}/README.md does not say {part.strip('*').rstrip('.').lower()}")
+        if not str((m.get("from") or {}).get("exploration") or "").strip() or not str((m.get("from") or {}).get("look") or "").strip():
+            bad("methods", f"{where}/method.json does not say which exploration and look it came from")
+        if not any(f"methods/{folder.name}" in str(c.get("change") or "") and str(c.get("predicted") or "").strip() for c in changes):
+            bad("methods", f"{where} is a promoted method that no record of the change log names with a prediction: a promotion is a "
+                           f"change to the factory, recorded with `sf.py log-change` naming methods/{folder.name}")
     return p, nv
 
 
@@ -1234,6 +1334,59 @@ def selftest() -> int:
         case("an act that is a pull request and names no repository on the platform",
              lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
              "`repository` does not name the repository on the platform")
+        case("an overclaiming check that names no list of phrases",
+             lambda d: edit(d, "scorers/overclaiming-in-findings/scorer.md", "phrases: overclaiming-in-leads/phrases.yaml\n", ""), "names its list of phrases")
+        case("a list of phrases with a pattern that does not compile",
+             lambda d: edit(d, "scorers/overclaiming-in-leads/phrases.yaml", '{pattern: "clearly",', '{pattern: "clearly(",'), "not a pattern that compiles")
+        case("a list of phrases with a key of its own",
+             lambda d: edit(d, "scorers/overclaiming-in-leads/phrases.yaml", 'why: "if it is clear', 'severity: high, why: "if it is clear'), "the key `severity` is not one")
+        case("the overclaiming check of findings marked as feeding a proposal",
+             lambda d: edit(d, "scorers/overclaiming-in-findings/scorer.md", "selfImprovement: false", "selfImprovement: true"), "`selfImprovement: true` on a scorer that reads finding")
+        def promoted(d: Path, recorded: bool = True) -> None:
+            """A method promoted from a look, made by hand in the shape `explore.py promote` writes, beside the definition."""
+            m = d.parent / "methods" / "rows-counted"
+            (m / "known-answers" / "LOOK-001" / "inputs").mkdir(parents=True)
+            (m / "rows.py").write_text("import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n")
+            (m / "known_answer_tests.py").write_text("print('the cases of rows-counted')\n")
+            (m / "README.md").write_text("# rows-counted\n\n**What it computes.** The number of rows in a record, as one line.\n\n"
+                                         "**On what inputs.** One JSON file with a list under `rows`.\n\n**Known limits.** It reads nothing else and checks no row.\n")
+            case_dir = m / "known-answers" / "LOOK-001"
+            (case_dir / "case.json").write_text('{"look": "LOOK-001", "args": ["d.json"], "inputs": ["d.json"]}\n')
+            (case_dir / "expected.out.txt").write_text("rows 2\n")
+            (case_dir / "inputs" / "d.json").write_text('{"rows": [1, 2]}\n')
+            files = {q.relative_to(case_dir).as_posix(): sha_of(q) for q in sorted(case_dir.rglob("*")) if q.is_file()}
+            (m / "method.json").write_text(json.dumps({"promoted": True, "name": "rows-counted", "from": {"exploration": "E-1", "look": "LOOK-001"},
+                                                       "script": {"file": "rows.py", "sha256": sha_of(m / "rows.py")},
+                                                       "tests": {"file": "known_answer_tests.py", "sha256": sha_of(m / "known_answer_tests.py")},
+                                                       "readme": {"file": "README.md", "sha256": sha_of(m / "README.md")}, "cases": {"LOOK-001": files}}))
+            if recorded:
+                with (d / "change-log.jsonl").open("a") as f:
+                    f.write(json.dumps({"change": "Promote methods/rows-counted from E-1", "predicted": "its cases reproduce"}) + "\n")
+        good_method = copy("method-good")
+        promoted(good_method)
+        results.append(("a method promoted from a look, whole and recorded in the change log with a prediction, is valid", result(good_method)[0] == "valid"))
+        case("a promoted method that no record of the change log names", lambda d: promoted(d, recorded=False), "no record of the change log names")
+        case("a promoted method whose script was changed after the promotion",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "rows.py").write_text("print('rows', 3)\n")), "the script `rows.py` is missing or is not the file")
+        case("a promoted method whose known-answer case was changed",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "known-answers" / "LOOK-001" / "expected.out.txt").write_text("rows 3\n")),
+             "the case LOOK-001's file")
+        case("a promoted method whose README does not say its known limits",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "README.md").write_text("# rows-counted\n")), "the README `README.md` is missing or is not the file")
+        case("a definition with no so what for a reviewed lead",
+             lambda d: write(d, "factory.yaml", "\n".join(ln for ln in (d / "factory.yaml").read_text().split("\n  so_what:\n")[0].split("\n"))
+                            + "\n  rules_for_people:" + (d / "factory.yaml").read_text().split("\n  rules_for_people:", 1)[1]), "`procedure.so_what` is missing")
+        case("an agent that may call the so what, a person's answer",
+             lambda d: edit(d, "agents/coordinating/agent.md", '  - "tools/explore.py status"', '  - "tools/explore.py status"\n  - "tools/explore.py so-what"'),
+             "the so what: a person's answer")
+        case("a so what with an answer the exploring tool does not take",
+             lambda d: edit(d, "factory.yaml", "answers: [worth-confirming, try-instead, not-interesting, needs-an-expert]", "answers: [worth-confirming, maybe]"),
+             "`so_what.answers`")
+        case("a so what on the platform whose harness cannot ask the platform",
+             lambda d: edit(d, "factory.yaml", "    harness: github                            # the harness whose", "    harness: by-hand                           # the harness whose"),
+             "nothing could ask the platform about the comment")
+        case("a so what declared as practice that still names a repository",
+             lambda d: edit(d, "factory.yaml", "    route: comment ", "    route: practice "), "declared as practice (typed) and still names")
         case("an act whose merge methods include a rebase merge, which the study tool does not accept",
              lambda d: edit(d, "factory.yaml", "      merge_methods: [merge]", "      merge_methods: [merge, rebase]", 2), "merge_methods")
         case("an act that is a pull request with no merge method at all",
@@ -1295,7 +1448,7 @@ def selftest() -> int:
              "every scorer declares what it reads")
         case("a scorer that reads a kind of material that is not on the list",
              lambda d: edit(d, "scorers/notes-curated/scorer.md", "reads: [pre-lock-log, post-opening-log]", "reads: [everything]"), "is not a kind of material")
-        case("a judge that reads the finding", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "reads: [request, plan, known-answer-tests]", "reads: [request, plan, finding]"),
+        case("a judge that reads the finding", lambda d: edit(d, "scorers/plan-is-clear/scorer.md", "reads: [request, plan, known-answer-tests, code]", "reads: [request, plan, finding]"),
              "a judge that reads finding")
         case("a judge that reads the opening's outcome",
              lambda d: edit(d, "scorers/review-finds-holes/scorer.md", "reads: [exploration-log, lead, review-before-opening]", "reads: [lead, review-before-opening, opening-outcome]"),
@@ -1368,9 +1521,9 @@ def selftest() -> int:
         st = stamp(a)
         results.append(("the stamp of a definition carries its checksum, the model each agent declares and each skill used by checksum",
                         st["sha256"] == tree_checksum(a)["sha256"] and st["models"]["review"] == {"harness": "claude-code", "model": "claude-opus-5-5"}
-                        and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page"}
+                        and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page", "note-the-fit"}
                         and all(SHA.match(v) for v in st["skills"].values())))
-        results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 8))
+        results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 9))
         results.append(("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

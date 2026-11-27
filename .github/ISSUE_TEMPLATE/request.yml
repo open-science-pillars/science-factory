@@ -65,6 +65,14 @@ body:
       label: How I expect it to be fooled
       description: The one thing about this data that trips people up. It becomes a hard case the method must survive.
   - type: textarea
+    id: bring
+    attributes:
+      label: What I can bring that an agent cannot
+      description: >
+        What you know about this data or this question that is not written down: which result would be unremarkable to
+        you, which plot you would look at first. Before any work starts, the coordinating agent answers with a short fit
+        note: how well the question suits agents, and what it will need from you. It is advice, and blocks nothing.
+  - type: textarea
     id: who
     attributes:
       label: Who is on it

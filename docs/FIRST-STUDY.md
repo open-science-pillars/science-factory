@@ -52,6 +52,7 @@ sed -e 's/^study: .*/study: TRIAL-1/' -e 's|\.\./\.\./\.\./methods|../../methods
   $T/analysis-plan.yaml > $W/analysis-plan.yaml
 sf start --study $W --id TRIAL-1 --by agent:coordinating --model $M \
   --question "In the blind test case, is the gain that was put in within five percent of one?"
+sf fit --study $W --by agent:coordinating --model $M --file fit.yaml
 sf log-change --study $W --by agent:coordinating --model $M --log $C \
   --problem "the factory has not run end to end with a person's lock and signature" \
   --change "The system trial: TRIAL-1 through every stage." \
@@ -71,11 +72,11 @@ git commit -m "TRIAL-1: tests passed, lock requested"
 git push -u origin trial-1
 ```
 
-What to expect: `started TRIAL-1`; `change recorded under ...`; `plan check: the analysis plan is complete`; `known-answer tests: pass (exit 0)` after a minute or two; `working data: pass (exit 0)`; `rehearsal opening-path: pass (exit 0)`; `note NOTE-001 recorded`; `curation list: 1 open note(s) across 1 subject(s)`; and `lock request written`. Then open a pull request from `trial-1` into `main` on GitHub.
+`fit.yaml` is the coordinating agent's fit note, from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml` (for a system trial, `good-fit`: the answer is exact). What to expect: `started TRIAL-1`; `fit note recorded`; `change recorded under ...`; `plan check: the analysis plan is complete`; `known-answer tests: pass (exit 0)` after a minute or two; `working data: pass (exit 0)`; `rehearsal opening-path: pass (exit 0)`; `note NOTE-001 recorded`; `curation list: 1 open note(s) across 1 subject(s)`; and `lock request written`. Then open a pull request from `trial-1` into `main` on GitHub.
 
 ## 2. You: read, approve, merge. That is the lock.
 
-Read the pull request: the evidence summary the check posts on it (also in `$W/lock-request/EVIDENCE.md`). It shows the question, each rule with each criterion and the rate measured beside it, the fresh data (for a system trial, a blind case made at the opening), what is held out and every change to it, the code by checksum, the definition and the models it declares, and the open notes. Approve and merge. Nothing is typed.
+Read the pull request: the evidence summary the check posts on it (also in `$W/lock-request/EVIDENCE.md`). It shows the question, each rule with each criterion and the rate measured beside it, the fresh data (for a system trial, a blind case made at the opening), what is held out and every change to it, every figure (the exploration's, and any a test or rehearsal declares under `figures:` in the plan) as a picture with its caption, the code by checksum, the definition and the models it declares, and the open notes. Look at each figure yourself: a table can agree with a claim that a picture shows is wrong. Approve and merge. Nothing is typed.
 
 The workflow's `record` job then writes the lock into the study log on `main`, has GitHub asked, and prints a log fingerprint of the form `SEQ:HASH`: post it on the tracking issue. `sf status --study $W` gives the lock's standing; it must be `verified` before the opening.
 
@@ -111,7 +112,7 @@ The log check prints `confirmatory study, ready for the steward's signature`. Op
 
 ## 4. You: decide, then reveal the answer
 
-Read the second pull request: the outcome under the locked rules, the write-up that would be signed, and the review. For a system trial, signed means "I accept this trial if the sealed answer shows the factory was right". Approve and merge it; that is the signature, and the workflow records and verifies it. Then:
+Read the second pull request: the outcome under the locked rules, the figures the opening drew, the write-up that would be signed, and the review. For a system trial, signed means "I accept this trial if the sealed answer shows the factory was right". Approve and merge it; that is the signature, and the workflow records and verifies it. Then:
 
 ```
 git switch main
@@ -141,7 +142,7 @@ git commit -m "TRIAL-1: the verdict and the close"
 git push -u origin trial-1-close
 ```
 
-Done when `sf status --study $W` says `closed`, the verdict is `right`, and a third pull request with this commit is merged. Write `--observed` in your own words if something else happened.
+Done when `sf status --study $W` says `closed`, the verdict is `right`, and a third pull request with this commit is merged. `sf contribution --study $W` then writes who did each step, from the logs, as a paragraph you can paste into a paper's contribution section; the finding already carries it from the moment it was attached. Write `--observed` in your own words if something else happened.
 
 **When the verdict is not `right`.** About one trial in eight comes back inconclusive, which cannot be `right`. Close the second pull request unmerged, have the agent write the request again with `--decision declined`, merge that, and close with `--outcome system-trial-declined`. Then run a second trial beside it, as `TRIAL-2`, with new branch names. A `WRONG` verdict is a defect in the factory: raise a note before the close.
 

@@ -25,6 +25,8 @@
 
 **How I expect it to be fooled.** The one thing about this data that trips people up. It becomes a hard case the method must survive in the known-answer tests.
 
+**What I can bring that an agent cannot.** What you know about this data or this question that is not written down: which result would be unremarkable to you, which plot you would look at first. Before any work starts, the coordinating agent answers this request with a short fit note: how well the question suits agents, and what it will need from you. It is advice, and blocks nothing.
+
 **Who is on it.** Authors, and who should approve the plan with the steward at the lock. The lock is a pull request; the repository's code owners say who may approve it.
 
 **What I want back.** A page, a plot, fields as files, a script to rerun, a memo for a manager.

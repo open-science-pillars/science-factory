@@ -167,6 +167,13 @@ def selftest(only: str | None = None) -> int:
             good = run(event(), fixture("reviews.approved.json", APPROVED_SHA=head))
             ok("approved at its head by somebody other than the author, with a manifest that matches the files, the request passes",
                good[0] == 0 and "every check passed" in said(good) and "octo-steward" in said(good), V)
+            base_url = "https://github.com/example-org/example-studies/raw/" + head
+            shown = check.with_images("![a picture](../exploration-figures/LOOK-003-residual.svg)\n![away](https://example.org/x.png)\n![out](../../../../x.svg)",
+                                      base_url, "studies/S1/lock-request")
+            ok("the evidence summary on the pull request points each figure at the head of the pull request, so a reviewer sees it in the "
+               "comment; a link elsewhere, or out of the repository, is left alone",
+               f"]({base_url}/studies/S1/exploration-figures/LOOK-003-residual.svg)" in shown and "](https://example.org/x.png)" in shown
+               and "](../../../../x.svg)" in shown, V)
             bots = run(event(), fixture("reviews.bot-only.json", APPROVED_SHA=head))
             ok("an approval by a bot or an app is not an approval by a person, whatever its login looks like",
                bots[0] == 1 and "nobody but the author" in said(bots), V)
@@ -292,7 +299,8 @@ def selftest(only: str | None = None) -> int:
             sig = study.last("signature.recorded")
             ok("the merged signature request is recorded as the steward's signature, with the decision the request carried",
                s_done == 0 and sig is not None and sig["actor"] == "platform:github" and sig["data"]["decision"] == "signed"
-               and sig["data"]["merge"]["commit"] == s_merge and sig["data"]["finding"]["sha"] == sf.sha_file(tmp / "finding.md"), R)
+               and sig["data"]["merge"]["commit"] == s_merge and sig["data"]["finding"]["sha"] == sf.sha_file(study.d / sig["data"]["finding"]["file"])
+               and (study.d / sig["data"]["finding"]["file"]).read_text().startswith((tmp / "finding.md").read_text()), R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + s_merge)
             ok("a study whose signature is a merge the job recorded, and nothing more, is awaiting verification and does not close as a signed finding",
                sf.check_log(study, posted)["status"] == sf.AWAITING

@@ -22,7 +22,7 @@ A random set aside is drawn by the tool from a seed it makes, so nobody chooses 
 
 ## Exploring: most of the work
 
-This is what you do with a new dataset or a result that looks odd: plot it, compare it with another record, try a method, see where it breaks, change it, look again. Nothing in that loop needs to be slowed down, and an agent is at its most useful inside it. It produces an understanding of the data, pitfalls written down as notes, a method, and a **lead**: something that looks true and is worth testing. It cannot produce a tested claim, because every choice made after looking was made knowing how the answer would move.
+This is what you do with a new dataset or a result that looks odd: plot it, compare it with another record, try a method, see where it breaks, change it, look again. Nothing in that loop needs to be slowed down, and an agent is at its most useful inside it. It produces an understanding of the data, pitfalls written down as notes, a method (a look script that proved useful can be promoted to one, with its runs as known-answer tests), and a **lead**: something that looks true and is worth testing. It cannot produce a tested claim, because every choice made after looking was made knowing how the answer would move.
 
 The one rule is to say that it was exploring. The exploring tool (`tools/explore.py`) makes that easy in five steps:
 
@@ -30,7 +30,7 @@ The one rule is to say that it was exploring. The exploring tool (`tools/explore
 2. **Set the fresh data aside.** The agent proposes it from metadata (`tools/fresh_data.py`), and the exploration starts by setting exactly that aside. Everything else is working data.
 3. **Look, as often as you like.** Every look is a script run through the tool, logged with its inputs and output by checksum, with any figure it draws. A look that reaches for what was set aside is refused.
 4. **Record choices and notes as you go.** Each choice is logged with its alternatives, and the log keeps how many looks had run when it was written down.
-5. **Write up the lead, have it reviewed, and hand it over or stop.** The lead says what looks true, how many things were tried, and which choices would change it. A reviewer who did none of the work picks holes in it first. A lead is never a finding.
+5. **Write up the lead, have it reviewed, and ask a person so what.** The lead says what looks true, how many things were tried, and which choices would change it. A reviewer who did none of the work picks holes in it first. Then a person who knows the field answers: worth confirming, try this instead, not interesting, or it needs an expert. Only `worth-confirming` lets it go to a confirming study. A lead is never a finding.
 
 ![The exploring loop: read what is known, set the fresh data aside, look, record choices, write up a lead and have it reviewed.](diagrams/exploring-loop.svg)
 
@@ -40,12 +40,12 @@ When a lead is to become a finding that others rely on, it is tested once on the
 
 | Stage | What happens |
 |---|---|
-| 1. Ask | You write a request in your own words (`factory/templates/request.md`, or the issue form on GitHub). The analysis agent asks four questions back, and the study starts with the request bound to it by checksum. |
+| 1. Ask | You write a request in your own words (`factory/templates/request.md`, or the issue form on GitHub). The coordinating agent answers with a fit note: how well the question suits agents and what it will need from you, as advice. The analysis agent asks four questions back, and the study starts with the request bound to it by checksum. |
 | 2. Plan | The analysis agent searches the wiki for anything that already answers or limits the question, reads only metadata, proposes the fresh data, and writes the analysis plan: what is estimated, on which data, and what result counts for or against the idea. |
 | 3. Test on known answers | The plan check, the known-answer tests (synthetic data with the truth put in, including cases where the idea is false and cases right at the smallest difference you care about), the working data and the rehearsals of the opening, repeated freely. |
-| The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words. |
+| The lock | People approve the plan, the code and the choice of fresh data together, by approving and merging a pull request that carries the evidence in plain words and every figure the work drew, for them to look at themselves. |
 | 4. Check once, on fresh data | The tool fetches the fresh data and runs the locked analysis on it, once. It will not do so for the agent that ran the tests. |
-| 5. Review, sign and learn | The finding is written from the run's own records. A review agent that did none of the study checks every number. The steward signs the finding, or records the decision not to, by a second pull request. Notes go into the wiki through a queue of drafts, and what should change goes into the definition. |
+| 5. Review, sign and learn | The finding is written from the run's own records, and the tool adds who did each step, from the logs. A review agent that did none of the study checks every number. The steward signs the finding, or records the decision not to, by a second pull request. Notes go into the wiki through a queue of drafts, and what should change goes into the definition. |
 
 Every step is written to a **study log** that is only ever added to. Once it is committed and its fingerprints are posted outside the workspace, a later edit to it shows.
 
@@ -96,6 +96,10 @@ None of this is new. Clinical trials finish the analysis plan before the data is
 | What ends it | a lead, a note, a method or a stop | a signed finding or a recorded no | a merged change |
 | What is scarce | attention | fresh data | time |
 
+## Where the person's part comes from
+
+Six pieces of this design come from a physicist's account of three months of science done with Claude, Schwartz's ["Claude-shaped science"](https://www.anthropic.com/research/claude-shaped-science) (Anthropic, October 2026), in our reading of it. He found the agents' results usually correct and scientifically unremarkable until an expert steered them: so every lead waits for a person's so what. He found that agents declare victory early and need rigid criteria for success, and that a person must look at the plots and distrust phrases like "good agreement": so the lock shows every figure, and the overclaiming check flags such words. The best work came from problems chosen to suit the agents: so a fit note comes first. The tools grew as they were used: so a look can become a method. And credit should not pretend that the person only typed: so a contribution statement is drawn from the logs, with what they cannot show. The mistakes in carrying these ideas over are ours.
+
 ## Sources
 
 - Nosek, Ebersole, DeHaven and Mellor, "The preregistration revolution", PNAS 2018: https://pmc.ncbi.nlm.nih.gov/articles/PMC5856500
@@ -105,5 +109,6 @@ None of this is new. Clinical trials finish the analysis plan before the data is
 - NASA Earthdata, data maturity levels: https://www.earthdata.nasa.gov/learn/earth-observation-data-basics/data-maturity-levels
 - Dwork and others, "Generalization in adaptive data analysis and holdout reuse", 2015: https://arxiv.org/abs/1506.02629
 - "Registered Report for climate research", editorial, Nature Climate Change 2024: https://www.nature.com/articles/s41558-024-01932-4
+- Schwartz, "Claude-shaped science", Anthropic, October 2026: https://www.anthropic.com/research/claude-shaped-science
 - LangChain, "How to Build a Knowledge Factory for AI Agents": https://www.langchain.com/blog/knowledge-factory
 - Warp's documentation of factories, as compared in [WARP-COMPARISON.md](WARP-COMPARISON.md)

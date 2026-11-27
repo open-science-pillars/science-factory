@@ -34,5 +34,7 @@ sources:
 
 **How to check it.** What someone else would run to see the same thing.
 
+**Who did what.** The paragraph of the contribution statement of the exploration or study this was drafted from (`explore.py contribution`, `sf.py contribution`), with what the log cannot show.
+
 [^look]: the look receipt
 [^product]: the provider's page

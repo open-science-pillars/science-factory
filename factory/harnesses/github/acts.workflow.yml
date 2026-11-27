@@ -10,6 +10,10 @@
 # record: after the merge, writes the lock or the signature into the study log, citing the merge commit; then asks
 #   the platform itself who approved (`sf.py verify-acts`) and records its answer; then commits the log under the
 #   repository's name. Until the platform has answered, the act stands as `merge found, people not verified`.
+# so-what: on a new comment on an issue that begins with `so-what:`, records a person's so what on a reviewed lead
+#   into the exploration's log under the platform's name, then asks the platform about the comment
+#   (`explore.py verify-so-what`) and records its answer, then commits the log. It is lighter than the two acts: no
+#   pull request and no merge, because it opens no data and binds no plan (docs/WHAT-IS-ENFORCED.md says why).
 name: acts by people
 
 on:
@@ -19,13 +23,15 @@ on:
     types: [submitted, edited, dismissed]
   push:
     branches: [main]            # the protected branch that factory.yaml names
+  issue_comment:
+    types: [created]            # a person's so what on a lead; an edited comment is not taken, and the verification sees an edit
 
 permissions:
   contents: read
 
 jobs:
   request-check:
-    if: github.event_name != 'push'
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +59,7 @@ jobs:
           --repo head --tools base/tools --factory base/factory
           --event "$GITHUB_EVENT_PATH" --reviews "$RUNNER_TEMP/reviews.json"
           --summary-out "$RUNNER_TEMP/summary.md"
+          --image-base "https://github.com/${{ github.repository }}/raw/${{ github.event.pull_request.head.sha }}"
       - name: Show the evidence summary on the pull request
         if: always()
         env:
@@ -96,4 +103,39 @@ jobs:
           git add -A -- '*study-log.jsonl'
           git diff --cached --quiet && exit 0
           git commit -m "Record the act merged in ${{ github.sha }}"
+          git push
+
+  so-what:
+    if: github.event_name == 'issue_comment' && !github.event.issue.pull_request && startsWith(github.event.comment.body, 'so-what:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # this job commits the exploration log; the checklist says how the branch lets it
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: The comment, as the platform records it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}" > "$RUNNER_TEMP/comment.json"
+      - name: Record the so what in the exploration's log, then ask the platform about the comment and record its answer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          where=$(python3 -I -c 'import json, re, sys
+          body = json.load(open(sys.argv[1]))["body"]
+          m = re.search(r"^exploration:[ \t]*(explorations/[A-Za-z0-9][A-Za-z0-9_.-]*)[ \t]*$", body, re.M)
+          print(m.group(1) if m and ".." not in m.group(1) else "")' "$RUNNER_TEMP/comment.json")
+          test -n "$where" || { echo "the comment names no exploration as explorations/<name>: nothing to record"; exit 0; }
+          uv run tools/explore.py so-what --exploration "$where" --by platform:github --record-comment "$RUNNER_TEMP/comment.json"
+          uv run tools/explore.py verify-so-what --exploration "$where" --by platform:github
+      - name: Commit the exploration log under the repository's name
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- '*exploration-log.jsonl'
+          git diff --cached --quiet && exit 0
+          git commit -m "Record the so what in comment ${{ github.event.comment.id }}"
           git push

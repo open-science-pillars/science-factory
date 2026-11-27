@@ -98,7 +98,7 @@ Check first whether the knowledge already says it; a pitfall the knowledge names
 
 ## 7. End
 
-**When to end.** After `explore.py lead`, do not call `end`: status names the review agent, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed and you will not revise it further; the tool refuses it earlier. An exploration with no lead ends when you choose, as a note, a method or a stop.
+**When to end.** After `explore.py lead`, do not call `end`: status names the review agent, and you stop. When the review comes back, answer it; a revised lead is a new version and is reviewed again, and so is a lead whose wording was corrected after its review. Call `end --outcome lead` only when the lead as it stands has been reviewed, a person has said it is worth confirming (`status` shows their so what), and you will not revise it further; the tool refuses it earlier. If the person says try instead, their direction is your next question: explore it and write a new version. You never record a so what. An exploration with no lead ends when you choose, as a note, a method or a stop.
 
 A lead needs a reviewer named first. `explore.py lead` is refused until the coordinating agent has named the reviewer of this exploration (`explore.py reviewer`); `status` shows `before_a_lead` until then. If you reach the lead before that, write `lead.yaml`, stop and hand back. A person exploring by hand asks a colleague who did none of the exploring to name the reviewer.
 

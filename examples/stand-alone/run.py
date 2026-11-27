@@ -119,6 +119,14 @@ def main() -> int:
              "--request", request, "--subject", "record=two-sensor,sensor=second", "--how", "a later period", "--set-aside-window", "2025-01-01:2025-12-31",
              "--why", "the following year: the request says only 2024 has been looked at", "--working", "the 2024 record", "--working-window", "2024-01-01:2024-12-31",
              "--working-data", data.parent, "--boundary-from", wiki / "the-two-sensor-record.md", "--fresh-data", proposal)
+        fit = work / "fit.yaml"
+        fit.write_text(yaml.safe_dump({"answer_is": "checkable", "data_at_hand": "yes", "mostly": "computation",
+                                       "person_must_supply": "what the scientist has already looked at, and the difference that matters",
+                                       "verdict": "fit-with-a-person-steering", "why": "the gain is a number a rule can test; which readings to trust needs someone who knows the gauge",
+                                       "taste_needed": "someone who knows what a degraded flag means at low stage, and which result would be unremarkable"}))
+        tool("explore.py", "fit", *E, "--by", coordinator, "--file", fit)
+        step("before any look the coordinating agent writes a fit note: a verdict and what the work needs from a person, shown in status as advice",
+             "fit-with-a-person-steering" in json.loads(tool("explore.py", "status", *E, answer=True))["fit"])
         step("the exploration sets aside exactly what was proposed, and its log binds the proposal by checksum",
              json.loads(x.joinpath("exploration-log.jsonl").read_text().splitlines()[0])["data"]["set_aside"]["fresh_data"]["sha256"]
              == hashlib.sha256(proposal.read_bytes()).hexdigest())
@@ -221,15 +229,42 @@ def main() -> int:
         lead_read = lambda: hashlib.sha256((x / "lead.json").read_bytes()).hexdigest()  # noqa: E731  (the lead the reviewer read)
         step("a review that does not say which lead the reviewer read is refused",
              "--read-lead" in tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, expect=2))
-        tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+        loose = work / "review-loose.md"
+        loose.write_text("# Review (exploring)\n\nThe gain clearly holds, in good agreement with the wiki. One hole: one year only.\n")
+        said = tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", loose, "--read-lead", lead_read())
+        step("a review that claims more than an exploration can show is recorded, and the overclaiming check names each phrase and its line",
+             "overclaiming check (a warning, not a refusal): verdicts/REVIEW-001.md, line 3: `clearly`" in said and "`good agreement`" in said)
         tool("explore.py", "correct", *E, "--by", me, "--old", "over 2024", "--new", "over the whole of 2024", "--why", "to say the year was read whole")
         step("a correction made after the review undoes the review: the exploration does not end as a lead until the corrected lead is reviewed",
              "corrected after it was reviewed" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
         tool("explore.py", "review", *E, "--by", reviewer, "--verdict", "holes-found", "--file", review, "--read-lead", lead_read())
+        # the person's so what: is the reviewed lead worth confirming? An agent drafts the question; only a person answers
+        step("the exploration cannot end as a lead before a person has said the reviewed lead is worth confirming",
+             "worth confirming" in tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "x", expect=2))
+        question = work / "so-what-question.yaml"
+        question.write_text(yaml.safe_dump({
+            "what_the_lead_shows": f"Over 2024 the second sensor rises and falls with the reference with a gain of {gain:.4f} once degraded readings are left out.",
+            "why_it_might_matter": "A gain this close to one would let the second sensor stand in for the reference where the reference is down.",
+            "what_would_make_it_unremarkable": "If the two sensors are calibrated against each other, a gain near one is what calibration gives and says nothing new."}))
+        tool("explore.py", "ask-so-what", *E, "--by", coordinator, "--file", question, "--read-lead", lead_read())
+        step("an agent drafts the question a person is asked, and cannot record the answer under any name",
+             "What would make it unremarkable" in (x / "so-what" / "QUESTION-001.md").read_text()
+             and "a person's answer" in tool("explore.py", "so-what", *E, "--by", coordinator, "--answer", "worth-confirming", "--read-lead", lead_read(),
+                                              "--local-practice", expect=2))
+        person = "human:throwaway-placeholder"  # nobody: a name for a scratch folder, typed here and nowhere that is kept
+        step("typed at a command line, a person's so what is refused unless it says it is practice: on GitHub it is a comment on the tracking issue",
+             "--local-practice" in tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), expect=2))
+        tool("explore.py", "so-what", *E, "--by", person, "--answer", "try-instead", "--direction", "look at the low end of the record, where the degraded readings sit",
+             "--read-lead", lead_read(), "--local-practice")
+        step("try-instead sends the exploration back to exploring, with the person's direction as its next question",
+             json.loads(tool("explore.py", "status", *E, answer=True))["next_question"].startswith("look at the low end"))
+        tool("explore.py", "so-what", *E, "--by", person, "--answer", "worth-confirming", "--read-lead", lead_read(), "--local-practice")
         tool("explore.py", "end", *E, "--by", me, "--outcome", "lead", "--summary", "the gain looks close to one with degraded readings out")
         step("the agent that explored cannot make the hand-over",
              "did the exploring" in tool("explore.py", "hand-over", *E, "--by", me, "--study-id", "STUDY-A", expect=2))
-        tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A")
+        tool("explore.py", "hand-over", *E, "--by", coordinator, "--study-id", "STUDY-A", "--local-practice")
+        step("the hand-over carries the person's so what and its standing",
+             "**The so what.** worth-confirming, by human:throwaway-placeholder" in (x / "hand-over" / "request.md").read_text())
         hand = json.loads((x / "hand-over" / "hand-over.json").read_text())
         stub = yaml.safe_load((x / "hand-over" / "analysis-plan.stub.yaml").read_text())
         step("the hand-over carries the proposal of the fresh data byte for byte, and the plan stub names it",
@@ -237,6 +272,9 @@ def main() -> int:
              and stub["data"]["held_out"]["fresh_data"].endswith("hand-over/fresh-data.yaml"))
         study = studies / "STUDY-A"
         tool("sf.py", "start", "--study", study, "--id", "STUDY-A", "--question", hand["question"], "--request", x / "hand-over" / "request.md", "--by", coordinator)
+        step("a study started from the hand-over keeps the exploration's figures, each bound by checksum, for the lock to show",
+             (study / "exploration-figures" / "LOOK-003-residual.svg").read_bytes() == (x / "figures" / "residual.svg").read_bytes()
+             and json.loads((study / "study-log.jsonl").read_text().splitlines()[0])["data"]["exploration_figures"][0]["caption"].startswith("a picture"))
 
         def plan(window: dict) -> None:
             (study / "analysis-plan.yaml").write_text(yaml.safe_dump({
@@ -255,6 +293,33 @@ def main() -> int:
         step("no role's commands include the lock or the signature, and the tool has no command that signs",
              "invalid choice" in tool("explore.py", "signature", *E, expect=2))
 
+        # a look that proved useful becomes a method of the factory: here in a scratch copy of the definition, because the
+        # repository keeps no runs. The promotion is a change to the factory, recorded with a prediction and validated.
+        repo_copy = work / "factory-copy"
+        for part in ("factory", "tools"):
+            shutil.copytree(ROOT / part, repo_copy / part, ignore=shutil.ignore_patterns("__pycache__"))
+        (repo_copy / "examples" / "stand-alone").mkdir(parents=True)
+        shutil.copytree(HERE / "system-trial", repo_copy / "examples" / "stand-alone" / "system-trial")
+        readme = work / "method-readme.md"
+        readme.write_text("# gain-with-intercept\n\n**What it computes.** The gain of the second sensor on the reference by least squares with an "
+                          "intercept, the intercept and the residual spread, with an optional screen on the flag.\n\n**On what inputs.** One JSON record "
+                          "with `rows`, each holding `reference`, `sensor`, `flag` and `time`.\n\n**Known limits.** No uncertainty on the gain, "
+                          "no handling of a step in the offset, and readings are taken as independent.\n")
+        tool("explore.py", "promote", *E, "--by", me, "--look", "LOOK-002", "--name", "gain-with-intercept", "--readme", readme, "--methods", repo_copy / "methods")
+        method = repo_copy / "methods" / "gain-with-intercept"
+        kat = ran(["uv", "run", str(method / "known_answer_tests.py")])
+        step("a look's script is promoted to a method, with the exploration's runs of it as known-answer cases, and its tests reproduce them",
+             sorted(json.loads((method / "method.json").read_text())["cases"]) == ["LOOK-001", "LOOK-002"] and "PASS (2 of 2)" in kat)
+        step("the promotion is a change to the factory: the validator refuses it until the change log records it with a prediction",
+             "no record of the change log names" in tool("check_factory.py", repo_copy / "factory", expect=1))
+        change = work / "studies" / "CHANGE-PROMOTE"
+        tool("sf.py", "start", "--study", change, "--id", "CHANGE-PROMOTE", "--by", coordinator, "--question", "Does the promoted gain method reproduce its looks?")
+        tool("sf.py", "log-change", "--study", change, "--by", coordinator, "--log", repo_copy / "factory" / "change-log.jsonl",
+             "--factory", repo_copy / "factory", "--problem", "a look that proved useful is rewritten by hand in every study",
+             "--change", "Promote methods/gain-with-intercept from EXPLORATION-A, LOOK-002", "--rationale", "tools grow as they are used",
+             "--predicted", "its two known-answer cases reproduce, and a study that uses it runs them first")
+        step("recorded with a prediction, the promoted method is valid", "check-factory: VALID" in tool("check_factory.py", repo_copy / "factory"))
+
         # after work: a draft for the queue, checked, and found again as a draft
         tool("explore.py", "curation-list", *E)
         (queue / "pages").mkdir(parents=True)
@@ -264,7 +329,13 @@ def main() -> int:
                 "generated": {"by": "stand-alone-run/no-model", "at": "2026-11-26T00:00:00Z"}, "status": "draft", "seen_while": "exploring",
                 "drafted_from": {"exploration": "EXPLORATION-A", "notes": ["NOTE-001"], "by": curator},
                 "sources": [{"id": "look", "resource": "explorations/EXPLORATION-A/receipts/LOOK-002.json", "title": "the look with the screen"}]}
-        body = f"\n# One degraded reading steers the gain\n\nSeen while exploring one year. With every reading the gain is {gain_all}; with degraded readings out it is {gain}.[^look]\n\n[^look]: the look\n"
+        said = tool("explore.py", "contribution", *E)
+        step("the contribution statement of the lead says who did each kind of work, the agents with the model they declared, and what the log cannot show",
+             "| the so what | human:throwaway-placeholder (a person, by the name typed) | 2 |" in said and "| exploring | agent:analysis-a (an AI agent, the analysis role" in said
+             and "What the logs cannot show" in said)
+        who = json.loads((x / "contribution.json").read_text())["paragraph"]
+        body = (f"\n# One degraded reading steers the gain\n\nSeen while exploring one year. With every reading the gain is {gain_all}; with degraded readings out it is {gain}.[^look]\n\n"
+                f"**Who did what.** {who} The log cannot show thinking that left no event, and a model is declared, not proven.\n\n[^look]: the look\n")
         draft.write_text("---\n" + yaml.safe_dump(head, sort_keys=False) + "---\n" + body)
         step("a draft that bears on a wiki page without saying how is refused",
              "does not say how it relates" in tool("knowledge.py", "check-drafts", "--queue", queue, "--wiki", wiki, expect=2))
@@ -297,7 +368,8 @@ def main() -> int:
         verdict.write_text("label: checked\nreasoning: Written by the example's script to show the refusal; no judge read the packet.\n")
         step("a verdict under a model the scorer does not declare is refused, so nothing is recorded: no judge has judged this run",
              "is not this scorer's" in tool("scorers.py", "record", "--packet", packet, "--verdict", verdict, "--by", "agent:judge-a", expect=2)
-             and not (x / "judgements.jsonl").exists())
+             and not (x / "judgements.jsonl").exists() and not (packet.parent / "judgements.jsonl").exists()
+             and "`verdict.yaml`" in (packet / "JUDGE.md").read_text())
 
         # the confirming loop, as far as a tool can take it: a study through its tests, stopping before the lock
         trial = studies / "STUDY-B"
@@ -306,9 +378,19 @@ def main() -> int:
         trial_plan = yaml.safe_load((template / "analysis-plan.yaml").read_text())
         trial_plan["study"] = "STUDY-B"
         trial_plan["roots"] = {k: str((template / v).resolve()) for k, v in trial_plan["roots"].items()}  # the copy stands elsewhere
+        # a figure for the people at the lock to look at: the rehearsal case drawn by the skill's own plotting script
+        trial_plan["rehearsals"][0]["steps"].append(["{python}", plot, "{study}/rehearsal/rehearsal_case.json", "--rows", "satellite.rows", "--x", "time",
+                                                     "--y", "wse_m", "--color", "reach_q", "--out", "{study}/figures/rehearsal-case.svg"])
+        trial_plan["rehearsals"][0]["figures"] = [{"file": "figures/rehearsal-case.svg",
+                                                   "shows": "the rehearsal case's satellite elevations through its year, coloured by quality flag"}]
         (trial / "analysis-plan.yaml").write_text(yaml.safe_dump(trial_plan, sort_keys=False))
         S = ("--study", trial)
         tool("sf.py", "start", *S, "--id", "STUDY-B", "--question", trial_plan["question"], "--by", coordinator)
+        fit.write_text(yaml.safe_dump({"answer_is": "exact", "data_at_hand": "yes", "mostly": "computation",
+                                       "person_must_supply": "nothing but the lock and the reading of the sealed answer",
+                                       "verdict": "good-fit", "why": "a system trial on a synthetic case: the answer is a number the sealed truth settles",
+                                       "taste_needed": "a person who looks at the rehearsal's figure before the lock"}))
+        tool("sf.py", "fit", *S, "--by", coordinator, "--file", fit)
         step("a second study, a system trial on a synthetic record, is started and its plan is complete",
              "the analysis plan is complete" in tool("sf.py", "check-plan", *S))
         step("its opening is refused before the lock",
@@ -325,8 +407,10 @@ def main() -> int:
              and len(trial_status["models"]["remarks"]) == 2)
         plan_packet = work / "judging" / "plan-is-clear"
         tool("scorers.py", "packet", "--scorer", "plan-is-clear", "--study", trial, "--out", plan_packet)
-        step("a judging packet for the plan holds the plan and the receipts of its tests, and nothing was opened to make it",
-             {m["kind"] for m in json.loads((plan_packet / "packet.json").read_text())["material"]} == {"plan", "known-answer-tests"}
+        step("a judging packet for the plan holds the plan, the receipts of its tests and the method's code, names no place outside itself, "
+             "and nothing was opened to make it",
+             {m["kind"] for m in json.loads((plan_packet / "packet.json").read_text())["material"]} == {"plan", "known-answer-tests", "code"}
+             and str(work) not in (plan_packet / "packet.json").read_text() and str(ROOT) not in (plan_packet / "packet.json").read_text()
              and not json.loads((plan_packet / "packet.json").read_text())["run"]["held_out_data_opened"])
         step("the design set of blind cases can be listed, and the acceptance set gives nothing without its keeper's seed",
              "the idea is false" in tool("benchmark.py", "cases", "--suite", ROOT / "factory" / "benchmarks" / "built-in-gain")
@@ -341,16 +425,25 @@ def main() -> int:
         # keeps no runs, so it shows the request and then uses practice mode, which says of itself that it is practice.
         tool("sf.py", "request-lock", *S, "--by", coordinator)
         asked = (trial / "lock-request" / "EVIDENCE.md").read_text()
+        step("the lock request shows the fit note from intake", "**good-fit**, noted by agent:coordinating-a" in asked)
+        step("the lock request shows the rehearsal's figure as a picture with its caption, asks the person to look at it, and binds it",
+             "## The figures: look at each one yourself" in asked and "](../figures/rehearsal-case.svg)" in asked and "Look at each figure yourself" in asked
+             and "figures/rehearsal-case.svg" in json.loads((trial / "lock-request" / "manifest.json").read_text())["figures"])
         step("an agent can write the lock request: an evidence summary in plain words and a manifest of checksums, with nothing locked",
              "## The question" in asked and "## The fresh data that will check the idea, and why it was chosen" in asked
              and "a blind test case that the tool makes and seals at the opening" in asked
              and json.loads((trial / "lock-request" / "manifest.json").read_text())["definition"]["sha256"] == trial_status["definition"]["sha256"]
              and "requested" in str(json.loads(tool("sf.py", "status", *S, answer=True))["acts"]["lock"])
              and not any(json.loads(ln)["kind"] == "lock.recorded" for ln in (trial / "study-log.jsonl").read_text().splitlines()))
-        person = "human:throwaway-placeholder"  # nobody: a name for a scratch folder, typed here and nowhere that is kept
         step("a lock typed at a command line, under a person's name and with a link, is refused unless it says it is practice",
              "the lock is a pull request" in tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", expect=2))
         tool("sf.py", "lock", *S, "--by", person, "--evidence", "https://example.invalid/not-a-review", "--local-practice")
+        credit = tool("sf.py", "contribution", *S)
+        step("the study's contribution statement credits the practice lock to the name typed, the tests to the analysis agent with its declared model, "
+             "and lists the steps with no event yet",
+             "| the lock | human:throwaway-placeholder (a person, by the name typed) | 1 |" in credit
+             and f"| planning and testing the method | agent:analysis-a (an AI agent, the analysis role, model {MODEL} as declared) | 3 |" in credit
+             and "Steps with no event yet:" in credit and "the signature" in credit.split("Steps with no event yet:")[1].split("\n")[0])
         practice = json.loads(tool("sf.py", "status", *S, answer=True))
         step("a practice lock says so in the study's status, and the held-out data is not opened unless the caller says practice too",
              practice["acts"]["practice"] is True and "cannot close as a signed finding" in practice["acts"]["lock"]["note"]

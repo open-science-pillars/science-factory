@@ -62,6 +62,9 @@ beside `studies/`, and the record is `studies/openings.jsonl`.
 Commands.
 
   start          set data aside, bind the request, write the record
+  fit            the coordinating agent's fit note at intake, before the first
+                 look: how well the question suits agents, a verdict, and what
+                 it needs from a person; advice that blocks nothing
   known          list the knowledge that bears on the question (calls
                  knowledge.py) and log what was listed; the first look is
                  refused until this has run
@@ -82,7 +85,18 @@ Commands.
   review         a reviewer named that way, who did none of the exploring,
                  records whether it found holes, in the lead it read, which
                  it names by checksum (--read-lead)
-  end            ended as a lead, a note, a method or a stop
+  ask-so-what    an agent drafts the question a person is asked about a
+                 reviewed lead: what it shows, why it might matter, what would
+                 make it unremarkable
+  so-what        a person's answer to the reviewed lead: worth-confirming,
+                 try-instead (a direction), not-interesting (a reason; the
+                 exploration ends as a lead noted) or needs-an-expert (which
+                 kind). Typed it is practice; on the platform it is a person's
+                 comment on the tracking issue, recorded by the job that
+                 follows it (--record-comment, under platform:github)
+  verify-so-what ask the platform about each so what that was a comment
+  end            ended as a lead, a note, a method or a stop; as a lead only
+                 after a person said the reviewed lead is worth confirming
   hand-over      what `sf.py start` needs, for a confirming study
   check-study    a study started from the lead keeps the fence
   curation-list  open notes, for the curating agent
@@ -90,6 +104,12 @@ Commands.
   status         where the exploration stands and who is next
   check-log      everything re-checked from the files
   fingerprint    the log's fingerprint, to post outside the workspace
+  promote        a look's script that proved useful becomes a method under
+                 methods/<name>/: the script, the exploration's runs of it as
+                 known-answer cases, the agent's README, a test file, and
+                 where it came from; a change to the factory
+  contribution   who did each step, from the log: a paragraph for a paper,
+                 and what the log cannot show
   selftest       the tool tests itself, attacks included
 
 What a look is. A launcher the study tool knows (`{python}` followed by a
@@ -253,6 +273,7 @@ import signal  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
+import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
@@ -307,26 +328,33 @@ NAMED = re.compile(r"(?<![0-9A-Za-z])(?:(\d{1,2})(?:st|nd|rd|th)?[\s.-]*(" + "|"
                    r"|(\d{4})[\s.-]*(" + "|".join(MONTHS) + r")[a-z]*[\s.-]*(\d{1,2}))(?![0-9])", re.I)
 HYPHENS = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d\u2043"), "-")
 NOTE_KINDS = ("missing", "wrong", "stale", "contradiction", "method", "dead-end")
-OUTCOMES = ("lead", "note", "method", "stop")
+OUTCOMES = ("lead", "note", "method", "stop", "lead-noted")  # lead-noted: a person said the reviewed lead is not interesting; not a failure
+SO_WHAT = ("worth-confirming", "try-instead", "not-interesting", "needs-an-expert")  # a person's answer to a reviewed lead
+SO_WHAT_NEEDS = {"try-instead": "direction", "not-interesting": "reason", "needs-an-expert": "expertise"}  # what each answer says in words
+COMMENT = "comment"  # the route of a so what on the platform: a person's comment on the tracking issue, recorded by the workflow
+COMMENT_FOUND = "comment recorded, person not verified"  # what the job that recorded it was handed: all a clone can show
+SO_WHAT_STANDINGS = (sf.PRACTICE, COMMENT_FOUND, sf.VERIFIED)
+QUESTION_KEYS = ("what_the_lead_shows", "why_it_might_matter", "what_would_make_it_unremarkable")
 VERDICTS = ("holes-found", "no-holes-found")
 DISPOSITIONS = ("drafted", "linked", "declined")
 FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in figures/ as a picture
 ID_PREFIX = re.compile(r"^[A-Za-z]{2,10}[-_:]")      # the agency in front of a site number (USGS-, usgs:)
 COMPARISONS = re.compile(r"^comparisons:\s*(\d+)\s*$", re.I | re.M)
 DEPTHS = ("whole", "skimmed")
-NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.named")  # kinds that do not make their actor part of the exploring
+NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.named", "so-what.asked", "so-what.recorded", "so-what.verification",
+                "fit.noted")  # kinds that do not make their actor part of the exploring
 # A look runs in a scratch folder of its own, which holds its script and the files its command names and nothing else.
 PATTERN = set("*?[]{}")  # what a script could expand into names the tool never read
 JOINS = re.compile(r"[,:;@|]")  # what joins several paths into one word, or hides one behind a sign
-KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json")
-KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside")  # where a look leaves nothing
+KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json", "contribution.md", "contribution.json")
+KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside", "so-what")  # where a look leaves nothing
 PLACES_OF_THE_LAUNCHER = ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "UV_PYTHON_BIN_DIR",
                           "UV_CONFIG_FILE", "UV_PYTHON", "UV_INSTALL_DIR")  # variables whose whole purpose is to name a path
 SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt", "/nix", "/proc", "/sys",
                   "/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/run/systemd/resolve")
 CONFINED_BY_THE_KERNEL = "kernel"   # Landlock was applied and tried: the script could open the system's folders, its interpreter and its scratch folder, nothing else
 SCRATCH_ONLY = "scratch-only"       # no kernel fence here: the script ran in a scratch folder and could still open a path it built itself
-AFTER_END = ("note.resolved", "handed.over", "review.verdict")
+AFTER_END = ("note.resolved", "handed.over", "review.verdict", "so-what.verification", "method.promoted")
 LEAD_KEYS = ("what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
              "pitfalls", "proposed_plan")
 LEAD_OPTIONAL = ("what_does_not_hold", "open_explanations", "figures")
@@ -369,6 +397,11 @@ class Exploration(sf.Study):
 
     def add(self, actor: str, kind: str, data: dict) -> dict:
         self.check_actor(actor)
+        if sf.PLATFORM_ACTOR.fullmatch(actor or "") and kind not in ("so-what.recorded", "so-what.verification") and not (
+                kind == "exploration.ended" and data.get("outcome") == "lead-noted"):
+            raise Refused("an actor `platform:<host>` writes one thing into an exploration: a person's so what that was a comment on the "
+                          "platform, recorded by the job that follows the comment (`so-what --record-comment`), and the platform's answer "
+                          "about it (`verify-so-what`). Everything else is written by human:<id> or agent:<id>")
         with self.held() as f:
             ev = self.read_held(f)
             if any(e["kind"] == "exploration.ended" for e in ev) and kind not in AFTER_END:
@@ -1640,9 +1673,24 @@ def cmd_lead(x: Exploration, a) -> None:
     shutil.copyfile(x.d / "lead.md", x.d / "leads" / f"lead-v{version}.md")
     x.add(a.by, "lead.recorded", {"version": version, "json_sha": sha, "md_sha": sf.sha_file(x.d / "lead.md"),
                                   "source_sha": sf.sha_file(src), "tried": lead["tried"]})
+    for line in sf.flags_in_words([f for f in lead_overclaiming(x, x.events()) if f["what"] == "lead.md"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
     print(f"lead version {version} recorded ({WAY}): lead.md, lead.json. {lead['tried']['looks']} looks behind it. "
           "Next: a review agent that did none of this picks holes in it. Do not `end` yet: an exploration ends as a lead "
           "only after its latest lead has been reviewed.")
+
+
+def lead_overclaiming(x: Exploration, ev: list) -> list:
+    """The overclaiming check of an exploration: the lead as it stands and every review of it. A lead is tested on nothing, so
+    `confirms` is always flagged. A warning: nothing is refused on it."""
+    name, listing = sf.overclaiming_listing(sf.FACTORY, "exploration")
+    if not name or not lead_on_file(ev):
+        return []
+    flags = sf.overclaiming_flags((x.d / "lead.md").read_text(errors="replace"), listing, False, "lead.md")
+    for e in ev:
+        if e["kind"] == "review.verdict" and (x.d / e["data"]["file"]).is_file():
+            flags += sf.overclaiming_flags((x.d / e["data"]["file"]).read_text(errors="replace"), listing, False, e["data"]["file"])
+    return flags
 
 
 def cmd_correct(x: Exploration, a) -> None:
@@ -1747,6 +1795,8 @@ def cmd_review(x: Exploration, a) -> None:
                                    "of_lead_json_sha": lead_on_file(ev)["data"]["json_sha"] if lead else None,
                                    "corrections_seen": sum(1 for e in ev if lead and e["kind"] == "lead.corrected" and e["seq"] > lead["seq"])})
     print(f"review {n} recorded ({WAY}): {a.verdict}")
+    for line in sf.flags_in_words([f for f in lead_overclaiming(x, x.events()) if f["what"] == f"verdicts/{dest.name}"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
 
 
 def cmd_reviewer(x: Exploration, a) -> None:
@@ -1771,11 +1821,265 @@ def cmd_reviewer(x: Exploration, a) -> None:
              if lead else ". A review of any lead recorded from now on is taken from this name"))
 
 
+# ---- the person's so what on a reviewed lead -------------------------------
+def so_what_declared(factory=None) -> dict:
+    """The definition's `procedure.so_what` block: who answers, by which route, through which harness, for which repository."""
+    try:
+        block = sf.definition_of(Path(factory or sf.FACTORY))["procedure"].get("so_what")
+    except (Refused, KeyError, TypeError, AttributeError):
+        return {}
+    return block if isinstance(block, dict) else {}
+
+
+def so_what_standing(ev: list, e: dict | None) -> str | None:
+    """One of the three standings of a so what: typed (practice), a comment the job recorded, or a comment the platform confirmed."""
+    if not e:
+        return None
+    if e["data"].get("route") != COMMENT:
+        return sf.PRACTICE
+    checks = [v for v in ev if v["kind"] == "so-what.verification" and (v["data"].get("of") or {}).get("seq") == e["seq"]]
+    return sf.VERIFIED if checks and checks[-1]["data"].get("result") == sf.VERIFIED else COMMENT_FOUND
+
+
+def so_what_now(ev: list):
+    """The so what that stands for the lead as it stands: given on the lead on file, after its latest review. A new version,
+    a correction of wording or a later review leaves the lead without one, because the person answered other words."""
+    on = lead_on_file(ev)
+    if not on or not review_stands(ev):
+        return None
+    after = max([on["seq"]] + [e["seq"] for e in ev if e["kind"] == "review.verdict"])
+    given = [e for e in ev if e["kind"] == "so-what.recorded" and e["seq"] > after and e["data"].get("of_lead_json_sha") == on["data"]["json_sha"]]
+    return given[-1] if given else None
+
+
+def so_what_in_words(ev: list, e: dict | None) -> str:
+    if not e:
+        return "no person has said whether the lead as it stands is worth confirming"
+    d = e["data"]
+    words = d.get(SO_WHAT_NEEDS.get(d["answer"], ""), "")
+    return (f"{d['answer']}" + (f" ({SO_WHAT_NEEDS[d['answer']]}: {words})" if words else "") + f", by {e['actor']}"
+            + (f" (the comment's author on the platform: {d['comment']['author']})" if d.get("comment") else "")
+            + f", on lead version {d['of_lead_version']}; standing: {so_what_standing(ev, e)}")
+
+
+def so_what_problems(ev: list) -> list:
+    """Why the lead as it stands may not go to a confirming study: no person said it is worth confirming."""
+    now = so_what_now(ev)
+    if now is None:
+        return ["no person has said that the lead as it stands is worth confirming (`explore.py so-what`, a person's answer after the "
+                "review; an agent may draft the question with `ask-so-what` and never records the answer)"]
+    if now["data"]["answer"] != "worth-confirming":
+        return [f"the person's so what on the lead as it stands is {so_what_in_words(ev, now)}, not worth-confirming"]
+    return []
+
+
+def practice_so_what(a) -> bool:
+    return bool(getattr(a, "local_practice", False) or sf.Study.default_route == sf.PRACTICE or so_what_declared().get("route") == sf.PRACTICE)
+
+
+def render_question(lead: dict, q: dict, x: Exploration, verdict: dict) -> str:
+    sha = sf.sha_file(x.d / "lead.json")
+    rel = os.path.relpath(x.d, Path.cwd()) if x.d.is_relative_to(Path.cwd()) else str(x.d)
+    return "\n".join([
+        f"# The so what: is lead version {lead['version']} of {lead['exploration']} worth confirming?", "",
+        "An agent drafted this question; the answer is a person's, and no agent records it. The lead was reviewed "
+        f"(verdict `{verdict['data']['verdict']}`, `{verdict['data']['file']}`). Read the lead (`lead.md`) and look at its figures yourself before you answer.", "",
+        f"**What the lead shows.** {' '.join(str(q['what_the_lead_shows']).split())}", "",
+        f"**Why it might matter.** {' '.join(str(q['why_it_might_matter']).split())}", "",
+        f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", "",
+        "## How to answer", "",
+        "One of four: `worth-confirming` (it goes to a confirming study); `try-instead` with the direction in words (the exploration "
+        "goes on, with that as its next question); `not-interesting` with a reason (the exploration ends as a lead noted, which is not "
+        "a failure); `needs-an-expert` with the kind of expertise wanted.", "",
+        "On the platform, as a comment on the tracking issue, with these lines (the job that follows the comment records it):", "",
+        "```", "so-what: worth-confirming", f"exploration: {rel}", f"lead: {sha[:16]}", "```", "",
+        "with `direction:`, `reason:` or `expertise:` on its own line for the other three. For trying the tools out, typed (practice): "
+        f"`uv run tools/explore.py so-what --exploration {rel} --by human:<you> --answer worth-confirming --read-lead {sha} --local-practice`.", ""])
+
+
+def cmd_ask_so_what(x: Exploration, a) -> None:
+    """An agent drafts the question a person is asked about a reviewed lead: what it shows, why it might matter, what would
+    make it unremarkable. The answer is not this command's: `so-what` is a person's."""
+    ev = x.events()
+    x.started()
+    on = lead_on_file(ev)
+    if not on:
+        raise Refused("no lead is recorded; a so what is asked about a lead")
+    if not review_stands(ev):
+        raise Refused("the lead as it stands has not been reviewed: a person is asked about a lead after a reviewer has picked holes in it")
+    if str(getattr(a, "read_lead", None) or "").strip().lower() != on["data"]["json_sha"]:
+        raise Refused(f"`--read-lead` gives the sha256 of the lead.json the question is about, and the lead on file is {on['data']['json_sha']}")
+    try:
+        q = yaml.safe_load(Path(a.file).read_text())
+    except (OSError, yaml.YAMLError) as err:
+        raise Refused(f"the question file cannot be read as YAML ({err})")
+    if not isinstance(q, dict) or set(q) != set(QUESTION_KEYS):
+        raise Refused("the question file has exactly these keys: " + ", ".join(QUESTION_KEYS))
+    short = [k for k in QUESTION_KEYS if not isinstance(q[k], str) or len(q[k].split()) < 5]
+    if short:
+        raise Refused("each part of the question is a sentence or more, in words: " + ", ".join(short))
+    lead = json.loads((x.d / "lead.json").read_text())
+    n = count(ev, "so-what.asked") + 1
+    out = x.d / "so-what"
+    out.mkdir(exist_ok=True)
+    dest = out / f"QUESTION-{n:03d}.md"
+    dest.write_text(render_question(lead, q, x, last(ev, "review.verdict")))
+    x.add(a.by, "so-what.asked", {"n": n, "file": f"so-what/{dest.name}", "sha": sf.sha_file(dest), "of_lead_version": on["data"]["version"],
+                                  "of_lead_json_sha": on["data"]["json_sha"]})
+    print(f"so-what question {n} written ({WAY}): so-what/{dest.name}. It is for a person; the answer is theirs (`explore.py so-what`), "
+          "and no agent records it")
+
+
+def comment_answer(path: Path, x: Exploration, on: dict, declared: dict) -> tuple:
+    """(answer, words, comment) from the comment the job that follows a comment was handed, as the platform's API gives it. The names
+    in it are what the job was handed: the so what stands as `comment recorded, person not verified` until the platform is asked."""
+    try:
+        rec = json.loads(Path(path).read_text())
+    except (OSError, ValueError, TypeError):
+        raise Refused("`--record-comment` names the JSON of the comment as the platform gives it (its issues/comments API); it could not be read")
+    if not isinstance(rec, dict):
+        raise Refused("the comment is not a mapping in the platform's shape")
+    body = str(rec.get("body") or "")
+    fields = {}
+    for ln in body.splitlines():
+        k, sep, v = ln.partition(":")
+        k = k.strip().lower()
+        if sep and k in ("so-what", "exploration", "lead", *SO_WHAT_NEEDS.values()) and k not in fields:
+            fields[k] = v.strip()
+    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    user = rec.get("user") if isinstance(rec.get("user"), dict) else {}
+    login, repo = str(user.get("login") or ""), str(declared.get("repository") or "")
+    if not first.lower().startswith("so-what:"):
+        raise Refused("the comment does not begin with a line `so-what: <answer>`, so it is no so what")
+    if user.get("type") != "User" or not login or login.endswith("[bot]"):
+        raise Refused("the platform does not call the comment's author a user: an app or a bot gives no person's so what")
+    if str(rec.get("author_association") or "") not in ("OWNER", "MEMBER", "COLLABORATOR"):
+        raise Refused("the comment's author does not belong to the repository, so the comment is no so what of this factory's people")
+    if not repo or not str(rec.get("html_url") or "").startswith(f"https://github.com/{repo}/issues/") or not isinstance(rec.get("id"), int):
+        raise Refused(f"the comment is not an issue comment of the repository the definition names ({repo or 'none is named'}), with its number")
+    if fields.get("exploration", "").rstrip("/").rpartition("/")[2] not in (x.d.name, x.started()["data"]["id"]):
+        raise Refused(f"the comment names the exploration `{fields.get('exploration')}`, not this one ({x.d.name})")
+    lead = fields.get("lead", "").lower()
+    if not re.fullmatch(r"[0-9a-f]{12,64}", lead) or not on["data"]["json_sha"].startswith(lead):
+        raise Refused(f"the comment names the lead `{lead or 'nothing'}`; the lead on file is {on['data']['json_sha'][:16]}: a so what is for "
+                      "the words the person read, and these are not them")
+    answer = fields.get("so-what", "")
+    comment = {"platform": "github", "id": rec["id"], "url": rec["html_url"], "author": login, "association": rec["author_association"],
+               "created_at": rec.get("created_at"), "body_sha256": sf.sha_text(body),
+               "people_source": "the comment the job was handed, on the machine where the command ran: not checked with the platform"}
+    return answer, fields.get(SO_WHAT_NEEDS.get(answer, ""), ""), comment
+
+
+def cmd_so_what(x: Exploration, a) -> None:
+    """A person's answer to a reviewed lead: worth-confirming, try-instead (with a direction), not-interesting (with a reason)
+    or needs-an-expert (with the kind of expertise). No agent records it: typed, it is practice; on the platform it is a
+    person's comment on the tracking issue, which the job that follows the comment records here."""
+    ev = x.events()
+    start = x.started()
+    if breached(ev):
+        raise Refused("this exploration is spoiled (set-aside data reached it); there is no lead to answer")
+    if last(ev, "exploration.ended"):
+        raise Refused("this exploration has ended; a so what is given on a reviewed lead before the end")
+    on = lead_on_file(ev)
+    if not on:
+        raise Refused("no lead is recorded; a so what answers a lead")
+    if not review_stands(ev):
+        raise Refused("the lead as it stands has not been reviewed: a person answers a lead after a reviewer has picked holes in it")
+    declared = so_what_declared(getattr(a, "factory", None))
+    if getattr(a, "record_comment", None):
+        if not sf.PLATFORM_ACTOR.fullmatch(str(a.by)):
+            raise Refused("a so what that was a comment is recorded under the platform's name (`--by platform:github`), by the job that "
+                          "follows the comment; the person is read from the platform's record, not typed")
+        answer, words, comment = comment_answer(Path(a.record_comment), x, on, declared)
+        route = COMMENT
+    else:
+        if not str(a.by).startswith("human:") or str(a.by).lower() in sf.PLACEHOLDER_ACTORS:
+            raise Refused("the so what is a person's answer, under human:<their id>. An agent drafts the question (`ask-so-what`) and "
+                          "never records the answer, by any route")
+        if not practice_so_what(a):
+            raise Refused("on this factory a so what is a person's comment on the tracking issue, which the job that follows the comment "
+                          "records (`so-what --record-comment`) and the platform confirms (`verify-so-what`). Typed at a command line it is "
+                          "practice, and says so: add `--local-practice` to try the tools out")
+        if str(getattr(a, "read_lead", None) or "").strip().lower() != on["data"]["json_sha"]:
+            raise Refused(f"`--read-lead` gives the sha256 of the lead.json you read (`status` prints it); the lead on file is {on['data']['json_sha']}")
+        answer, comment, route = a.answer, None, sf.PRACTICE
+        words = getattr(a, SO_WHAT_NEEDS.get(a.answer, "") or "direction", None) if a.answer in SO_WHAT_NEEDS else None
+        for k in set(SO_WHAT_NEEDS.values()) - {SO_WHAT_NEEDS.get(a.answer)}:
+            if getattr(a, k, None):
+                raise Refused(f"`--{k}` goes with {next(w for w, n in SO_WHAT_NEEDS.items() if n == k)}, not with {a.answer}")
+    if answer not in SO_WHAT:
+        raise Refused(f"the answer is one of {', '.join(SO_WHAT)}")
+    words = " ".join(str(words or "").split())
+    if answer in SO_WHAT_NEEDS and len(words.split()) < 3:
+        raise Refused(f"{answer} says its {SO_WHAT_NEEDS[answer]} in words (`--{SO_WHAT_NEEDS[answer]}`, or a line `{SO_WHAT_NEEDS[answer]}:` in the comment)")
+    asked = [e for e in ev if e["kind"] == "so-what.asked" and e["data"]["of_lead_json_sha"] == on["data"]["json_sha"]]
+    data = {"answer": answer, "of_lead_version": on["data"]["version"], "of_lead_json_sha": on["data"]["json_sha"], "route": route,
+            "question": {k: asked[-1]["data"][k] for k in ("n", "file", "sha")} if asked else None}
+    if answer in SO_WHAT_NEEDS:
+        data[SO_WHAT_NEEDS[answer]] = words
+    if comment:
+        data["comment"] = comment
+    e = x.add(a.by, "so-what.recorded", data)
+    if answer == "not-interesting":
+        x.add(a.by, "exploration.ended", {"outcome": "lead-noted", "summary": words, "so_what": {"seq": e["seq"], "hash": e["hash"]}})
+    then = {"worth-confirming": "the analysis agent may end the exploration as a lead, and the coordinating agent may hand it over",
+            "try-instead": f"the exploration goes on, with this as its next question: {words}. A new lead is reviewed and answered again",
+            "not-interesting": "the exploration has ended as a lead noted: not a failure, and nothing is handed over",
+            "needs-an-expert": f"the lead waits for someone with this expertise: {words}. Their so what, on the same lead, decides"}[answer]
+    print(f"so what recorded ({WAY}): {answer}" + (" (practice: typed at a command line)" if route == sf.PRACTICE else
+                                                   f" (a comment by {comment['author']}; standing `{COMMENT_FOUND}` until `verify-so-what`)")
+          + f". Next: {then}")
+
+
+def so_what_harness(declared: dict):
+    """The verifier of the harness the definition names for the so what, from this factory's own definition."""
+    name = str(declared.get("harness") or "")
+    folder = sf.FACTORY.resolve() / "harnesses" / name
+    try:
+        block = (yaml.safe_load((folder / "harness.yaml").read_text()) or {}).get("platform") if re.fullmatch(r"[a-z][a-z0-9-]{0,40}", name) else None
+    except (OSError, yaml.YAMLError):
+        block = None
+    if not isinstance(block, dict) or not str(block.get("api") or "").startswith("https://") or not (folder / "verify_acts.py").is_file():
+        raise Refused("the definition names no harness for the so what that can ask a platform (`procedure.so_what.harness`)")
+    return _load(f"sf_verify_so_what_{name.replace('-', '_')}", folder / "verify_acts.py"), block
+
+
+def cmd_verify_so_what(x: Exploration, a) -> None:
+    """Ask the platform about each so what that was a comment, and record what it said. Anybody may run it, at any time."""
+    ev = x.events()
+    x.started()
+    targets = [e for e in ev if e["kind"] == "so-what.recorded" and e["data"].get("route") == COMMENT]
+    if not targets:
+        print("verify-so-what: nothing to ask the platform about: every so what here was typed (practice), or there is none")
+        return
+    declared = so_what_declared(getattr(a, "factory", None))
+    mod, block = so_what_harness(declared)
+    name, token = mod.token_from(os.environ)
+    for e in targets:
+        c = e["data"]["comment"]
+        data = {"of": {"seq": e["seq"], "hash": e["hash"], "comment": c["id"]}, "result": sf.NOT_CHECKED, "problems": [], "told": {}, "asked": [],
+                "platform": block.get("name"), "api": block["api"], "repository": declared.get("repository"), "token_from": name,
+                "through": mod.through(os.environ), "stand_in_for_the_platform": sf.PLATFORM_CALL is not None}
+        if sf.PLATFORM_CALL is None and not token:
+            data["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES)
+                                + "), and none of those is set. Nothing was asked, so nothing is verified"]
+        else:
+            got = mod.verify_comment(sf.PLATFORM_CALL or mod.platform_call, block["api"], token or "a-self-test",
+                                     {"repository": declared.get("repository"), "id": c["id"], "author": c["author"], "body_sha256": c["body_sha256"]})
+            data.update({k: got[k] for k in ("result", "problems", "told", "asked", "answers_sha256")})
+        if not getattr(a, "report_only", False):
+            x.add(a.by, "so-what.verification", data)
+        print(f"so what at event {e['seq']} ({e['data']['answer']}): {data['result']}" + (": " + "; ".join(data["problems"]) if data["problems"] else ""))
+
+
 def cmd_end(x: Exploration, a) -> None:
     ev = x.events()
     x.started()
     if a.outcome not in OUTCOMES:
         raise Refused(f"an exploration ends as one of {OUTCOMES}")
+    if a.outcome == "lead-noted":
+        raise Refused("an exploration ends as a lead noted when a person says the reviewed lead is not interesting (`so-what --answer "
+                      "not-interesting`), and that ends it; no agent ends one so")
     data = {"outcome": a.outcome, "summary": a.summary}
     if a.outcome == "lead":
         if breached(ev):
@@ -1788,6 +2092,11 @@ def cmd_end(x: Exploration, a) -> None:
         if not review_stands(ev):
             raise Refused("the lead was corrected after it was reviewed: the review covers the words the reviewer saw, not the "
                           "words that stand now. Hand it back for review; `end` comes after the corrected lead has been reviewed")
+        wanting = so_what_problems(ev)
+        if wanting:
+            raise Refused("an exploration ends as a lead once a person has said the reviewed lead is worth confirming: "
+                          + wanting[0] + ". Results that are technically right are often unremarkable until somebody who knows the "
+                          "field says why they matter; the coordinating agent asks the person (the question can be drafted with `ask-so-what`)")
     if a.outcome == "note" and not count(ev, "note.raised"):
         raise Refused("no note is recorded; record it with `note`")
     if a.outcome == "method":
@@ -1820,6 +2129,7 @@ def handover_problems(x: Exploration, ev: list) -> list:
         for name, key in (("lead.json", "json_sha"), ("lead.md", "md_sha")):
             if sf.sha_file(x.d / name) != lead_on_file(ev)["data"][key]:
                 p.append(f"{name} is not the lead that was recorded")
+        p += so_what_problems(ev)
     mark = f"{start['seq']}:{start['hash']}"
     lines = [ln for ln in record_lines(x.record()) if ln.get("started") == mark]
     if not any(ln.get("kind") == "explored" for ln in lines) or (sa["how"] != "nothing" and not any(ln.get("kind") == "set-aside" for ln in lines)):
@@ -1840,6 +2150,11 @@ def cmd_hand_over(x: Exploration, a) -> None:
         raise Refused(f"{a.by} did the exploring; the hand-over is made by the coordinating agent, which did not")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", a.study_id or "") or a.study_id == x.d.name:
         raise Refused("`--study-id` names the confirming study (for example STUDY-0002); it is not the exploration's name")
+    said = so_what_now(ev)
+    if so_what_standing(ev, said) == sf.PRACTICE and not practice_so_what(a):
+        raise Refused("the person's so what on this lead was typed at a command line (practice), and on this factory a so what is a "
+                      "person's comment on the tracking issue. A hand-over from a practice so what says so: add `--local-practice`, and the "
+                      "lock request will show it")
     lead = json.loads((x.d / "lead.json").read_text())
     sa, stub = start["data"]["set_aside"], lead["proposed_plan"]
     verdict = [e for e in ev if e["kind"] == "review.verdict"][-1]
@@ -1869,6 +2184,8 @@ def cmd_hand_over(x: Exploration, a) -> None:
         + (f". The lead's wording was corrected {len(lead['corrections'])} time(s) before that review, and not since" if lead.get("corrections") else "")
         + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
         "Names are typed, not proven: whether the reviewer was a separate agent with a fresh context is in the run's record, not in this line.", "",
+        f"**The so what.** {so_what_in_words(ev, said)}.", "",
+        f"**The fit note.** {' '.join(sf.fit_in_words(last(ev, 'fit.noted'))[:2])}", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
     held = {"pair": sa["subject"], "why_this_window": sa.get("why")}
@@ -1898,13 +2215,28 @@ def cmd_hand_over(x: Exploration, a) -> None:
     study_dir = os.path.relpath(x.record().parent / a.study_id, x.d)
     command = ["uv", "run", "tools/sf.py", "start", "--study", f"<the exploration>/{study_dir}", "--id", a.study_id,
                "--question", stub["question"], "--request", "<the exploration>/hand-over/request.md", "--by", "agent:<the coordinating agent>", "--model", "<the model it runs as>"]
+    figs = []
+    (out / "figures").mkdir(exist_ok=True)
+    for e in ev:  # every figure a look kept, by checksum, with the look's own reason as its caption: the lock shows them all
+        if e["kind"] == "look.run":
+            for fig in e["data"].get("figures") or []:
+                src_fig = x.d / fig["file"]
+                if sf.sha_file(src_fig) != fig["sha256"]:
+                    raise Refused(f"the figure {fig['file']} of {e['data']['id']} is not the picture the look kept; nothing is handed over")
+                name = f"{e['data']['id']}-{Path(fig['file']).name}"
+                shutil.copyfile(src_fig, out / "figures" / name)
+                figs.append({"file": f"figures/{name}", "sha256": fig["sha256"], "look": e["data"]["id"],
+                             "caption": " ".join(str(e["data"].get("why") or "").split())[:300]})
+    write_json(out / "figures.json", {"kind": "the exploration's figures, for the lock", "figures": figs})
     sha = write_json(out / "hand-over.json", {
         "kind": "hand-over", "from": start["data"]["id"], "for": "sf.py start", "study_id": a.study_id,
         "study_directory_from_exploration": study_dir, "question": stub["question"],
         "request": {"file": "hand-over/request.md", "sha256": sf.sha_file(out / "request.md")},
         "plan_stub": {"file": "hand-over/analysis-plan.stub.yaml", "sha256": sf.sha_file(out / "analysis-plan.stub.yaml")},
         "lead": {"version": lead["version"], "sha256": sf.sha_file(x.d / "lead.json"), "status": LEAD_STATUS},
-        "review": verdict["data"], "set_aside": sa, "record": start["data"]["record"], "start_command": command,
+        "review": verdict["data"], "so_what": {"seq": said["seq"], "hash": said["hash"], "answer": said["data"]["answer"], "by": said["actor"],
+                                              "standing": so_what_standing(ev, said)},
+        "set_aside": sa, "record": start["data"]["record"], "start_command": command,
         "then": "after the plan is written: explore.py check-study --exploration <this> --study <the study>"})
     x.add(a.by, "handed.over", {"study_id": a.study_id, "hand_over_sha": sha,
                                 "request_sha": sf.sha_file(out / "request.md"), "study_directory_from_exploration": study_dir})
@@ -2068,14 +2400,37 @@ def stage_of(x: Exploration) -> dict:
         here = {"stage": "review", "who": "review agent", "does": "pick holes in the lead (explore.py review)",
                 "not_yet": "the analysis agent does not `end`, and the curating agent does not `resolve`, until the latest lead is reviewed"}
     else:
-        here = {"stage": "revise-or-end", "who": "analysis agent", "last_review": verdict["data"]["verdict"],
-                "does": "answer the review: revise the lead (a new version is reviewed again), or end the exploration on the lead "
-                        "that was reviewed (explore.py end)",
-                "not_yet": "the curating agent waits for the end"}
+        said = so_what_now(ev)
+        answer = said["data"]["answer"] if said else None
+        if answer == "worth-confirming":
+            here = {"stage": "revise-or-end", "who": "analysis agent", "last_review": verdict["data"]["verdict"],
+                    "does": "a person said the lead is worth confirming: end the exploration on it (explore.py end --outcome lead), or "
+                            "revise it (a new version is reviewed and answered again)",
+                    "not_yet": "the curating agent waits for the end"}
+        elif answer == "try-instead":
+            here = {"stage": "explore", "who": "analysis agent", "next_question": said["data"]["direction"],
+                    "does": "a person asked for another direction: explore it, then write up a new version of the lead, which is reviewed and answered again"}
+        elif answer == "needs-an-expert":
+            here = {"stage": "so-what", "who": "people", "waiting_for": said["data"]["expertise"],
+                    "does": "the lead waits for a person with this expertise; their so what on the same lead decides"}
+        else:
+            here = {"stage": "so-what", "who": "people", "last_review": verdict["data"]["verdict"],
+                    "does": "a person says whether the reviewed lead is worth confirming (explore.py so-what; on the platform, a comment on "
+                            "the tracking issue). The coordinating agent asks them, and may have the question drafted (explore.py ask-so-what)",
+                    "not_yet": "no agent ends the exploration as a lead, or hands it over, before a person says it is worth confirming"}
+        if said:
+            here["so_what"] = so_what_in_words(ev, said)
     if lead:
         counts["lead_json_sha256"] = lead_on_file(ev)["data"]["json_sha"]
+    if lead:
+        counts["overclaiming"] = sf.flags_in_words(lead_overclaiming(x, ev))[:20]
+    given = [e for e in ev if e["kind"] == "so-what.recorded"]
+    if given:
+        counts["so_whats"] = [{"seq": e["seq"], "answer": e["data"]["answer"], "by": e["actor"], "of_lead_version": e["data"]["of_lead_version"],
+                               "standing": so_what_standing(ev, e)} for e in given]
     counts["looks_by_fence"] = fence_counts(ev)
     counts["working_data_declared"] = (start["set_aside"].get("working") or {}).get("places") or []
+    counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
             "models_recorded": {"by_actor": sf.models_recorded(ev), "note": "declared by whoever called the tool; nothing proves which model answered"},
             "set_aside": {k: start["set_aside"][k] for k in ("how", "window", "sites", "releases")},
@@ -2126,6 +2481,8 @@ def check_log(x: Exploration, posted: list | None = None) -> list:
             p.append(f"review {d['n']} ({d['file']}) is missing or was changed")
         elif e["kind"] == "note.raised" and sf.sha_file(x.d / "notes" / f"{d['id']}.json") != d["sha"]:
             p.append(f"{d['id']} is missing or was changed (the log keeps its words)")
+        elif e["kind"] == "so-what.asked" and sf.sha_file(x.d / d["file"]) != d["sha"]:
+            p.append(f"the so-what question {d['file']} is missing or was changed")
     for e in ev:
         if e["kind"] == "look.run":
             for fig in e["data"].get("figures") or []:
@@ -2190,6 +2547,199 @@ def cmd_check_log(x: Exploration, a) -> None:
           "earlier one: a log rewritten and then committed again passes this check.")
 
 
+README_PARTS = ("**What it computes.**", "**On what inputs.**", "**Known limits.**")  # what the agent's README of a promoted method says
+KNOWN_ANSWER_TESTS = """# /// script
+# requires-python = ">=3.11"
+# dependencies = DEPENDENCIES
+# ///
+\"\"\"Known-answer tests of the promoted method NAME, written by `explore.py promote`.
+
+Each case is a look of the exploration the method came from: the files it was given and the output its script
+printed. This runs the script on each case's files, in a folder of its own, and compares what it prints with what
+the look printed, byte for byte. The checksum of every case file is written below, so a case changed after the
+promotion fails here, and the lock that binds this file binds the cases with it.
+
+  uv run known_answer_tests.py [--out RECEIPT.json]
+
+Exit 0 when every case reproduces; 1 otherwise.
+\"\"\"
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SCRIPT = HERE / SCRIPT_NAME
+CASES = CASE_SHAS
+
+
+def sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--out", default=None)
+    a = ap.parse_args()
+    results = []
+    for case, files in sorted(CASES.items()):
+        folder = HERE / "known-answers" / case
+        changed = [rel for rel, h in files.items() if not (folder / rel).is_file() or sha(folder / rel) != h]
+        if changed:
+            results.append({"case": case, "passed": False, "why": "case files changed since the promotion: " + ", ".join(changed)})
+            continue
+        c = json.loads((folder / "case.json").read_text())
+        with tempfile.TemporaryDirectory() as t:
+            for rel in c["inputs"]:
+                (Path(t) / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(folder / "inputs" / rel, Path(t) / rel)
+            done = subprocess.run([sys.executable, str(SCRIPT), *c["args"]], cwd=t, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        same = done.returncode == 0 and done.stdout == (folder / "expected.out.txt").read_text()
+        results.append({"case": case, "passed": same, "why": "" if same else f"exit {done.returncode}; the output differs from what the look printed"})
+    passed = sum(r["passed"] for r in results)
+    receipt = {"method": NAME_JSON, "script_sha256": sha(SCRIPT), "cases": len(results), "passed": passed, "results": results}
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(receipt, indent=1) + "\\n")
+    for r in results:
+        print(("pass  " if r["passed"] else "FAIL  ") + r["case"] + (f": {r['why']}" if r["why"] else ""))
+    good = bool(results) and passed == len(results)
+    print(f"known-answer tests of NAME: {'PASS' if good else 'FAIL'} ({passed} of {len(results)})")
+    return 0 if good else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+
+
+def inline_dependencies(script: Path) -> list:
+    """The `dependencies` of a script's inline header (PEP 723), so the method's tests run in the same environment."""
+    text = script.read_text(errors="replace")
+    block = re.search(r"^# /// script\n((?:#.*\n)+?)# ///", text, re.M)
+    if not block:
+        return []
+    try:
+        meta = tomllib.loads("\n".join(ln[2:] if ln.startswith("# ") else ln[1:] for ln in block.group(1).splitlines()))
+    except (tomllib.TOMLDecodeError, ValueError):
+        return []
+    deps = meta.get("dependencies") or []
+    return [str(d) for d in deps] if isinstance(deps, list) else []
+
+
+def cmd_promote(x: Exploration, a) -> None:
+    """A look's script that proved useful becomes a method: copied under methods/<name>/, with the exploration's runs of it as its
+    first known-answer cases, the agent's README, a test file the study tool can run, and where it came from. It is a change
+    to the factory: `sf.py log-change` records it with a prediction, and `check_factory.py` validates it."""
+    ev = x.events()
+    start = x.started()
+    if breached(ev):
+        raise Refused("this exploration is spoiled (set-aside data reached it); nothing from it becomes a method")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,40}", str(a.name or "")):
+        raise Refused("`--name` names the method: lower-case letters, digits and hyphens, such as gain-with-intercept")
+    e = next((e for e in ev if e["kind"] == "look.run" and e["data"]["id"] == a.look), None)
+    if e is None or e["data"]["exit_code"] != 0 or not e["data"].get("ran_in"):
+        raise Refused(f"{a.look} is not a look of this exploration that ran in a scratch folder and passed; a method is promoted from one that did")
+    receipt = json.loads((x.d / f"receipts/{e['data']['id']}.json").read_text())
+    script = Path(os.path.normpath(x.d / receipt["script"]["word"]))
+    if sf.sha_file(script) != e["data"]["script_sha"]:
+        raise Refused(f"the script of {a.look} is not the script that was logged; nothing is promoted")
+    methods = Path(os.path.abspath(a.methods))
+    dest = methods / a.name
+    if dest.exists():
+        raise Refused(f"{dest} exists; a promoted method is a new folder, and a change to an existing method is a change of its own")
+    try:
+        readme = Path(a.readme).read_text()
+    except (OSError, TypeError):
+        raise Refused("`--readme` names the README you wrote: what it computes, on what inputs, and its known limits")
+    missing = [part for part in README_PARTS if not re.search(re.escape(part) + r"\s+\S+(\s+\S+){3,}", readme)]
+    if missing:
+        raise Refused("the README says, each in a sentence or more: " + ", ".join(missing))
+    runs = [r for r in ev if r["kind"] == "look.run" and r["data"]["script_sha"] == e["data"]["script_sha"] and r["data"]["exit_code"] == 0
+            and r["data"].get("ran_in")]
+    dest.mkdir(parents=True)
+    try:
+        shutil.copyfile(script, dest / script.name)
+        cases = {}
+        for r in runs:
+            how, lid = r["data"]["ran_in"], r["data"]["id"]
+            folder = dest / "known-answers" / lid
+            (folder / "inputs").mkdir(parents=True)
+            at_script = next(f["at"] for f in how["placed"] if f["role"] == "script")
+            inputs = []
+            for f in how["placed"]:
+                if f["role"] == "script":
+                    continue
+                src = Path(os.path.normpath(x.d / f["from"]))
+                if sf.sha_file(src) != f["sha256"]:
+                    raise Refused(f"`{f['from']}` is not the file {lid} was given; nothing is promoted")
+                (folder / "inputs" / f["at"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, folder / "inputs" / f["at"])
+                inputs.append(f["at"])
+            out = (x.d / f"receipts/{lid}.out.txt").read_text()
+            if sf.sha_text(out) != r["data"]["output_sha"]:
+                raise Refused(f"the output of {lid} is not what was logged; nothing is promoted")
+            (folder / "expected.out.txt").write_text(out.split("\n", 1)[1] if out.startswith(f"[{WAY}: output of {lid}]\n") else out)
+            words = how["argv_as_run"]
+            (folder / "case.json").write_text(json.dumps({"look": lid, "why": r["data"]["why"], "args": words[words.index(at_script) + 1:],
+                                                          "inputs": inputs, "from_exploration": start["data"]["id"]}, indent=1) + "\n")
+            cases[lid] = {rel.relative_to(folder).as_posix(): sf.sha_file(rel) for rel in sorted(folder.rglob("*")) if rel.is_file()}
+        test = (KNOWN_ANSWER_TESTS.replace("DEPENDENCIES", json.dumps(inline_dependencies(script))).replace("SCRIPT_NAME", repr(script.name))
+                .replace("CASE_SHAS", json.dumps(cases, indent=1, sort_keys=True)).replace("NAME_JSON", json.dumps(a.name)).replace("NAME", a.name))
+        (dest / "known_answer_tests.py").write_text(test)
+        provenance = (f"\n\n## Where it came from\n\nPromoted by {a.by}" + (f" (model {x.model} as declared)" if x.model else "")
+                      + f" from {start['data']['id']} ({WAY}), the script of {a.look} (sha256 {e['data']['script_sha']}). Its first known-answer "
+                      f"cases are the {len(cases)} look(s) of that exploration that ran it: {', '.join(sorted(cases))}. They hold the exploration's "
+                      "working data, never data it set aside. `known_answer_tests.py` runs them; a confirming study that uses this method runs "
+                      "it as a rehearsal, and the study tool refuses its tests and its lock until that passes. A lead is not a finding, and "
+                      "neither is a method: it is a tool that worked here.\n")
+        (dest / "README.md").write_text(readme.rstrip() + provenance)
+        method = {"promoted": True, "name": a.name, "script": {"file": script.name, "sha256": e["data"]["script_sha"]},
+                  "tests": {"file": "known_answer_tests.py", "sha256": sf.sha_file(dest / "known_answer_tests.py")},
+                  "readme": {"file": "README.md", "sha256": sf.sha_file(dest / "README.md")},
+                  "from": {"exploration": start["data"]["id"], "look": a.look, "looks": sorted(cases), "log_fingerprint": f"{ev[-1]['seq']}:{ev[-1]['hash']}"},
+                  "cases": cases, "by": a.by, "model": x.model, "at": sf.now(),
+                  "change_log": "a promotion is a change to the factory: record it with `sf.py log-change`, naming methods/" + a.name + ", with a prediction"}
+        (dest / "method.json").write_text(json.dumps(method, indent=1, sort_keys=True) + "\n")
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    x.add(a.by, "method.promoted", {"name": a.name, "folder": os.path.relpath(dest, x.d), "look": a.look, "cases": sorted(cases),
+                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json")})
+    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s). This is a change to the factory: "
+          f"record it with `sf.py log-change` naming methods/{a.name}, with a prediction, then run `check_factory.py`, which validates the method")
+
+
+def cmd_fit(x: Exploration, a) -> None:
+    """The coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person."""
+    ev = x.events()
+    x.started()
+    data = sf.record_fit(x, ev, a.by, a.file)
+    x.add(a.by, "fit.noted", data)
+    print(f"fit note recorded ({WAY}; advice, it blocks nothing): " + sf.fit_in_words(last(x.events(), "fit.noted"))[0])
+
+
+def cmd_contribution(x: Exploration, a) -> None:
+    """Write who did each step of this exploration, drawn from its log, as contribution.md and contribution.json: a paragraph
+    a scientist can paste into a paper, and what the log cannot show."""
+    ev = x.events()
+    start = x.started()
+    fresh = (start["data"]["set_aside"].get("fresh_data") or {})
+    model = None
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
+        model = yaml.safe_load(Path(fresh["file"]).read_text())["proposed"]["model"]
+    extra = [{"kind": "fresh-data.proposed", "actor": fresh["proposed_by"], "model": model, "data": {}}] if fresh.get("proposed_by") else []
+    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra)
+    lines = sf.contribution_lines(c, f"{start['data']['id']} ({WAY}; a lead, not a finding)")
+    (x.d / "contribution.md").write_text("\n".join(lines))
+    write_json(x.d / "contribution.json", c)
+    print("\n".join(lines))
+
+
 def cmd_fingerprint(x: Exploration, a) -> None:
     ev = x.events()
     if not ev:
@@ -2206,7 +2756,8 @@ class A:
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
-                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None)
+                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
+                        reason=None, expertise=None, local_practice=None, record_comment=None, report_only=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
 
@@ -2270,6 +2821,12 @@ def selftest() -> int:
             if reviewer:  # the coordinating step names the reviewer before any lead exists
                 quiet(cmd_reviewer, x, A(by="agent:tester-coordinating", reviewer=reviewer))
             return x
+
+        PERSON = "human:throwaway-placeholder"  # nobody: the only person's name these self-tests type, in a scratch folder
+
+        def so_what(x_: Exploration, answer: str = "worth-confirming", **kw) -> str:
+            """A person's so what, typed (practice), on the lead as it stands."""
+            return said(cmd_so_what, x_, A(**{"by": PERSON, "answer": answer, "read_lead": sf.sha_file(x_.d / "lead.json"), "local_practice": True, **kw}))
 
         def RA(x_: Exploration, **kw) -> A:
             """The arguments of a review, with the lead the reviewer read: the one on file, unless a check says otherwise."""
@@ -2556,7 +3113,7 @@ def selftest() -> int:
            "did part of this exploration" in said(cmd_review, y, RA(y, by="agent:TESTER-analysis", verdict="holes-found", file=str(vf))))
         ok("a verdict outside the two is refused", "one of" in said(cmd_review, y, RA(y, by="agent:tester-review", verdict="approve", file=str(vf))))
         quiet(cmd_review, y, RA(y, by="agent:tester-review", verdict="holes-found", file=str(vf)))
-        ok("status after a review sends the work back to the analysis agent", stage_of(y)["stage"] == "revise-or-end")
+        ok("status after a review asks a person for the so what", stage_of(y)["stage"] == "so-what" and stage_of(y)["who"] == "people")
         quiet(cmd_lead, y, A(file=str(lf)))
         ok("a revised lead is a new version, and the first is kept", (y.d / "leads/lead-v1.json").is_file() and json.loads((y.d / "lead.json").read_text())["version"] == 2)
         ok("ending as a lead is refused until the latest lead has been reviewed",
@@ -2565,11 +3122,16 @@ def selftest() -> int:
         ok("a note is not resolved while the lead can still be revised: the curating agent waits for the end",
            "has not ended" in said(cmd_resolve, y, A(by="agent:tester-curating", note="NOTE-001", disposition="drafted", ref="knowledge-queue/gotchas/a-flag.md")))
         quiet(cmd_review, y, RA(y, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        ok("ending as a lead is refused until a person has said the reviewed lead is worth confirming",
+           "worth confirming" in said(cmd_end, y, A(outcome="lead", summary="A follows B on changes; worth a test")))
+        so_what(y)
         quiet(cmd_end, y, A(outcome="lead", summary="A follows B on changes; worth a test"))
         ok("after the end nothing more is looked at", "has ended" in look(y, ["{python}", sy, str(data)]))
         ok("the agent that explored cannot make the hand-over", "did the exploring" in said(cmd_hand_over, y, A(study_id="STUDY-T")))
         ok("the hand-over refuses the exploration's own name for the study", "study-id" in said(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="E-2")))
-        quiet(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="STUDY-T"))
+        ok("a hand-over on a so what that was typed (practice) is refused unless it says practice too",
+           "--local-practice" in said(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="STUDY-T")))
+        quiet(cmd_hand_over, y, A(by="agent:tester-coordinating", study_id="STUDY-T", local_practice=True))
         ho = json.loads((y.d / "hand-over/hand-over.json").read_text())
         ok("the hand-over holds what `sf.py start` needs: an id, a question, a request by checksum",
            ho["study_id"] == "STUDY-T" and ho["question"].endswith("?") and ho["request"]["sha256"] == sf.sha_file(y.d / "hand-over/request.md"))
@@ -2586,6 +3148,10 @@ def selftest() -> int:
         quiet(sf.cmd_start, study, argparse.Namespace(id="STUDY-T", question=ho["question"], by="agent:tester-coordinating",
                                                       request=str(y.d / "hand-over/request.md"), asked_by=None))
         ok("the study tool starts a study from the hand-over", study.events()[0]["data"]["request"]["sha"] == ho["request"]["sha256"])
+        whole = sf.study_contribution(study, sf.FACTORY)
+        ok("a study started from a hand-over knows the exploration it came from, and its contribution statement reads both logs",
+           study.events()[0]["data"]["from_exploration"]["id"] == y.started()["data"]["id"] and len(whole["logs"]) == 2
+           and any(w["actor"].startswith("agent:tester-analysis") for r in whole["rows"] if r["work"] == "exploring" for w in r["who"]))
         ok("check-study waits for the plan", any("no analysis plan yet" in q for q in study_problems(y, study.d)))
 
         def plan(window: dict, pair: dict | None = None) -> None:
@@ -2759,6 +3325,7 @@ def selftest() -> int:
         ok("a corrected lead checks out, and still says it is not a finding", check_log(w) == [] and "not a finding" in (w.d / "lead.md").read_text())
         ok("status counts the corrections made to the latest lead", stage_of(w)["wording_corrections_to_the_latest_lead"] == 1)
         quiet(cmd_review, w, RA(w, by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        so_what(w)
         quiet(cmd_end, w, A(outcome="lead", summary="A rises and falls with B; worth a test"))
         ok("once the exploration has ended a note can be resolved",
            said(cmd_resolve, w, A(by="agent:tester-curating", note="NOTE-001", disposition="linked", ref="gotchas/follow-datum.md")) == "")
@@ -2989,8 +3556,9 @@ def selftest() -> int:
         ok("after it the lead is no longer reviewed: the exploration does not end as a lead, and status names the review agent",
            "corrected after it was reviewed" in said(cmd_end, r, A(outcome="lead", summary="x")) and stage_of(r)["stage"] == "review")
         quiet(cmd_review, r, RA(r, by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        so_what(r)
         quiet(cmd_end, r, A(outcome="lead", summary="A follows B; worth a test"))
-        quiet(cmd_hand_over, r, A(by="agent:tester-coordinating", study_id="STUDY-R"))
+        quiet(cmd_hand_over, r, A(by="agent:tester-coordinating", study_id="STUDY-R", local_practice=True))
         handed = (r.d / "hand-over/request.md").read_text()
         ok("the hand-over then carries the verdict of the review that saw the corrected words, and says so",
            "holes-found" in handed and "no-holes-found" not in handed and "corrected 1 time(s) before that review, and not since" in handed
@@ -2998,6 +3566,195 @@ def selftest() -> int:
         ok("a correction cannot change a number written another way: a decimal comma, a missing zero, an exponent, a share",
            all("never numbers" in said(cmd_correct, w, A(old="a gain of 1.4826", new=new_, why="x"))
                for new_ in ("a gain of 1,4826", "a gain of 1.4826e1", "a gain of 1.4826 percent", "a gain of 11.4826", "a gain of .4826")))
+
+        # ---- the person's so what on a reviewed lead ------------------------------------------------
+        sw = fresh("E-SO-WHAT", subject="reach_id=R40,gauge=G40")
+        ff = tmp / "fit.yaml"
+        ff.write_text(yaml.safe_dump({"answer_is": "a judgement", "data_at_hand": "partly", "mostly": "judgement",
+                                      "person_must_supply": "what would make agreement between A and B surprising",
+                                      "verdict": "fit-with-a-person-steering", "why": "the counting is easy and the question is what matters",
+                                      "taste_needed": "someone who knows how A and B are maintained"}))
+        quiet(cmd_fit, sw, A(by="agent:tester-coordinating", file=str(ff)))
+        ok("the coordinating agent's fit note is recorded at intake and shown in status, and writing it does not make it part of the work",
+           "fit-with-a-person-steering" in stage_of(sw)["fit"] and "agent:tester-coordinating" not in did_the_work(sw.events()))
+        known(sw)
+        ssw = script(sw, "rows.py", "import json, sys\nd = json.load(open(sys.argv[1]))\nprint('rows', len(d['rows']))\n")
+        sfig = script(sw, "draw.py", "from pathlib import Path\nPath('figures').mkdir(exist_ok=True)\n"
+                                     "Path('figures/a-on-b.svg').write_text('<svg xmlns=\"http://www.w3.org/2000/svg\"/>')\nprint('drawn')\n")
+        look(sw, ["{python}", sfig], why="a picture of A against B, every row")
+        ok("a fit note once the first look has run is refused", "work has started" in said(cmd_fit, sw, A(by="agent:tester-coordinating", file=str(ff))))
+        look(sw, ["{python}", ssw, str(data)])
+        swf = sw.d / "lead.yaml"
+        swf.write_text(yaml.safe_dump(rl))
+        quiet(cmd_lead, sw, A(file=str(swf)))
+        qf = tmp / "so-what-question.yaml"
+        qf.write_text(yaml.safe_dump({"what_the_lead_shows": "A follows B over the year on changes, across twelve rows.",
+                                      "why_it_might_matter": "If it holds, B could stand in for A where A is missing.",
+                                      "what_would_make_it_unremarkable": "A and B are known to share a source, which would make agreement expected."}))
+        ok("a so what before the lead is reviewed is refused, and so is the question",
+           "has not been reviewed" in so_what(sw) and "has not been reviewed" in said(cmd_ask_so_what, sw, A(file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json"))))
+        quiet(cmd_review, sw, RA(sw, by="agent:tester-review", verdict="holes-found", file=str(vf)))
+        quiet(cmd_ask_so_what, sw, A(by="agent:tester-coordinating", file=str(qf), read_lead=sf.sha_file(sw.d / "lead.json")))
+        ok("an agent drafts the question for the person: what the lead shows, why it might matter, what would make it unremarkable",
+           (sw.d / "so-what" / "QUESTION-001.md").is_file() and "What would make it unremarkable" in (sw.d / "so-what" / "QUESTION-001.md").read_text()
+           and last(sw.events(), "so-what.asked")["actor"] == "agent:tester-coordinating")
+        ok("an agent cannot record the answer, by any route: not under its own name, not as practice, not as the platform without a comment",
+           "a person's answer" in so_what(sw, by="agent:tester-coordinating") and "a person's answer" in so_what(sw, by="agent:tester-review")
+           and "platform's name" in said(cmd_so_what, sw, A(by="agent:tester-coordinating", record_comment=str(tmp / "none.json")))
+           and not count(sw.events(), "so-what.recorded"))
+        ok("typed without saying practice, a so what is refused on a factory whose so what is a comment on the platform",
+           "--local-practice" in so_what(sw, local_practice=False) and so_what_declared().get("route") == COMMENT)
+        ok("a so what for a lead the person did not read is refused", "--read-lead" in so_what(sw, read_lead="0" * 64))
+        ok("each answer that needs words is refused without them, and words that belong to another answer are refused",
+           "direction" in so_what(sw, "try-instead") and "reason" in so_what(sw, "not-interesting") and "expertise" in so_what(sw, "needs-an-expert")
+           and "goes with" in so_what(sw, "worth-confirming", direction="look at low flows instead") and "one of" in so_what(sw, "maybe"))
+        so_what(sw, "needs-an-expert", expertise="someone who knows how the B gauge is maintained")
+        ok("needs-an-expert holds the lead for a person with that expertise, and the end as a lead is refused",
+           stage_of(sw)["stage"] == "so-what" and "B gauge" in stage_of(sw)["waiting_for"]
+           and "not worth-confirming" in said(cmd_end, sw, A(outcome="lead", summary="x")))
+        so_what(sw, "try-instead", direction="look at the changes in low flow only, where the two differ most")
+        ok("try-instead returns the exploration to exploring, with the direction recorded as its next question",
+           stage_of(sw)["stage"] == "explore" and "low flow" in stage_of(sw)["next_question"]
+           and last(sw.events(), "so-what.recorded")["data"]["direction"].startswith("look at the changes"))
+        look(sw, ["{python}", ssw, str(data)])
+        quiet(cmd_lead, sw, A(file=str(swf)))
+        ok("a new version of the lead has no so what until it is reviewed and answered again",
+           so_what_now(sw.events()) is None and stage_of(sw)["stage"] == "review")
+        quiet(cmd_review, sw, RA(sw, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        so_what(sw)
+        quiet(cmd_correct, sw, A(old="follows B closely", new="follows B on changes", why="wording"))
+        ok("a correction after the so what undoes it with the review: the person answered other words",
+           so_what_now(sw.events()) is None and "worth confirming" in str(so_what_problems(sw.events())))
+        quiet(cmd_review, sw, RA(sw, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        so_what(sw)
+        quiet(cmd_end, sw, A(outcome="lead", summary="A follows B on changes; a person says it is worth confirming"))
+        quiet(cmd_hand_over, sw, A(by="agent:tester-coordinating", study_id="STUDY-SO-WHAT", local_practice=True))
+        swho = (sw.d / "hand-over/request.md").read_text()
+        figs = json.loads((sw.d / "hand-over/figures.json").read_text())["figures"]
+        ok("the hand-over carries every figure the looks kept, by checksum, with the reason of the look that drew it as its caption",
+           figs == [{"file": "figures/LOOK-001-a-on-b.svg", "sha256": sf.sha_file(sw.d / "figures/a-on-b.svg"), "look": "LOOK-001",
+                     "caption": "a picture of A against B, every row"}] and (sw.d / "hand-over/figures/LOOK-001-a-on-b.svg").is_file())
+        quiet(cmd_contribution, sw, A())
+        said_c = (sw.d / "contribution.md").read_text()
+        ok("the contribution statement of a lead names who did each kind of work, with counts, the agents with the model they declared, "
+           "and says what the log cannot show",
+           "| the so what | human:throwaway-placeholder (a person, by the name typed) |" in said_c
+           and "| exploring | agent:tester-analysis (an AI agent, model selftest-model as declared) |" in said_c
+           and "| reviewing | agent:tester-review (an AI agent, model selftest-model as declared) | 3 |" in said_c
+           and "What the logs cannot show" in said_c and "a lead, not a finding" in said_c
+           and json.loads((sw.d / "contribution.json").read_text())["rows"][0]["work"] == "asking the question")
+        ok("the hand-over carries the so what, who gave it and its standing, and the fit note, and the log checks out",
+           "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "**The fit note.** **fit-with-a-person-steering**" in swho and "standing: practice" in swho
+           and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
+        # ---- a look that proved useful becomes a method, and a study may use it once its own tests pass there
+        methods = tmp / "repo" / "methods"
+        rd = tmp / "method-readme.md"
+        rd.write_text("# rows-counted\n\n**What it computes.** How many rows a record holds, printed as one line.\n\n")
+        ok("a method is promoted only with a README that says what it computes, on what inputs and its known limits, under a proper name",
+           "**On what inputs.**" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods)))
+           and "`--name`" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="Rows Counted", readme=str(rd), methods=str(methods)))
+           and not methods.exists())
+        rd.write_text("# rows-counted\n\n**What it computes.** How many rows a record holds, printed as one line.\n\n"
+                      "**On what inputs.** One JSON file of working data with a list under `rows`.\n\n"
+                      "**Known limits.** It checks no row and reads nothing but the one file.\n")
+        quiet(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods)))
+        mdir = methods / "rows-counted"
+        mj = json.loads((mdir / "method.json").read_text())
+        ok("the promoted method holds the script by checksum, the exploration's runs of it as known-answer cases with their inputs and "
+           "outputs, the agent's README with where it came from, and a test file",
+           sf.sha_file(mdir / "rows.py") == last(sw.events(), "look.run")["data"]["script_sha"] and sorted(mj["cases"]) == ["LOOK-002", "LOOK-003"]
+           and (mdir / "known-answers" / "LOOK-002" / "expected.out.txt").read_text() == "rows 12\n"
+           and "## Where it came from" in (mdir / "README.md").read_text() and mj["from"]["exploration"] == "E-SO-WHAT"
+           and last(sw.events(), "method.promoted")["data"]["name"] == "rows-counted")
+        ran = subprocess.run([sys.executable, str(mdir / "known_answer_tests.py")], capture_output=True, text=True)
+        ok("the method's known-answer tests reproduce every case", ran.returncode == 0 and "PASS (2 of 2)" in ran.stdout)
+        exp = mdir / "known-answers" / "LOOK-003" / "expected.out.txt"
+        kept_exp = exp.read_text()
+        exp.write_text("rows 13\n")
+        ran = subprocess.run([sys.executable, str(mdir / "known_answer_tests.py")], capture_output=True, text=True)
+        exp.write_text(kept_exp)
+        ok("a case changed after the promotion fails the tests", ran.returncode == 1 and "changed since the promotion" in ran.stdout)
+        ok("a second promotion under the same name is refused",
+           "exists" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods))))
+        uses = json.loads(json.dumps(sf.PLAN))
+        uses["code"] = uses["code"] + [str(mdir / "rows.py")]
+        uses["data"]["held_out"]["pair"] = "uses-a-promoted-method"
+        ps = sf._fresh(work / "studies", "STUDY-USES-METHOD", plan=uses, start=A(id="STUDY-USES-METHOD", question=sf.PLAN["question"], by="agent:tester-coordinating"))
+        ok("a plan that uses a promoted method without running its tests as a rehearsal fails the plan check",
+           any("promoted method `rows-counted`" in q for q in sf.check_plan(ps.plan(), ps)))
+        uses["rehearsals"] = [{"id": "method-rows-counted", "why": "the promoted method's own known-answer tests, in this study",
+                               "steps": [["{python}", str(mdir / "known_answer_tests.py")]]}]
+        ps.plan_path.write_text(yaml.safe_dump(uses, sort_keys=False))
+        ok("with the rehearsal declared, the study's tests are refused until the method's own tests have passed in this study",
+           sf.check_plan(ps.plan(), ps) == [] and "have not passed in this study" in said(sf.cmd_test, ps, A(what="known-answers", by="agent:tester-analysis")))
+        quiet(sf.cmd_rehearse, ps, A(id="method-rows-counted", by="agent:tester-analysis"))
+        ok("once the method's tests pass as a rehearsal of this study, the study's tests run",
+           ps.last("rehearsal.run", id="method-rows-counted")["data"]["exit"] == 0
+           and said(sf.cmd_test, ps, A(what="known-answers", by="agent:tester-analysis")) == "")
+        (mdir / "rows.py").write_text((mdir / "rows.py").read_text() + "# changed\n")
+        ok("a promoted method changed after its tests passed is refused again: the code they passed on is not the code now",
+           "have not passed in this study" in said(sf.cmd_test, ps, A(what="working-data", by="agent:tester-analysis")))
+
+        no = fresh("E-SO-WHAT-NO", subject="reach_id=R41,gauge=G41")
+        known(no)
+        look(no, ["{python}", script(no, "rows.py", "import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n"), str(data)])
+        (no.d / "lead.yaml").write_text(yaml.safe_dump(rl))
+        quiet(cmd_lead, no, A(file=str(no.d / "lead.yaml")))
+        quiet(cmd_review, no, RA(no, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        ok("no agent ends an exploration as a lead noted", "no agent ends one so" in said(cmd_end, no, A(outcome="lead-noted", summary="x")))
+        so_what(no, "not-interesting", reason="the agreement is what a shared source would give, so nothing new is learned")
+        ok("not-interesting ends the exploration as a lead noted, with the reason, and nothing is handed over",
+           last(no.events(), "exploration.ended")["data"]["outcome"] == "lead-noted" and "shared source" in last(no.events(), "exploration.ended")["data"]["summary"]
+           and "has not ended as a lead" in said(cmd_hand_over, no, A(by="agent:tester-coordinating", study_id="STUDY-NO", local_practice=True)))
+        # the platform route: a comment on the tracking issue, recorded by the job that follows it, verified by asking the platform
+        pc = fresh("E-SO-WHAT-PR", subject="reach_id=R42,gauge=G42")
+        known(pc)
+        look(pc, ["{python}", script(pc, "rows.py", "import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n"), str(data)])
+        (pc.d / "lead.yaml").write_text(yaml.safe_dump({**rl, "what_looks_true": "A clearly follows B over the year, which confirms the idea, across 12 rows."}))
+        quiet(cmd_lead, pc, A(file=str(pc.d / "lead.yaml")))
+        over = stage_of(pc)["overclaiming"]
+        ok("a lead that claims more than an exploration can show is recorded all the same, and status names each phrase and its line: "
+           "`confirms` always, since a lead is tested on nothing",
+           count(pc.events(), "lead.recorded") == 1 and any("`clearly`" in f and f.startswith("lead.md, line ") for f in over)
+           and any("`confirms`" in f for f in over))
+        quiet(cmd_review, pc, RA(pc, by="agent:tester-review", verdict="no-holes-found", file=str(vf)))
+        repo = so_what_declared()["repository"]
+        body = f"so-what: worth-confirming\nexploration: explorations/{pc.d.name}\nlead: {sf.sha_file(pc.d / 'lead.json')[:16]}\n"
+        cm = {"id": 77, "html_url": f"https://github.com/{repo}/issues/3#issuecomment-77", "user": {"login": "a-scientist", "type": "User"},
+              "author_association": "MEMBER", "created_at": "2026-11-26T10:00:00Z", "body": body}
+        cf = tmp / "comment.json"
+
+        def comment(**change) -> str:
+            cf.write_text(json.dumps({**cm, **change}))
+            return said(cmd_so_what, pc, A(by="platform:github", record_comment=str(cf)))
+        ok("a comment by a bot, by an account outside the repository, for another lead or for another exploration is not recorded",
+           "not call the comment's author a user" in comment(user={"login": "helper[bot]", "type": "Bot"})
+           and "does not belong to the repository" in comment(author_association="NONE")
+           and "the lead on file" in comment(body=body.replace(sf.sha_file(pc.d / "lead.json")[:16], "0" * 16))
+           and "not this one" in comment(body=body.replace(pc.d.name, "EXPLORATION-ELSE"))
+           and not count(pc.events(), "so-what.recorded"))
+        ok("the platform writes nothing else into an exploration", "writes one thing" in said(cmd_note, pc, A(by="platform:github", kind="missing", about="a", text="b")))
+        comment()
+        got_sw = last(pc.events(), "so-what.recorded")
+        ok("a person's comment is recorded under the platform's name, with its author as handed, standing `comment recorded, person not verified`",
+           got_sw["actor"] == "platform:github" and got_sw["data"]["comment"]["author"] == "a-scientist" and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
+        quiet(cmd_end, pc, A(outcome="lead", summary="worth a test, a person said on the platform"))
+        ok("a hand-over on a comment needs no word of practice", said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")) == "")
+        vmod = so_what_harness(so_what_declared())[0]
+        sf.PLATFORM_CALL = lambda api, path, token: ({"status": 200, "body": cm} if path == f"/repos/{repo}/issues/comments/77" else {"status": 404, "body": None})
+        try:
+            quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
+        finally:
+            sf.PLATFORM_CALL = None
+        ok("asked, the platform confirms the comment, and the so what stands as verified", so_what_standing(pc.events(), got_sw) == sf.VERIFIED
+           and last(pc.events(), "so-what.verification")["data"]["asked"][0]["endpoint"].endswith("/comments/77") and vmod.PEOPLE)
+        saved_tokens = {k: os.environ.pop(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if k in os.environ}
+        try:
+            quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
+        finally:
+            os.environ.update(saved_tokens)
+        ok("with no token nothing is asked, the result is `not checked`, and the standing falls back to what the job was handed",
+           last(pc.events(), "so-what.verification")["data"]["result"] == sf.NOT_CHECKED and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
 
         # M1: a number is a number however it is written, and a page the explorer wrote backs nothing
         m1 = fresh("E-13", subject="reach_id=R17,gauge=G17")
@@ -3305,6 +4062,11 @@ def build_parser() -> argparse.ArgumentParser:
         (["--working-window"], {"default": None, "help": "START:END of the data that will be explored"}),
         (["--time-keys"], {"default": None, "help": "the keys under which a data file carries its times (default: " + ",".join(TIME_KEYS) + ")"}),
         (["--studies"], {"default": None, "help": "the folder of confirming studies, where the record is (default: ../../studies from the exploration)"}))
+    add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(sf.FIT_KEYS)}))
+    add("promote", cmd_promote, by, (["--look"], {"required": True, "help": "the look whose script becomes a method, such as LOOK-002"}),
+        (["--name"], {"required": True, "help": "the method's name: lower-case letters, digits and hyphens"}),
+        (["--readme"], {"required": True, "help": "the README you wrote: " + ", ".join(README_PARTS)}),
+        (["--methods"], {"required": True, "help": "the methods folder of the repository, such as methods"}))
     add("known", cmd_known, by, (["--wiki", "--bundle"], {"dest": "bundle", "action": "append", "required": True,
                                                          "help": "a wiki: a directory of Markdown pages; repeatable"}),
         (["--drafts"], {"action": "append", "default": None, "help": "a queue of drafted pages, listed as drafts; repeatable"}),
@@ -3330,9 +4092,23 @@ def build_parser() -> argparse.ArgumentParser:
     add("reviewer", cmd_reviewer, by, (["--reviewer"], {"required": True, "help": "the name the review will come under, such as agent:review-01"}))
     add("review", cmd_review, by, (["--verdict"], {"required": True, "help": " or ".join(VERDICTS)}), (["--file"], {"required": True}),
         (["--read-lead"], {"default": None, "dest": "read_lead", "help": "the sha256 of the lead.json the reviewer read; `status` prints it"}))
+    add("ask-so-what", cmd_ask_so_what, by, (["--file"], {"required": True, "help": "the question (YAML): " + ", ".join(QUESTION_KEYS)}),
+        (["--read-lead"], {"required": True, "dest": "read_lead", "help": "the sha256 of the lead.json the question is about"}))
+    add("so-what", cmd_so_what, by, (["--answer"], {"default": None, "help": ", ".join(SO_WHAT)}),
+        (["--direction"], {"default": None, "help": "for try-instead: the direction, in words"}),
+        (["--reason"], {"default": None, "help": "for not-interesting: why, in words"}),
+        (["--expertise"], {"default": None, "help": "for needs-an-expert: the kind of expertise wanted"}),
+        (["--read-lead"], {"default": None, "dest": "read_lead", "help": "the sha256 of the lead.json you read; `status` prints it"}),
+        (["--local-practice"], {"action": "store_true", "dest": "local_practice",
+                                "help": "typed at a command line, for trying the tools: the so what says it is practice"}),
+        (["--record-comment"], {"default": None, "dest": "record_comment",
+                                "help": "for the job that follows a comment on the platform (--by platform:github): the comment's JSON"}))
+    add("verify-so-what", cmd_verify_so_what, by, (["--report-only"], {"action": "store_true", "dest": "report_only"}))
     add("end", cmd_end, by, (["--outcome"], {"required": True, "help": ", ".join(OUTCOMES)}), (["--summary"], {"required": True}),
         (["--file"], {"default": None}))
-    add("hand-over", cmd_hand_over, by, (["--study-id"], {"required": True, "dest": "study_id"}))
+    add("hand-over", cmd_hand_over, by, (["--study-id"], {"required": True, "dest": "study_id"}),
+        (["--local-practice"], {"action": "store_true", "dest": "local_practice",
+                                "help": "hand over on a so what that was typed (practice); the request and the lock say so"}))
     add("check-study", cmd_check_study, (["--study"], {"required": True}))
     add("curation-list", cmd_curation_list)
     add("resolve", cmd_resolve, by, (["--note"], {"required": True}), (["--disposition"], {"required": True, "help": ", ".join(DISPOSITIONS)}),
@@ -3341,6 +4117,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("status", cmd_status)
     add("check-log", cmd_check_log, (["--anchor"], {"action": "append", "default": None, "help": "SEQ:HASH posted outside the workspace; repeatable"}))
     add("fingerprint", cmd_fingerprint)
+    add("contribution", cmd_contribution)
     sub.add_parser("selftest", allow_abbrev=False)
     return ap
 

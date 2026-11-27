@@ -25,6 +25,10 @@ Commands, by stage. Each has one name.
     close                 the study ends: answered already, a signed
                           result, or a recorded decision not to sign
   Plan
+    fit                   the coordinating agent's fit note at intake: how
+                          well the question suits agents, a verdict, and
+                          what it needs from a person; advice that blocks
+                          nothing
     check-plan            the analysis plan is complete and well formed
   Test (repeat freely; every attempt is logged)
     test known-answers    synthetic data with the truth put in
@@ -94,6 +98,9 @@ Commands, by stage. Each has one name.
     curation-list         open notes, for the curating agent
     resolve               a note is accepted, linked or declined
     scorecard             the definition's checks for this study
+    contribution          who did each step, from the logs of the study
+                          and the exploration it came from: a paragraph
+                          for a paper, and what the logs cannot show
     log-change            a change to the definition, with its prediction
   The log
     fingerprint           the log's fingerprint, to post outside the workspace
@@ -274,7 +281,7 @@ HARNESS_PERSON = "human:blind-test-harness"  # the one named exception: the blin
 NOT_PART_OF_THE_WORK = ("review.verdict", "note.raised", "note.resolved", "change.recorded")
 # Paths inside a study that no plan may name as something a step writes: the tool or people write them
 PROTECTED = ("study-log.jsonl", "analysis-plan.yaml", "scorecard.json", "curation-list.json", "request.md")
-PROTECTED_FOLDERS = ("notes", "verdicts", "finding", "request")
+PROTECTED_FOLDERS = ("notes", "verdicts", "finding", "request", "exploration-figures", "lock-request", "signature-request")
 ACT_FOLDERS = ("lock-request", "signature-request")  # what a person's act is asked for with; written by the tool only
 
 # The criteria every decision rule must meet on the known-answer tests before the lock. The names are fields the
@@ -307,8 +314,9 @@ PLAN_NEEDS = {
 STUDY_KINDS = ("confirmatory", "system_trial")
 DATA_KEYS = ("working", "held_out")
 HELD_OUT_KEYS = ("window", "pair", "withheld_values", "path", "observation_metadata", "why_this_window", "metadata_note", "fresh_data")
-TEST_KEYS = ("command", "receipt", "fetch", "data", "window", "pair", "writes", "passes_environment")
-REHEARSAL_KEYS = ("id", "why", "steps", "receipt", "writes", "needs", "passes_environment")
+TEST_KEYS = ("command", "receipt", "fetch", "data", "window", "pair", "writes", "passes_environment", "figures")
+REHEARSAL_KEYS = ("id", "why", "steps", "receipt", "writes", "needs", "passes_environment", "figures")
+PICTURES = (".svg", ".png", ".jpg", ".jpeg")  # what a step may declare as a figure: a picture a person looks at, at the lock or the signature
 # The launchers the tool knows. A command is one of them followed by a script file, then the script's own
 # arguments; the script is what the lock binds. Nothing else is run: not a shell, not a program that takes its
 # code as text.
@@ -682,11 +690,15 @@ class Study:
             add(spec.get("data"), f"tests.{t}.data")
             for w in spec.get("writes") or []:
                 add(w, f"tests.{t}.writes")
+            for fig in figures_declared(spec):
+                add(fig["file"], f"tests.{t}.figures")
         for i, reh in enumerate(plan.get("rehearsals") or []):
             reh = reh if isinstance(reh, dict) else {}
             add(reh.get("receipt"), f"rehearsals[{reh.get('id', i)}].receipt")
             for w in reh.get("writes") or []:
                 add(w, f"rehearsals[{reh.get('id', i)}].writes")
+            for fig in figures_declared(reh):
+                add(fig["file"], f"rehearsals[{reh.get('id', i)}].figures")
         return out
 
     @staticmethod
@@ -1009,11 +1021,65 @@ def subject_and_window(where: str, spec: dict, required: bool) -> list:
     return p
 
 
+def promoted_method_of(f: Path) -> Path | None:
+    """The folder of a promoted method a file belongs to: the nearest folder above it, up to five levels, that holds a method.json
+    (explore.py promote writes it). A method.json that cannot be read counts as a promotion, so a broken one is not a way round."""
+    for d in [f.parent, *f.parents][:6]:
+        m = d / "method.json"
+        if m.is_file():
+            try:
+                return d if json.loads(m.read_text()).get("promoted") is not False else None
+            except (OSError, ValueError, AttributeError):
+                return d
+    return None
+
+
+def promoted_in(study: Study, plan: dict) -> dict:
+    """{the folder of each promoted method the plan's bound code belongs to: the ids of the rehearsals that run its known-answer tests}."""
+    used = {}
+    for word in study.code_hashes(plan):
+        if word.startswith("("):
+            continue
+        with contextlib.suppress(Refused, OSError, ValueError):
+            f = study.word(word, plan).resolve()
+            m = promoted_method_of(f) if f.is_file() else None
+            if m:
+                used.setdefault(m, [])
+    for reh in plan.get("rehearsals") or []:
+        for st in reh.get("steps") or []:
+            launcher, script = launch(st)
+            with contextlib.suppress(Refused, OSError, ValueError):
+                f = study.word(script, plan).resolve() if launcher else None
+                if f is not None and f.name == "known_answer_tests.py" and f.parent in used and reh["id"] not in used[f.parent]:
+                    used[f.parent].append(reh["id"])
+    return used
+
+
+def promoted_problems(study: Study, plan: dict) -> list:
+    """A plan that uses a promoted method runs that method's own known-answer tests as a rehearsal, in this study."""
+    return [f"the plan uses the promoted method `{m.name}` ({m}); a promoted method is used only once its own known-answer tests pass in "
+            f"this study: add a rehearsal whose step runs `{m / 'known_answer_tests.py'}`" for m, rehs in promoted_in(study, plan).items() if not rehs]
+
+
+def promoted_untested(study: Study, plan: dict, but: str | None = None) -> list:
+    """The promoted methods the plan uses whose known-answer tests have not passed in this study on exactly this plan and code."""
+    code, psha, out = study.code_hashes(plan), study.plan_sha(), []
+    for m, rehs in promoted_in(study, plan).items():
+        if but in rehs:
+            continue
+        ok = any((lambda e: e and e["data"]["exit"] == 0 and e["data"]["plan_sha"] == psha and e["data"]["code"] == code)(study.last("rehearsal.run", id=r))
+                 for r in rehs)
+        if not ok:
+            out.append(f"`{m.name}` (run `sf.py rehearse --id {rehs[0] if rehs else '<its rehearsal>'}` first)")
+    return out
+
+
 def check_plan(plan, study: Study | None = None) -> list:
     """The plan check: is the analysis plan complete and well formed enough to be locked? Every message names
     the key and what it accepts."""
     try:
-        return _check_plan(plan, study)
+        problems = _check_plan(plan, study)
+        return problems or (promoted_problems(study, plan) if study is not None else [])
     except Refused as r:
         return [str(r)]
     except (KeyError, TypeError, ValueError, AttributeError, IndexError):
@@ -1109,6 +1175,7 @@ def _check_plan(plan, study: Study | None) -> list:
                              "go in `writes`")
         if "writes" in spec and not (isinstance(spec["writes"], list) and all(is_text(w) for w in spec["writes"])):
             p.append(f"`tests.{t}.writes`: a list of paths inside the study that this test's own commands write")
+        p += figures_problems(f"tests.{t}", spec)
         p += passes_problems(f"tests.{t}", spec)
     p += [f"`tests.{t}`: test {t} is not in the plan" for t in ("known-answers", "working-data", "held-out") if t not in tests]
 
@@ -1131,6 +1198,7 @@ def _check_plan(plan, study: Study | None) -> list:
             p.append(f"`rehearsals[{reh['id']}].receipt`: a path inside the study")
         if "writes" in reh and not (isinstance(reh["writes"], list) and all(is_text(w) for w in reh["writes"])):
             p.append(f"`rehearsals[{reh['id']}].writes`: a list of paths inside the study that this rehearsal's own steps write")
+        p += figures_problems(f"rehearsals[{reh['id']}]", reh)
         if "needs" in reh and not (isinstance(reh["needs"], list) and reh["needs"] and all(is_text(w) for w in reh["needs"])):
             p.append(f"`rehearsals[{reh['id']}].needs`: a list of files that must exist for this rehearsal to pass "
                      "(the tool itself looks for them and binds them)")
@@ -1227,11 +1295,15 @@ def output_problems(plan: dict, study: Study) -> list:
             claim(spec["data"], f"tests.{t}.data")
         for w in spec.get("writes") or []:
             claim(w, f"tests.{t}.writes")
+        for fig in figures_declared(spec):
+            claim(fig["file"], f"tests.{t}.figures")
     for reh in plan.get("rehearsals") or []:
         if reh.get("receipt"):
             claim(reh["receipt"], f"rehearsals[{reh['id']}].receipt")
         for w in reh.get("writes") or []:
             claim(w, f"rehearsals[{reh['id']}].writes")
+        for fig in figures_declared(reh):
+            claim(fig["file"], f"rehearsals[{reh['id']}].figures")
     held_out_paths = [plan["tests"][t].get("data") or held["path"] for t in HELD_OUT_TESTS if t in plan["tests"]]
     if len(held_out_paths) == 2 and (study.d / held_out_paths[0]).resolve() == (study.d / held_out_paths[1]).resolve():
         p.append("`tests.independent-site.data`: the two tests on held-out data would write the same data file; give the "
@@ -1438,12 +1510,68 @@ def cmd_start(study: Study, a) -> None:
                 raise Refused("the study already holds a different request.md; start with `--request` on that file, or remove it")
             shutil.copyfile(src, dest)
         data["request"] = {"file": dest.relative_to(study.d).as_posix(), "sha": sha_file(dest)}
+        figs = exploration_figures_beside(src)
+        if figs:  # a request from an exploration's hand-over brings the exploration's figures, bound here by checksum
+            (study.d / "exploration-figures").mkdir(exist_ok=True)
+            for f in figs:
+                shutil.copyfile(src.parent / f["file"], study.d / "exploration-figures" / Path(f["file"]).name)
+            data["exploration_figures"] = [{**f, "file": f"exploration-figures/{Path(f['file']).name}"} for f in figs]
+        if (src.parent / "hand-over.json").is_file() and (src.parent.parent / "exploration-log.jsonl").is_file():
+            with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+                ho = json.loads((src.parent / "hand-over.json").read_text())
+                data["from_exploration"] = {"id": ho.get("from"), "path_from_study": os.path.relpath(src.parent.parent, study.d)}
     if asked_by:
         data["asked_by"] = asked_by
     for sub in ("receipts", "notes", "verdicts", "data"):
         (study.d / sub).mkdir(exist_ok=True)
     study.append(a.by, "study.started", data)
     print(f"started {a.id}" + (f" (request {data['request']['file']}, sha256 {data['request']['sha'][:12]})" if src else ""))
+
+
+def exploration_figures_beside(request: Path) -> list:
+    """The figures an exploration's hand-over put beside the request (hand-over/figures.json), each checked against
+    its checksum: [{file (from the hand-over folder), sha256, look, caption}]. Empty when the request is not a hand-over."""
+    listing = Path(request).parent / "figures.json"
+    if Path(request).name != "request.md" or not listing.is_file() or not (Path(request).parent / "hand-over.json").is_file():
+        return []
+    try:
+        figs = json.loads(listing.read_text())["figures"]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise Refused("the hand-over's figures.json cannot be read; hand the exploration over again")
+    for f in figs:
+        if not re.fullmatch(r"figures/[A-Za-z0-9][A-Za-z0-9_.-]*", str(f.get("file"))) or sha_file(Path(request).parent / f["file"]) != f.get("sha256"):
+            raise Refused(f"the hand-over's figure {f.get('file')} is not the picture the exploration kept (its checksum differs); hand it over again")
+    return figs
+
+
+def figures_for_the_lock(study: Study, plan: dict, ev: list, bound_events: list) -> list:
+    """Every figure the people locking are asked to look at: the exploration's (bound at the start), then each test's and
+    rehearsal's from the run the lock binds. Each {file, sha256, caption, by}; a picture changed since it was kept is refused."""
+    out = []
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    for f in (start["data"].get("exploration_figures") or []) if start else []:
+        out.append({"file": f["file"], "sha256": f["sha256"], "caption": f["caption"], "by": f"the exploration's {f['look']}"})
+    for e in bound_events:
+        who = TEST_NAMES.get(e["data"].get("test"), "") or f"the rehearsal {e['data'].get('id')}"
+        for f in e["data"].get("figures") or []:
+            out.append({"file": f["file"], "sha256": f["sha256"], "caption": f["shows"], "by": who})
+    for f in out:
+        if sha_file(study.d / f["file"]) != f["sha256"]:
+            raise Refused(f"the figure {f['file']} is not the picture that was kept when it was drawn (its checksum differs): a person "
+                          "is shown what the step drew, so run the step again")
+    return out
+
+
+def figures_in_words(figs: list, up: str = "../") -> list:
+    """The figures as Markdown a pull request shows: each picture, with its caption from the step that drew it."""
+    if not figs:
+        return ["No figure was drawn: neither the exploration's looks nor the plan's steps kept one. A number can agree with a claim "
+                "that a picture would show to be wrong; ask for a figure if one would help.", ""]
+    out = [f"Look at each figure yourself before you approve. Do not take the captions, or anyone's \"good agreement\", for it: "
+           f"{len(figs)} figure(s), each bound by checksum in the manifest.", ""]
+    for i, f in enumerate(figs, 1):
+        out += [f"![{f['caption']}]({up}{f['file']})", "", f"*Figure {i}, drawn by {f['by']} (sha256 {f['sha256'][:12]}): {f['caption']}*", ""]
+    return out
 
 
 def request_of(ev: list) -> dict | None:
@@ -1626,11 +1754,41 @@ def early_data(study: Study, plan: dict, ev: list) -> list:
     return out
 
 
+def figures_declared(step) -> list:
+    """The figures a test or a rehearsal declares, as {file, shows}: what a person will be asked to look at."""
+    figs = step.get("figures") if isinstance(step, dict) else None
+    return [f for f in figs if isinstance(f, dict) and is_text(f.get("file"))] if isinstance(figs, list) else []
+
+
+def figures_problems(where: str, step: dict) -> list:
+    if "figures" not in step:
+        return []
+    figs = step["figures"]
+    if not isinstance(figs, list) or not figs:
+        return [f"`{where}.figures`: a list of {{file: figures/name.svg, shows: what the picture shows, in words}}"]
+    p = []
+    for f in figs:
+        if not isinstance(f, dict) or set(f) != {"file", "shows"} or not is_text(f.get("file")) or len(str(f.get("shows") or "").split()) < 3:
+            p.append(f"`{where}.figures`: each entry is {{file: figures/name.svg, shows: what the picture shows, in words}}")
+        elif Path(str(f["file"])).suffix.lower() not in PICTURES:
+            p.append(f"`{where}.figures`: `{f['file']}` is not a picture a person can look at ({', '.join(PICTURES)})")
+    return p
+
+
+def figures_drawn(study: Study, step: dict) -> tuple:
+    """(the declared figures that exist, each {file, sha256, shows}; the declared figures that do not)."""
+    have, missing = [], []
+    for f in figures_declared(step):
+        sha = sha_file(study.path(f["file"]))
+        (have.append({"file": f["file"], "sha256": sha, "shows": " ".join(str(f["shows"]).split())}) if sha else missing.append(f["file"]))
+    return have, missing
+
+
 def clear_outputs(study: Study, step: dict) -> Path | None:
     """Remove what a step is about to write, so a pass is a receipt this run wrote and nothing left behind
     can steer it."""
     rp = study.path(step["receipt"]) if step.get("receipt") else None
-    for f in ([rp] if rp else []) + [study.path(w) for w in step.get("writes") or []]:
+    for f in ([rp] if rp else []) + [study.path(w) for w in step.get("writes") or []] + [study.path(g["file"]) for g in figures_declared(step)]:
         if f.is_file() or f.is_symlink():
             f.unlink()
     return rp
@@ -1671,6 +1829,10 @@ def cmd_test(study: Study, a) -> None:
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
     spec = plan["tests"][a.what]
+    untested = promoted_untested(study, plan)
+    if untested:
+        raise Refused("the plan uses promoted methods whose own known-answer tests have not passed in this study on this plan and code: "
+                      + ", ".join(untested) + ". Nothing was run")
     if not_set(spec):
         raise Refused(f"the plan passes {', '.join(not_set(spec))} to this test (`passes_environment`) and it is not set in "
                       "the environment; set it and run again. Nothing was run")
@@ -1680,7 +1842,10 @@ def cmd_test(study: Study, a) -> None:
     code, problem, identity = run_step(study, plan, [spec["command"]], passes)
     if code == 0 and not rp.is_file():
         code = 96  # exit 0 and no receipt is not a pass
-    study.append(a.by, "test.run", {"test": a.what, "exit": code, "plan_sha": study.plan_sha(),
+    drawn, undrawn = figures_drawn(study, spec)
+    if code == 0 and undrawn:
+        code, problem = 94, "the plan declares figures this test did not draw: " + ", ".join(undrawn)
+    study.append(a.by, "test.run", {"test": a.what, "exit": code, "plan_sha": study.plan_sha(), "figures": drawn,
                                     "code": identity, "receipt_sha": sha_file(rp), "problem": problem,
                                     "env": env_stamp(study, plan), "env_names": given_names(passes),
                                     "held_out_sha": held_out_block(plan)["sha"], "ran_in": how_it_ran(mark)})
@@ -1719,6 +1884,10 @@ def cmd_rehearse(study: Study, a) -> None:
     reh = next((r for r in plan.get("rehearsals") or [] if r["id"] == a.id), None)
     if not reh:
         raise Refused(f"no rehearsal `{a.id}` is in the plan")
+    untested = promoted_untested(study, plan, but=a.id)
+    if untested:
+        raise Refused("the plan uses promoted methods whose own known-answer tests have not passed in this study on this plan and code: "
+                      + ", ".join(untested) + ". Nothing was run")
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
@@ -1740,7 +1909,10 @@ def cmd_rehearse(study: Study, a) -> None:
             missing = ["no readable receipt"]
         if missing:
             code, problem = 95, "the rehearsal receipt lacks rule fields: " + ", ".join(missing)
-    study.append(a.by, "rehearsal.run", {"id": a.id, "exit": code, "plan_sha": study.plan_sha(),
+    drawn, undrawn = figures_drawn(study, reh)
+    if code == 0 and undrawn:
+        code, problem = 94, "the plan declares figures this rehearsal did not draw: " + ", ".join(undrawn)
+    study.append(a.by, "rehearsal.run", {"id": a.id, "exit": code, "plan_sha": study.plan_sha(), "figures": drawn,
                                          "code": identity, "receipt_sha": sha_file(rp) if rp else None,
                                          "problem": problem, "env": env_stamp(study, plan),
                                          "env_names": given_names(passes),
@@ -2143,6 +2315,12 @@ def manifest_now(study: Study, plan: dict, ev: list, factory: Path, act: str) ->
     if fresh is not None:  # the proposal and, for a random set aside, its seed: a change to either after the request shows
         f = study.path(fresh)
         out["fresh_data"] = {"file": fresh, "sha256": sha_file(f), "seed_sha256": sha_file(fresh_tool().seed_path(f))}
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    steps = [plan["tests"][t] for t in FREE_TESTS] + list(plan.get("rehearsals") or [])
+    if act != "lock":
+        steps += [plan["tests"][t] for t in HELD_OUT_TESTS if t in plan["tests"]]
+    out["figures"] = {**{f["file"]: sha_file(study.d / f["file"]) for f in ((start or {}).get("data") or {}).get("exploration_figures") or []},
+                      **{f["file"]: sha_file(study.path(f["file"])) for st in steps for f in figures_declared(st) if sha_file(study.path(f["file"]))}}
     if act == "lock":
         out["receipts"] = {t: sha_file(study.path(plan["tests"][t]["receipt"])) for t in FREE_TESTS}
         out["receipts"].update({f"rehearsal:{r['id']}": sha_file(study.path(r["receipt"])) for r in plan.get("rehearsals") or [] if r.get("receipt")})
@@ -2342,7 +2520,8 @@ def from_the_request(study: Study, ev: list) -> dict:
     except OSError:
         text = ""
     pick = lambda label: next((ln.split("**", 2)[2].strip() for ln in text.splitlines() if ln.startswith(f"**{label}.**")), None)  # noqa: E731
-    return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "text": text}
+    return {"how_it_was_found": pick("How it was found"), "review_of_the_lead": pick("The review of the lead"), "so_what": pick("The so what"),
+            "fit": pick("The fit note"), "text": text}
 
 
 def conds_text(conds: list) -> str:
@@ -2361,9 +2540,10 @@ def lock_evidence(study: Study, a) -> dict:
     code, psha = study.code_hashes(plan), study.plan_sha()
     if None in code.values():
         raise Refused("a file the plan names is missing: " + ", ".join(k for k, v in code.items() if v is None))
-    bound = {}
+    bound, ran = {}, []
     for t in FREE_TESTS:
         e = study.last("test.run", test=t)
+        ran.append(e)
         if not e or e["data"]["exit"] != 0:
             raise Refused(f"{TEST_NAMES[t]}: not passed yet")
         if e["data"]["plan_sha"] != psha or e["data"]["code"] != code:
@@ -2378,6 +2558,8 @@ def lock_evidence(study: Study, a) -> dict:
         if e["data"]["plan_sha"] != psha or e["data"]["code"] != code:
             raise Refused(f"rehearsal `{reh['id']}` passed on a different plan or different code; run it again")
         bound[f"rehearsal:{reh['id']}"] = e["data"]["receipt_sha"]
+        ran.append(e)
+    figures = figures_for_the_lock(study, plan, ev, ran)
     try:
         known = json.loads(study.path(plan["tests"]["known-answers"]["receipt"]).read_text())
         working = json.loads(study.path(plan["tests"]["working-data"]["receipt"]).read_text())
@@ -2491,8 +2673,9 @@ def lock_evidence(study: Study, a) -> dict:
             "uv_environments": environments,
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
-            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None}
-    return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh}
+            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None,
+            "figures": {f["file"]: f["sha256"] for f in figures}}
+    return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh, "figures": figures}
 
 
 def lock_summary(study: Study, got: dict, factory: Path) -> list:
@@ -2512,7 +2695,10 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
            "## The question", "", str(plan["question"]).strip(), ""]
     if started and " ".join(str(started["data"].get("question")).split()) != " ".join(str(plan["question"]).split()):
         out += ["As the study was started, the question read: " + str(started["data"].get("question")), ""]
-    out += ["## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
+    fit = next((e for e in reversed(ev) if e["kind"] == "fit.noted"), None)
+    out += ["## How well the question suits agents (the fit note from intake)", ""]
+    out += fit_in_words(fit) if fit else ([f"From the exploration: {came['fit']}"] if came.get("fit") else fit_in_words(None))
+    out += ["", "## What would count for and against (the plan's rules)", ""] + ["    " + ln for ln in got["shown"]] + [""]
     out += ["## The fresh data that will check the idea, and why it was chosen", ""]
     fresh = got.get("fresh")
     if fresh:
@@ -2533,6 +2719,7 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
     out += ["", "## The known-answer tests, working data and rehearsals", "",
             f"{len(runs)} attempts are in the log, of which {sum(1 for e in runs if e['data']['exit'] != 0)} failed. The receipts this lock would bind:", ""]
     out += [f"- {name}: sha256 {sha}" for name, sha in sorted(d["receipts"].items())]
+    out += ["", "## The figures: look at each one yourself", ""] + figures_in_words(got["figures"])
     fenced = sorted({(e["data"].get("ran_in") or {}).get("confined") or "not recorded" for e in runs})
     out += ["", "How the plan's commands ran (the kernel fence, or a scratch folder only): " + ", ".join(fenced) + ".", "",
             "## The code this lock would bind", "", f"{len(d['code'])} files, each by sha256:", ""]
@@ -2546,7 +2733,8 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
     out += ["", "## The exploration that led here, and what its reviewer said", ""]
     if came["how_it_was_found"] or came["review_of_the_lead"]:
         out += ["How many things were tried: " + str(came["how_it_was_found"] or "the request does not say."), "",
-                "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), ""]
+                "The review of the lead: " + str(came["review_of_the_lead"] or "the request does not say."), "",
+                "A person's so what on the lead (is it worth confirming?): " + str(came["so_what"] or "the request does not say; ask before you approve."), ""]
     else:
         out += ["This study's request carries no hand-over from an exploration, so nothing is known here about what was tried before it.", ""]
     out += ["Reviews recorded in this study's own log so far: " + ("; ".join(f"{e['actor']} {e['data']['verdict']}" for e in reviews) or "none (a study is reviewed after its opening)") + ".", "",
@@ -2983,6 +3171,7 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "receipt": spec["receipt"], "receipt_sha": sha_file(rp), "data": data_rel,
                                                 "data_sha": sha_file(data), "fetch_wrote": fetch_wrote,
                                                 "wrote": {w: sha_file(study.path(w)) for w in spec.get("writes") or []},
+                                                "figures": figures_drawn(study, spec)[0],
                                                 "env_names": given_names(passes), "ran_in": how_it_ran(mark),
                                                 "outcomes": outcomes, "method_declined": declined})
     print(f"held-out data opened ({a.test}, opening {n}); outcomes {outcomes}" + (f" (the method declined: {declined})" if declined else ""))
@@ -3059,6 +3248,9 @@ def cmd_review(study: Study, a) -> None:
     attached = any(e["kind"] == "finding.attached" and live and e["seq"] > live["seq"] for e in ev)
     print(f"review: {a.verdict}" + ("" if attached else " (recorded before any finding was attached: the study is ready for the "
                                                        "steward only after a verdict that follows the finding)"))
+    said = study_overclaiming(study, Path(getattr(a, "factory", None) or FACTORY))
+    for line in flags_in_words([f for f in (said or {}).get("flags") or [] if f["what"] == f"verdicts/{dest.name}"]):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
 
 
 def cmd_note(study: Study, a) -> None:
@@ -3122,6 +3314,290 @@ def cmd_curation_list(study: Study, a) -> None:
     print(f"curation list: {out['open_notes']} open note(s) across {len(by_subject)} subject(s)")
 
 
+# ---- the fit note: how well a question suits agents, written at intake ----------
+FIT_KEYS = {"answer_is": ("exact", "checkable", "a judgement"), "data_at_hand": ("yes", "partly", "no"),
+            "mostly": ("computation", "reading", "judgement"), "person_must_supply": None,
+            "verdict": ("good-fit", "fit-with-a-person-steering", "poor-fit"), "why": None, "taste_needed": None}
+FIT_WORK_STARTED = ("look.run", "test.run", "rehearsal.run")  # a fit note is written before any of these
+
+
+def fit_problems(fit) -> list:
+    """Why a fit note is not complete, in words. It is advice to a person: these are the parts it must have, and nothing more."""
+    if not isinstance(fit, dict):
+        return ["a fit note is a mapping with the keys " + ", ".join(FIT_KEYS)]
+    p = [f"`{k}` is missing" for k in FIT_KEYS if k not in fit] + [f"`{k}` is not a key of a fit note" for k in fit if k not in FIT_KEYS]
+    for k, allowed in FIT_KEYS.items():
+        if k not in fit:
+            continue
+        if allowed and fit[k] not in allowed:
+            p.append(f"`{k}` is one of {', '.join(allowed)}")
+        elif not allowed and (not isinstance(fit[k], str) or len(fit[k].split()) < 3):
+            p.append(f"`{k}` is a sentence, in words")
+    return p
+
+
+def record_fit(log_owner, ev: list, by: str, file: str) -> dict:
+    """Read a fit note, check it, and return what the event records. The note blocks nothing; it is refused only when it is
+    incomplete or late (once work has started it is no longer a note at intake)."""
+    started = [e for e in ev if e["kind"] in FIT_WORK_STARTED]
+    if started:
+        raise Refused(f"work has started ({started[0]['kind']} at event {started[0]['seq']}): a fit note is written at intake, before the first "
+                      "look or test. It is advice to the person and never blocks the work, so the work goes on without it")
+    try:
+        fit = yaml.safe_load(Path(file).read_text())
+    except (OSError, yaml.YAMLError) as e:
+        raise Refused(f"the fit note cannot be read as YAML ({e})")
+    problems = fit_problems(fit)
+    if problems:
+        raise Refused("the fit note is not complete: " + "; ".join(problems))
+    return {**{k: " ".join(str(fit[k]).split()) for k in FIT_KEYS}, "file_sha256": sha_file(Path(file)),
+            "is": "advice to the person from intake; it blocks nothing"}
+
+
+def fit_in_words(e: dict | None) -> list:
+    if not e:
+        return ["No fit note was written at intake: nothing records how well the question suits agents or what it needs from a person."]
+    d = e["data"]
+    return [f"**{d['verdict']}**, noted by {e['actor']}" + (f" (model {e['model']} as declared)" if e.get("model") else "") + f": {d['why']}",
+            f"The answer is {d['answer_is']}; the data is at hand: {d['data_at_hand']}; the work is mostly {d['mostly']}.",
+            f"What a person has to supply: {d['person_must_supply']}", f"The taste or expertise the work will need from a person: {d['taste_needed']}",
+            "This is advice from intake; it blocked nothing."]
+
+
+def cmd_fit(study: Study, a) -> None:
+    """The coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person."""
+    study.check_actor(a.by)
+    ev = study.events()
+    if not ev:
+        raise Refused("the study is not started; start it with the request, then write the fit note before the first test")
+    data = record_fit(study, ev, a.by, a.file)
+    study.append(a.by, "fit.noted", data)
+    print("fit note recorded (advice, it blocks nothing): " + " ".join(fit_in_words(study.last("fit.noted"))[:1]))
+
+
+# ---- the overclaiming check: words that claim more than the work can show ----------
+UNCERTAINTY_KEYS = ("se", "stderr", "standard_error", "sd", "sigma", "uncertainty", "half_width")
+DECIMAL = re.compile(r"(?<![\d.])\d+\.\d+(?![\d.])")
+PLUS_MINUS = re.compile(r"(?<![\d.])(\d+\.\d+)\s*(?:±|\+/-|\+-)\s*(\d+(?:\.\d+)?)(?![\d.])")
+TOOL_SECTION = "## Who did what, from the logs"  # what the tool adds to a finding: its own words, not the author's
+
+
+def overclaiming_listing(factory: Path, applies_to: str) -> tuple:
+    """(the scorer's name, its list of phrases) for the overclaiming check that applies to a study or an exploration; (None, None)
+    when the definition has none. The list is the factory's own file, which people may edit."""
+    for f in sorted((Path(factory) / "scorers").glob("*/scorer.md")):
+        try:
+            fm = definition_tool().front_matter(f.read_text())[0]
+        except (OSError, ValueError, yaml.YAMLError):
+            continue
+        if fm.get("check") == "overclaiming" and fm.get("applies_to", "study") == applies_to and fm.get("phrases"):
+            try:
+                return f.parent.name, yaml.safe_load((Path(factory) / "scorers" / str(fm["phrases"])).read_text()) or {}
+            except (OSError, yaml.YAMLError):
+                raise Refused(f"the overclaiming check {f.parent.name} names a list of phrases that cannot be read: run check_factory.py")
+    return None, None
+
+
+def decimals(number: str) -> int:
+    return len(number.partition(".")[2])
+
+
+def allowed_decimals(u: float, beyond: int) -> int:
+    return max(0, -math.floor(math.log10(abs(u)))) + beyond if u else 99
+
+
+def with_uncertainty(obj, out=None) -> list:
+    """(value, uncertainty) for every number a receipt gives beside an interval or an uncertainty, all the way down."""
+    out = [] if out is None else out
+    if isinstance(obj, dict):
+        u = next((float(obj[k]) for k in UNCERTAINTY_KEYS if is_num(obj.get(k)) and float(obj[k]) > 0), None)
+        if u is None and is_num(obj.get("ci_low")) and is_num(obj.get("ci_high")) and obj["ci_high"] > obj["ci_low"]:
+            u = (float(obj["ci_high"]) - float(obj["ci_low"])) / 2
+        if u is not None:
+            out += [(float(v), u) for k, v in obj.items() if is_num(v) and k not in UNCERTAINTY_KEYS]
+        for v in obj.values():
+            with_uncertainty(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            with_uncertainty(v, out)
+    return out
+
+
+def overclaiming_flags(text: str, listing: dict, supported: bool, what: str, receipts: tuple = ()) -> list:
+    """Every phrase of the list in the text, and every number stated more finely than its uncertainty supports, each with the
+    line it stands on: [{what, line, phrase, why}]. A warning: nothing is refused on it."""
+    out, beyond = [], int(((listing or {}).get("precision") or {}).get("digits_beyond_uncertainty") or 1)
+    pairs = [pv for r in receipts for pv in with_uncertainty(r)]
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.strip() == TOOL_SECTION:
+            break
+        for ph in (listing or {}).get("phrases") or []:
+            m = re.search(r"\b(?:" + str(ph["pattern"]) + r")\b", line, re.I)
+            if not m or (ph.get("when") == "not-supported" and supported) or (ph.get("unless") and re.search(str(ph["unless"]), line, re.I)):
+                continue
+            out.append({"what": what, "line": n, "phrase": m.group(0), "why": ph["why"]})
+        for m in PLUS_MINUS.finditer(line):
+            if decimals(m.group(1)) > allowed_decimals(float(m.group(2)), beyond):
+                out.append({"what": what, "line": n, "phrase": m.group(0),
+                            "why": f"stated to {decimals(m.group(1))} decimals beside an uncertainty of {m.group(2)}, which supports {allowed_decimals(float(m.group(2)), beyond)}"})
+        for m in DECIMAL.finditer(line):
+            t = m.group(0)
+            for v, u in pairs:
+                if abs(float(t) - v) <= 0.5 * 10 ** -decimals(t) + 1e-12 and decimals(t) > allowed_decimals(u, beyond):
+                    out.append({"what": what, "line": n, "phrase": t, "why": f"stated to {decimals(t)} decimals; the receipt's uncertainty beside it "
+                                f"({u:.3g}) supports {allowed_decimals(u, beyond)}"})
+                    break
+    return out
+
+
+def flags_in_words(flags: list) -> list:
+    return [f"{f['what']}, line {f['line']}: `{f['phrase']}`: {f['why']}" for f in flags]
+
+
+def study_overclaiming(study: Study, factory: Path, ev: list | None = None) -> dict | None:
+    """The overclaiming check of a study: the finding in force and the reviews after the opening. None when the definition has no
+    such check; `pending` when there is no finding yet."""
+    name, listing = overclaiming_listing(factory, "study")
+    if not name:
+        return None
+    ev = study.events() if ev is None else ev
+    att = attached_finding(ev)
+    if not att:
+        return {"scorer": name, "result": "pending", "flags": []}
+    finished = [e for e in ev if e["kind"] == "opening.finished"]
+    try:
+        primary = [r["id"] for r in study.plan()["rules"] if r.get("role", "secondary") == "primary"]
+    except (Refused, KeyError, TypeError):
+        primary = []
+    outcomes = finished[-1]["data"].get("outcomes") or {} if finished else {}
+    supported = bool(primary) and all(outcomes.get(r) == "supported" for r in primary)
+    receipts = []
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        receipts.append(json.loads((study.d / finished[-1]["data"]["receipt"]).read_text()))
+    flags = overclaiming_flags((study.d / att["data"]["file"]).read_text(errors="replace"), listing, supported, att["data"]["file"], tuple(receipts))
+    for e in ev:
+        if e["kind"] == "review.verdict" and e["seq"] > att["seq"] and (study.d / e["data"]["file"]).is_file():
+            flags += overclaiming_flags((study.d / e["data"]["file"]).read_text(errors="replace"), listing, supported, e["data"]["file"], tuple(receipts))
+    return {"scorer": name, "result": "warn" if flags else "pass", "flags": flags, "supported": supported}
+
+
+# ---- who did each step: a contribution statement drawn from the logs ----------
+WORK = (  # (the kind of work, in words; the kinds of event that are that work)
+    ("asking the question", ("study.started", "exploration.started")),
+    ("the fit note at intake", ("fit.noted",)),
+    ("choosing the fresh data", ("fresh-data.proposed",)),
+    ("exploring", ("knowledge.listed", "knowledge.read", "look.run", "look.refused", "choice.recorded", "lead.recorded", "lead.corrected")),
+    ("planning and testing the method", ("test.run", "rehearsal.run", "held-out.changed")),
+    ("reviewing", ("review.verdict",)),
+    ("the so what", ("so-what.asked", "so-what.recorded")),
+    ("coordinating", ("reviewer.named", "handed.over", "lock.requested", "signature.requested", "exploration.ended", "study.closed")),
+    ("the lock", ("lock.recorded",)),
+    ("the opening", ("opening.started", "opening.finished", "opening.voided")),
+    ("writing the finding", ("finding.attached",)),
+    ("the signature", ("signature.recorded",)),
+    ("raising notes and drafting knowledge", ("note.raised", "note.resolved")),
+    ("asking the platform", ("act.verification", "so-what.verification")),
+)
+LOG_CANNOT_SHOW = ("What the logs cannot show. They record who wrote each event and nothing else: the thinking that left no event (choosing "
+                   "the problem, the conversations, what was read outside the tools, a person steering an agent in its chat) is not in them. "
+                   "An agent's model is the name its caller declared, and nothing checks it. A person's name typed at a command line (practice) "
+                   "shows nothing about who acted; an act on the platform names the accounts the platform recorded, and is shown with its standing.")
+
+
+def who_in_words(e: dict, roles: tuple) -> str:
+    """An event's actor as a reader of a paper would want it: a person by the name the platform recorded, or an agent by its
+    role and the model it declared."""
+    actor, d = str(e["actor"]), e.get("data") or {}
+    if actor.startswith("platform:"):
+        if d.get("comment"):
+            return f"{d['comment']['author']} (an account on {actor[9:]}, by a comment)"
+        people = ((d.get("merge") or {}).get("people") or {}).get("approved") or []
+        return (", ".join(people) or "nobody named") + f" (accounts on {actor[9:]}, by approving a pull request)"
+    if actor.startswith("agent:"):
+        name = actor[6:]
+        role = next((r for r in roles if name == r or name.startswith((r + "-", r + "_"))), None)
+        return f"{actor} (an AI agent{', the ' + role + ' role' if role else ''}, model {e.get('model') or 'not recorded'} as declared)"
+    return f"{actor} (a person, by the name typed)"
+
+
+def contribution(logs: list, roles: tuple, extra: list | None = None) -> dict:
+    """{"rows": [{work, who, events}], "paragraph": words, "cannot_show": words} from one or more logs, each (what, events).
+    `extra` are events that are not in a log but name who did a step (the proposal of the fresh data)."""
+    events = [e for _what, ev in logs for e in ev] + list(extra or [])
+    rows = []
+    for work, kinds in WORK:
+        count_by = {}
+        for e in events:
+            if e["kind"] in kinds and not (e["kind"] == "note.resolved" and work != "raising notes and drafting knowledge"):
+                who = who_in_words(e, roles)
+                count_by[who] = count_by.get(who, 0) + 1
+        rows.append({"work": work, "who": [{"actor": w, "events": n} for w, n in count_by.items()]})
+    started = next((e for e in events if e["kind"] in ("study.started", "exploration.started")), None)
+    asked = (started or {}).get("data", {}).get("asked_by") if started else None
+    said = []
+    for r in rows:
+        if r["who"]:
+            said.append(f"{r['work']}: " + "; ".join(f"{w['actor']}, {w['events']} event{'s' if w['events'] != 1 else ''}" for w in r["who"]))
+    para = ("Contributions, from the logs. " + (f"The question was asked by {asked}. " if asked else
+                                               "The request names nobody as having asked; the logs show who started the work. ")
+            + ". ".join(x[0].upper() + x[1:] for x in said) + ". "
+            + "Steps with no event yet: " + (", ".join(r["work"] for r in rows if not r["who"]) or "none") + ".")
+    return {"rows": rows, "paragraph": para, "cannot_show": LOG_CANNOT_SHOW, "logs": [w for w, _ in logs]}
+
+
+def contribution_lines(c: dict, title: str) -> list:
+    out = [f"# Who did what: {title}", "", c["paragraph"], "", "| Kind of work | Who, as the log records them | Events |", "|---|---|---|"]
+    for r in c["rows"]:
+        for w in r["who"] or [{"actor": "no event yet", "events": 0}]:
+            out.append(f"| {r['work']} | {w['actor']} | {w['events']} |")
+    return out + ["", c["cannot_show"], "", "Drawn from: " + ", ".join(c["logs"]) + ".", ""]
+
+
+def roles_of(factory: Path) -> tuple:
+    return tuple(sorted((p.name for p in (Path(factory) / "agents").iterdir() if (p / "agent.md").is_file()), key=len, reverse=True)) \
+        if (Path(factory) / "agents").is_dir() else ()
+
+
+def exploration_log_of(study: Study, ev: list):
+    """The log of the exploration a study was handed over from, as its start recorded it, or None."""
+    start = next((e for e in ev if e["kind"] == "study.started"), None)
+    came = (start or {}).get("data", {}).get("from_exploration") if start else None
+    if not came:
+        return None
+    log = Path(os.path.normpath(study.d / came["path_from_study"])) / "exploration-log.jsonl"
+    return (f"the exploration {came['id']}", Study._parse(log.read_text())) if log.is_file() else None
+
+
+def fresh_data_event(proposal: dict | None) -> list:
+    who = ((proposal or {}).get("proposed") or {})
+    return [{"kind": "fresh-data.proposed", "actor": who["by"], "model": who.get("model"), "data": {}}] if who.get("by") else []
+
+
+def study_contribution(study: Study, factory: Path) -> dict:
+    ev = study.events()
+    logs = [(f"the study {study.d.name}", ev)]
+    x = exploration_log_of(study, ev)
+    if x:
+        logs.insert(0, x)
+    extra = []
+    try:
+        fresh = fresh_data_of(study, study.plan())
+        extra = fresh_data_event(fresh["proposal"]) if fresh else []
+    except Refused:
+        pass
+    return contribution(logs, roles_of(factory), extra)
+
+
+def cmd_contribution(study: Study, a) -> None:
+    """Write who did each step of this study (and of the exploration it came from), drawn from the logs, as contribution.md
+    and contribution.json in the study: a paragraph a scientist can paste into a paper, and what the logs cannot show."""
+    c = study_contribution(study, Path(getattr(a, "factory", None) or FACTORY))
+    lines = contribution_lines(c, study.d.name)
+    (study.d / "contribution.md").write_text("\n".join(lines))
+    (study.d / "contribution.json").write_text(json.dumps(c, indent=1) + "\n")
+    print("\n".join(lines))
+
+
 def cmd_attach(study: Study, a) -> None:
     """The drafted finding (or negative result) joins the record, by hash."""
     ev = study.events()
@@ -3143,7 +3619,13 @@ def cmd_attach(study: Study, a) -> None:
     (study.d / "finding").mkdir(exist_ok=True)
     dest = study.d / "finding" / f"{len(ev):03d}-{f.name}"
     shutil.copyfile(f, dest)
+    c = study_contribution(study, Path(getattr(a, "factory", None) or FACTORY))
+    with dest.open("a") as out:  # the finding carries who did each step, as the logs show it when it is attached
+        out.write("\n\n## Who did what, from the logs\n\n" + c["paragraph"] + "\n\n" + c["cannot_show"] + "\n")
     study.append(a.by, "finding.attached", {"file": f"finding/{dest.name}", "sha": sha_file(dest)})
+    said = study_overclaiming(study, Path(getattr(a, "factory", None) or FACTORY))
+    for line in flags_in_words((said or {}).get("flags") or []):
+        print(f"overclaiming check (a warning, not a refusal): {line}")
     live = last_live_opening(ev)
     earlier = any(e["kind"] == "review.verdict" and live and e["seq"] > live["seq"] for e in ev)
     print(f"finding attached: finding/{dest.name}" + (" (the reviews recorded before it do not cover it: the review "
@@ -3225,6 +3707,13 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
            "## The question", "", str(plan["question"]).strip(), "",
            "## What the opening showed", "", f"The log check says: {rep['status']}.", ""]
     out += [f"- {t}: " + ", ".join(f"{rule} {o}" for rule, o in sorted(o_.items())) for t, o_ in sorted(rep["outcomes"].items())] or ["- no opening has a result"]
+    opened = [e for e in ev if e["kind"] == "opening.finished"]
+    figs = [{"file": f["file"], "sha256": f["sha256"], "caption": f["shows"], "by": f"the opening of {e['data']['test']} (opening {e['data']['n']})"}
+            for e in opened[-1:] for f in e["data"].get("figures") or []]
+    for f in figs:
+        if sha_file(study.d / f["file"]) != f["sha256"]:
+            raise Refused(f"the figure {f['file']} is not the picture the opening drew (its checksum differs); nothing is requested")
+    out += ["", "## The figures the opening drew: look at each one yourself", ""] + figures_in_words(figs)
     out += ["", "## The finding that would be signed", ""]
     if att:
         try:
@@ -3234,6 +3723,10 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
         out += [f"`{att['data']['file']}`, sha256 {att['data']['sha']}:", "", "```", *body.rstrip().splitlines(), "```"]
     else:
         out += ["No finding is attached."]
+    said = study_overclaiming(study, FACTORY, ev)
+    if said is not None:
+        out += ["", "## Words the overclaiming check flags (a warning, never a block)", ""]
+        out += [f"- {line}" for line in flags_in_words(said["flags"])] or ["None."]
     out += ["", "## The review", ""]
     out += [f"- {who}: {verdict}" for who, verdict in sorted(rep["reviews"].items())] or ["- no review agent that did none of the study has recorded a verdict on this finding"]
     for e in ev:
@@ -3430,7 +3923,7 @@ def stage_of(study: Study, factory: Path) -> dict:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
     return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study),
             "awaiting_verification": [act for act, st in standings(study.events()).items() if st == MERGE_FOUND],
-            "done": done, **(here or {"stage": "complete"}),
+            "done": done, **(here or {"stage": "complete"}), "fit": " ".join(fit_in_words(study.last("fit.noted"))[:2]),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
@@ -3784,7 +4277,8 @@ def cmd_scorecard(study: Study, a) -> None:
             "notes_raised": sum(1 for e in ev if e["kind"] == "note.raised"),
             "acts_by_people": sum(1 for e in ev if e["actor"].startswith(("human:", "platform:"))),
             "acts_by_assistants": sum(1 for e in ev if e["actor"].startswith("agent:")),
-            "checks": run_checks(study, Path(a.factory), a.anchor)}
+            "checks": run_checks(study, Path(a.factory), a.anchor),
+            "overclaiming": flags_in_words((study_overclaiming(study, Path(a.factory), ev) or {}).get("flags") or [])}
     (study.d / "scorecard.json").write_text(json.dumps(card, indent=1))
     print(json.dumps(card, indent=1))
 
@@ -3798,7 +4292,7 @@ def deterministic_scorers(factory: Path) -> list:
             fm = fd.front_matter(f.read_text())[0]
         except (OSError, ValueError, yaml.YAMLError):
             raise Refused(f"the scorer {f.parent.name} has no front matter that parses")
-        if fm.get("type") == "deterministic":
+        if fm.get("type") == "deterministic" and fm.get("applies_to", "study") == "study":
             out.append((f.parent.name, fm.get("check")))
     if not out:
         raise Refused(f"the definition at {factory} has no deterministic scorer (scorers/<name>/scorer.md)")
@@ -3831,13 +4325,14 @@ def run_checks(study: Study, factory: Path, posted: list | None = None) -> dict:
         "acts-recorded-by-people": all(is_act_by_people(e) for e in ev if e["kind"] in ACTS_BY_PEOPLE) and (
             True if any(e["kind"] in ACTS_BY_PEOPLE for e in ev) else None),
         "notes-on-curation-list": (raised - {e["data"]["id"] for e in ev if e["kind"] == "note.resolved"}) <= listed,
+        "overclaiming": {"pending": None, "pass": True, "warn": "warn"}[(study_overclaiming(study, factory, ev) or {"result": "pending"})["result"]],
     }
     out = {}
     for name, check in deterministic_scorers(factory):
         if check not in kinds:
             raise Refused(f"scorer {name}: the check `{check}` is not one this study tool evaluates")
         v = kinds[check]
-        out[name] = "pending" if v is None else ("pass" if v else "fail")
+        out[name] = "pending" if v is None else v if isinstance(v, str) else ("pass" if v else "fail")  # `warn` is a warning, never a failure
     return out
 
 
@@ -3899,6 +4394,11 @@ def cmd_log_change(study: Study, a) -> None:
 # ---- selftest: the happy path and the attacks ---------------------------
 TOY = '''import hashlib, json, os, sys
 from pathlib import Path
+if "--figure" in sys.argv:  # a step that draws a picture for the people at the lock or the signature to look at
+    at = sys.argv.index("--figure")
+    Path(sys.argv[at + 1]).parent.mkdir(parents=True, exist_ok=True)
+    Path(sys.argv[at + 1]).write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>" + sys.argv[1] + "</text></svg>")
+    del sys.argv[at:at + 2]
 mode, out = sys.argv[1], sys.argv[2]
 here = Path(__file__).resolve().parent
 if mode == "known-answers":
@@ -4065,6 +4565,168 @@ def _refusal(fn, *args) -> str:
     except Refused as r:
         return str(r)
     return ""
+
+
+def _selftest_figures(tmp: Path, check) -> None:
+    """Figures at the lock and at the signature: the exploration's, brought by its hand-over and bound at the start, and the
+    ones the plan's steps declare, each shown as a picture with its caption and bound by checksum in the request."""
+    ho = tmp / "EXPLORATION-F" / "hand-over"
+    (ho / "figures").mkdir(parents=True)
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>residual</text></svg>")
+    (ho / "request.md").write_text("# Request\n\nIs the gain within ten percent of one?\n\n**How it was found.** Two looks.\n\n"
+                                   "**The review of the lead.** holes-found.\n\n**The so what.** worth-confirming, by human:throwaway-placeholder, "
+                                   "on lead version 1; standing: practice.\n")
+    (ho / "hand-over.json").write_text("{}\n")
+    listing = {"figures": [{"file": "figures/LOOK-002-residual.svg", "sha256": sha_file(ho / "figures" / "LOOK-002-residual.svg"),
+                            "look": "LOOK-002", "caption": "what is left of A after its line on B, coloured by flag"}]}
+    (ho / "figures.json").write_text(json.dumps(listing))
+    plan = copy_of(PLAN)
+    plan["tests"]["known-answers"]["command"] += ["--figure", "{study}/figures/known-answers.svg"]
+    plan["tests"]["known-answers"]["figures"] = [{"file": "figures/known-answers.svg", "shows": "how often each rule was right, case by case"}]
+    plan["tests"]["held-out"]["command"] += ["--figure", "{study}/figures/held-out.svg"]
+    plan["tests"]["held-out"]["figures"] = [{"file": "figures/held-out.svg", "shows": "the fresh data against the line the plan locked"}]
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg>changed</svg>")
+    check("a study is not started from a hand-over whose figure is not the picture the exploration kept",
+          "checksum differs" in _refusal(cmd_start, Study(tmp / "studies" / "F0"), A(id="F0", question=PLAN["question"], by="agent:coordinating", request=str(ho / "request.md"))))
+    (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>residual</text></svg>")
+    study = _fresh(tmp / "studies", "F1", plan=plan, start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating", request=str(ho / "request.md")))
+    check("a study started from a hand-over keeps the exploration's figures, bound by checksum at the start",
+          (study.d / "exploration-figures" / "LOOK-002-residual.svg").is_file()
+          and study.events()[0]["data"]["exploration_figures"][0]["file"] == "exploration-figures/LOOK-002-residual.svg")
+    check("a plan's figure that is not a picture is refused by the plan check",
+          any("not a picture" in q for q in check_plan({**copy_of(plan), "tests": {**plan["tests"], "known-answers": {
+              **plan["tests"]["known-answers"], "figures": [{"file": "figures/k.txt", "shows": "how often each rule was right"}]}}}, study)))
+    undrawn = copy_of(plan)
+    undrawn["tests"]["working-data"]["figures"] = [{"file": "figures/never.svg", "shows": "a picture nobody draws"}]
+    lazy = _fresh(tmp / "studies", "F2", plan=undrawn)
+    check("a test that does not draw a figure its plan declares fails", "did not draw" in _refusal(cmd_test, lazy, A(what="working-data", by="agent:analysis")))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    check("a test that draws its declared figure records it by checksum", study.last("test.run", test="known-answers")["data"]["figures"][0]["sha256"]
+          == sha_file(study.d / "figures" / "known-answers.svg"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    text = (study.d / "lock-request" / "EVIDENCE.md").read_text()
+    manifest = json.loads((study.d / "lock-request" / "manifest.json").read_text())
+    check("the lock request shows every figure as a picture with its caption, the exploration's and the tests', and asks the person to look",
+          "## The figures: look at each one yourself" in text and "![what is left of A after its line on B, coloured by flag](../exploration-figures/LOOK-002-residual.svg)" in text
+          and "](../figures/known-answers.svg)" in text and "drawn by the exploration's LOOK-002" in text and "Look at each figure yourself" in text)
+    check("the lock request shows the person's so what that came with the hand-over",
+          "A person's so what on the lead (is it worth confirming?): worth-confirming, by human:throwaway-placeholder" in text)
+    check("the manifest binds the figures, so a picture changed after the request shows on the pull request's check",
+          set(manifest["figures"]) == {"exploration-figures/LOOK-002-residual.svg", "figures/known-answers.svg"} and not request_problems(study, "lock", FACTORY))
+    (study.d / "figures" / "known-answers.svg").write_text("<svg>another picture</svg>")
+    check("a figure changed after the request is a difference the check names, and the lock is refused until the step runs again",
+          any("figures" in q for q in request_problems(study, "lock", FACTORY)) and "not the picture that was kept" in _refusal(cmd_lock, study, A(by="human:throwaway-placeholder", evidence=URL)))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_lock(study, A(by="human:throwaway-placeholder", evidence=URL))
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
+    check("the opening records the figure its test declares", study.last("opening.finished")["data"]["figures"][0]["file"] == "figures/held-out.svg")
+    (tmp / "f-finding.md").write_text(PRACTICE_WORDS + "\n\na finding drafted from receipts\n")
+    cmd_attach(study, A(by="agent:analysis", file=str(tmp / "f-finding.md")))
+    (tmp / "f-v.md").write_text("APPROVE")
+    cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "f-v.md")))
+    cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=_posted(study), evidence=None, comment=None))
+    attached = (study.d / study.last("finding.attached")["data"]["file"]).read_text()
+    check("the finding carries who did each step, from the log, with the agents' declared models and what the log cannot show",
+          "## Who did what, from the logs" in attached and "agent:analysis (an AI agent, the analysis role, model selftest-model as declared)" in attached
+          and "human:throwaway-placeholder (a person, by the name typed)" in attached and "What the logs cannot show" in attached
+          and sha_file(study.d / study.last("finding.attached")["data"]["file"]) == study.last("finding.attached")["data"]["sha"])
+    cmd_contribution(study, A(factory=str(FACTORY)))
+    table = (study.d / "contribution.md").read_text()
+    check("the contribution statement of a study is a paragraph and a table by kind of work, with counts",
+          table.startswith("# Who did what: F1") and "| the lock | human:throwaway-placeholder (a person, by the name typed) | 1 |" in table
+          and "| writing the finding | agent:analysis (an AI agent, the analysis role, model selftest-model as declared) | 1 |" in table
+          and "Contributions, from the logs." in table and "The request names nobody as having asked" in table)
+    sig = (study.d / "signature-request" / "EVIDENCE.md").read_text()
+    check("the signature request shows the opening's figure with its caption and binds it",
+          "## The figures the opening drew: look at each one yourself" in sig and "](../figures/held-out.svg)" in sig
+          and "figures/held-out.svg" in json.loads((study.d / "signature-request" / "manifest.json").read_text())["figures"])
+
+
+def _selftest_overclaiming(tmp: Path, check) -> None:
+    """The overclaiming check: the factory's own list of phrases, each flag with its phrase and line, a warning and never a refusal."""
+    import io
+    name, listing = overclaiming_listing(FACTORY, "study")
+    text = ("The fit shows good agreement and is clearly right.\nThis is definitive and proves the idea, a remarkable breakthrough.\n"
+            "It saves years of work.\nThe change is significant.\nThe change is significant (sign test, p < 0.01).\n"
+            "The opening confirms the idea.\nThe gain is 1.02811 ± 0.012, or 1.028 ± 0.012.\nFrom the receipt: 1.02811, and 1.028.\n"
+            "## Who did what, from the logs\nclearly not the author's words\n")
+    receipt = {"gain": {"estimate": 1.02811, "ci_low": 1.016, "ci_high": 1.040}}
+    flags = overclaiming_flags(text, listing, False, "finding.md", (receipt,))
+    said = {(f["line"], f["phrase"].lower()) for f in flags}
+    check("the overclaiming check flags each phrase of the factory's list with its line: good agreement, clearly, definitive, proves, "
+          "remarkable, breakthrough, a dramatic timescale, significant with no test, and confirms when the rules did not support it",
+          name == "overclaiming-in-findings" and {(1, "good agreement"), (1, "clearly"), (2, "definitive"), (2, "proves"), (2, "remarkable"),
+                                                    (2, "breakthrough"), (3, "years of work"), (4, "significant"), (6, "confirms")} <= said
+          and (5, "significant") not in said and all(f["why"] for f in flags))
+    check("it flags a number stated more finely than the uncertainty beside it, on the line or in the receipt, and not one stated as finely as it allows",
+          (7, "1.02811 ± 0.012") in said and (8, "1.02811") in said and not any(p == "1.028 ± 0.012" or p == "1.028" for _, p in said))
+    check("it reads the author's words and not the section the tool adds", not any(n >= 9 for n, _ in said))
+    check("`confirms` is not flagged where the locked rules gave `supported`",
+          (6, "confirms") not in {(f["line"], f["phrase"].lower()) for f in overclaiming_flags(text, listing, True, "finding.md")})
+    edited = tmp / "factory-edited"
+    shutil.copytree(FACTORY, edited, ignore=shutil.ignore_patterns("__pycache__"))
+    lf = edited / "scorers" / "overclaiming-in-leads" / "phrases.yaml"
+    lf.write_text(lf.read_text().replace("phrases:\n", 'phrases:\n  - {pattern: "game.chang(er|ing)", why: "a factory\'s own addition"}\n', 1))
+    check("the list is a file the factory edits: a phrase added there is flagged",
+          any(f["phrase"].lower() == "game-changing" for f in overclaiming_flags("A game-changing result.", overclaiming_listing(edited, "study")[1], False, "x")))
+    study = _fresh(tmp, "over-1")
+    _to_lock(study, by="human:throwaway-placeholder")
+    cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
+    (tmp / "over-finding.md").write_text(PRACTICE_WORDS + "\n\nThe gain clearly sits inside the band, a remarkable result.\n")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        cmd_attach(study, A(by="agent:analysis", file=str(tmp / "over-finding.md")))
+    check("attaching a finding with such words warns, names the phrase and the line, and attaches it all the same",
+          "overclaiming check (a warning, not a refusal)" in out.getvalue() and "line 3: `clearly`" in out.getvalue() and attached_finding(study.events()))
+    (tmp / "over-v.md").write_text("APPROVE: excellent work\n")
+    cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "over-v.md")))
+    card = run_checks(study, FACTORY, _posted(study))
+    check("the scorecard shows the check as `warn`, never as a failure, and covers the review too",
+          card["overclaiming-in-findings"] == "warn" and "overclaiming-in-leads" not in card
+          and any(f["phrase"].lower() == "excellent" for f in study_overclaiming(study, FACTORY)["flags"]))
+    cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=_posted(study), evidence=None, comment=None))
+    check("the signature request lists the words the check flags, for the steward",
+          "## Words the overclaiming check flags (a warning, never a block)" in (study.d / "signature-request" / "EVIDENCE.md").read_text()
+          and "`remarkable`" in (study.d / "signature-request" / "EVIDENCE.md").read_text())
+
+
+def _selftest_fit(tmp: Path, check) -> None:
+    """The fit note at intake: complete or refused, shown in status and on the lock request, refused once work has started, and
+    never a reason to stop: a study with none still reaches its lock."""
+    good = {"answer_is": "checkable", "data_at_hand": "yes", "mostly": "computation",
+            "person_must_supply": "the difference that matters and what has been looked at",
+            "verdict": "fit-with-a-person-steering", "why": "the gain is a number a rule can test, and the screen needs someone who knows the flags",
+            "taste_needed": "someone who knows what a degraded flag means at low stage"}
+    f = tmp / "fit.yaml"
+    study = _fresh(tmp, "fit-1", start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+    for change, words in (({"verdict": "maybe"}, "`verdict` is one of"), ({"why": "ok"}, "`why` is a sentence"),
+                          ({"mood": "fine words here"}, "is not a key of a fit note")):
+        f.write_text(yaml.safe_dump({**good, **change}))
+        check(f"an incomplete fit note is refused ({words})", words in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
+    f.write_text(yaml.safe_dump({k: v for k, v in good.items() if k != "taste_needed"}))
+    check("a fit note that does not say what taste the work needs from a person is refused", "`taste_needed` is missing" in _refusal(cmd_fit, study, A(by="agent:coordinating", file=str(f))))
+    f.write_text(yaml.safe_dump(good))
+    cmd_fit(study, A(by="agent:coordinating", file=str(f)))
+    check("a fit note is recorded with its verdict and shown in status, as advice",
+          study.last("fit.noted")["data"]["verdict"] == "fit-with-a-person-steering" and "fit-with-a-person-steering" in stage_of(study, FACTORY)["fit"]
+          and "blocks nothing" in study.last("fit.noted")["data"]["is"])
+    _to_lock(study, by="human:throwaway-placeholder")
+    study2 = _fresh(tmp, "fit-2")
+    cmd_test(study2, A(what="known-answers", by="agent:analysis"))
+    check("a fit note once work has started is refused, and the work goes on without one",
+          "work has started" in _refusal(cmd_fit, study2, A(by="agent:coordinating", file=str(f))))
+    cmd_test(study2, A(what="working-data", by="agent:analysis"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    cmd_request_lock(study2, A(by="agent:coordinating"))
+    check("the lock request shows the fit note, and a study with none still reaches its lock request, which says none was written",
+          "## How well the question suits agents (the fit note from intake)" in (study.d / "lock-request" / "EVIDENCE.md").read_text()
+          and "someone who knows what a degraded flag means" in (study.d / "lock-request" / "EVIDENCE.md").read_text()
+          and "No fit note was written at intake" in (study2.d / "lock-request" / "EVIDENCE.md").read_text())
+
+
+def copy_of(obj):
+    return json.loads(json.dumps(obj))
 
 
 def _selftest_fresh_data(tmp: Path, check) -> None:
@@ -4828,7 +5490,7 @@ def selftest() -> int:
         sc = run_checks(study, FACTORY, _posted(study))
         check("the checks a definition may name, for a stage and for a deterministic scorer, are exactly the ones this tool evaluates",
               set(stage_checks(study)[0]) == set(definition_tool().STAGE_CHECKS)
-              and {c for _, c in deterministic_scorers(FACTORY)} == set(definition_tool().SCORER_CHECKS) and len(sc) == 8)
+              and {c for _, c in deterministic_scorers(FACTORY)} == set(definition_tool().SCORER_CHECKS) and len(sc) == 9)
         check("every process check in the procedure passes on the happy path",
               set(sc.values()) == {"pass"} if have_git else {k: v for k, v in sc.items() if v != "pass"} == {"lock-committed": "fail"})
         cmd_log_change(study, A(by="agent:curating", log=str(tmp / "changes.jsonl"), factory=str(FACTORY), problem="toy",
@@ -4856,7 +5518,8 @@ def selftest() -> int:
               stage_of(study, FACTORY)["stage"] == "learn" and stage_of(study, FACTORY)["open_notes"] == ["NOTE-001"])
         check("the signature records the path and checksum of the finding it signs",
               study.last("signature.recorded")["data"]["finding"] == study.last("finding.attached")["data"]
-              and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(tmp / "finding.md"))
+              and study.last("signature.recorded")["data"]["finding"]["sha"] == sha_file(study.d / study.last("finding.attached")["data"]["file"])
+              and (study.d / study.last("finding.attached")["data"]["file"]).read_text().startswith((tmp / "finding.md").read_text()))
         check("a finding attached after the signature is refused", _refuses(cmd_attach, study, finding()))
         check("after the signature the log check says the signature is recorded, and that the study is practice and not a signed finding",
               check_log(study)["status"] == PRACTICE_SIGNED and check_log(study)["signature"] == "signed")
@@ -5750,11 +6413,12 @@ def selftest() -> int:
               and not stage_checks(study)[0]["reviewed"] and _refuses(cmd_signature, study, sign(study)))
         cmd_review(study, approve("agent:review"))
         attached = study.d / study.last("finding.attached")["data"]["file"]
+        as_attached = attached.read_text()
         attached.write_text("SUPPORTED: something the receipts do not say")
         rep = check_log(study, _posted(study))
         check("a finding edited after it was attached fails the log check",
               rep["status"] == INVALID and any("finding" in p and "changed" in p for p in rep["problems"]))
-        attached.write_text((tmp / "finding.md").read_text())
+        attached.write_text(as_attached)
         cmd_signature(study, sign(study))
         (study.d / "receipts" / "held-out.json").write_text("{}")
         check("closing as signed runs the log check again: a receipt edited after the signature blocks the close",
@@ -6028,6 +6692,12 @@ def selftest() -> int:
         _selftest_fence_and_acts(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_fresh_data(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_figures(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_overclaiming(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_fit(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
           "Usage: sf.py" in shown and not any(ln.lstrip().startswith(("import ", "sys.", "_again", "if __name__")) for ln in shown.splitlines())
@@ -6092,6 +6762,8 @@ DESCRIBE = {'start': 'a study exists; with --request, the request it answers is 
     'curation-list': 'open notes, for the curating agent',
     'resolve': 'a note is accepted, linked or declined',
     'scorecard': "the definition's checks for this study", 'log-change': 'a change to the definition, with its prediction',
+    'fit': "the coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person; advice that blocks nothing",
+    'contribution': 'who did each step, from the logs of the study and the exploration it came from: a paragraph for a paper, and what the logs cannot show',
     'fingerprint': "the log's fingerprint, to post outside the workspace", 'check-log': 'everything re-checked from the files and against posted fingerprints',
     'selftest': 'the tool tests itself, attacks included'}  # one line for each command, as the help at the top of this file has it
 
@@ -6162,7 +6834,9 @@ def build_parser() -> argparse.ArgumentParser:
     add("fingerprint", cmd_fingerprint)
     add("check-log", cmd_check_log, anchor,
         (["--change-log"], {"default": None, "dest": "change_log", "help": "the change log, to check this study's change records against"}))
+    add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(FIT_KEYS)}))
     add("scorecard", cmd_scorecard, proc, anchor)
+    add("contribution", cmd_contribution, proc)
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),
         (["--problem"], {"required": True}), (["--change"], {"required": True}), (["--rationale"], {"required": True}),
         (["--predicted"], {"required": True}), (["--observed"], {"default": None}), (["--model"], {"default": None}))

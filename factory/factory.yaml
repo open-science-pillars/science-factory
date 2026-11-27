@@ -27,7 +27,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: science-factory
-version: 0.12.0                           # the content of this definition; every change to it is in the change log
+version: 0.13.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before the fresh data that checks it is opened, once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding, or a recorded negative result
@@ -68,9 +68,10 @@ procedure:
 
   request:       # what the scientist gives, in their own words (templates/request.md); `sf.py start --request` binds it by checksum
     fields: [what I want to know, the thing, why it matters, the difference that matters and where it comes from, what I have already looked at,
-             data I have not looked at, what I will do with each answer, by when, how I expect it to be fooled, who is on it, what I want back,
+             data I have not looked at, what I will do with each answer, by when, how I expect it to be fooled, what I can bring that an agent cannot, who is on it, what I want back,
              anyone else's product involved]
     questions_back: "four, asked by the analysis agent, then stop (templates/kinds-of-question.yaml)"
+    fit_note: "before any work starts the coordinating agent writes a fit note (skill note-the-fit; explore.py fit, sf.py fit): how well the question suits agents, a verdict and what it needs from a person. Advice that blocks nothing; status, the hand-over and the lock request show it"
     # where fresh data for an independent check can come from; the analysis agent proposes one from metadata only
     # (tools/fresh_data.py, the skill propose-fresh-data) and people approve it at the lock
     ways_to_hold_data_out: [the next data release, a later period, another site or region, a random set aside, a product never opened, forecasts scored later]
@@ -175,6 +176,7 @@ procedure:
       opening_needs: verified                  # the held-out data is opened only on a lock the platform has confirmed
       opening_without_verification: refused    # or allowed-with-a-reason: then, with no network, a person may type `open-held-out --people-not-verified REASON`, which is logged
       shows: [the question, the plan's rules and each criterion with its measured rate, "the proposal of the fresh data in words, the held-out block in words, and every change to it",
+              "every figure the exploration's looks and the plan's tests and rehearsals drew, as a picture with its caption, bound by checksum",
               the known-answer tests and the receipts, the bound code by checksum, the definition by checksum and the models it declares,
               open notes, what the reviewer of the lead said, how many things were tried in the exploration that led here]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
@@ -188,10 +190,27 @@ procedure:
       approvals: 1
       repository: example-org/example-studies
       merge_methods: [merge]
-      shows: [the question, what the opening showed under the locked rules, the finding that would be signed, the review's verdict and its file,
+      shows: [the question, what the opening showed under the locked rules, "every figure the opening drew, as a picture with its caption, bound by checksum", the finding that would be signed, the review's verdict and its file,
               the lock this rests on, problems and remarks from the log check]
       evidence: "the merge commit of the approved pull request on the protected branch, the pull request, and the approving reviews as the platform records them"
       not_held_by_the_tool: "who approved, and that the approver is the steward: the platform says who approved when `sf.py verify-acts` asks it, and the repository's code owners say who the steward is. Until it is verified the signature stands as `merge found, people not verified` and the study is awaiting verification, not signed"
+
+  # A person's "so what" on a reviewed lead: is it worth confirming? Agents' results are often technically right and
+  # scientifically unremarkable until someone who knows the field says why they matter, so no lead goes to a
+  # confirming study without a person's answer. It is not an act on a plan or on fresh data, so it is lighter than
+  # the two acts above: on the platform it is a comment by a person on the tracking issue, recorded by the job that
+  # follows the comment and confirmed by asking the platform about that comment (docs/WHAT-IS-ENFORCED.md says why).
+  # Typed at a command line it is practice, and says so. Its three standings: `practice`, `comment recorded, person
+  # not verified`, `verified`.
+  so_what:
+    who: [scientist]
+    command: "tools/explore.py so-what"
+    route: comment                             # or practice: every so what under this definition is typed, and says so
+    harness: github                            # the harness whose verifier asks the platform about the comment
+    repository: example-org/example-studies    # a placeholder, as for the acts above
+    answers: [worth-confirming, try-instead, not-interesting, needs-an-expert]
+    evidence: "the comment on the tracking issue, as the platform records it: its author, that the author belongs to the repository, and its words unedited"
+    not_held_by_the_tool: "that the author is the right person to judge the lead: the platform says who wrote the comment, and whoever reads the name judges that. That an agent did not post the comment from a person's account: nothing on the platform tells the two apart"
 
   rules_for_people:      # for people: not checked by the tool here; each says what does hold it
     - "Tests are repeated freely. Held-out data is never reopened until it agrees (held by the openings allowed and the record of what has been opened)."
@@ -233,8 +252,8 @@ runner_contract:
     - "What a job wrote stays at the runner until a person removes it: the contract has no verb to delete a job. Where a data provider asks to see results first, each runner has to say how long that is before an opening is sent to it."
 
 measure:         # how this factory is measured and changed
-  scorecard: "the checks in scorers/ (the scorers of the deterministic kind), worked out from one study's log by `sf.py scorecard`; a check that cannot be judged yet says `pending`"
-  judges: "the judge scorers in scorers/: a model reads a packet of exactly the material the scorer declares, never anything written after an opening, and returns one label (tools/scorers.py). No judge here has been run by a real model"
+  scorecard: "the checks in scorers/ (the scorers of the deterministic kind), worked out from one study's log by `sf.py scorecard`; a check that cannot be judged yet says `pending`, and the overclaiming check says `warn` and never fails. The overclaiming check of leads is worked out by `explore.py`"
+  judges: "the judge scorers in scorers/: a model reads a packet of exactly the material the scorer declares, never anything written after an opening, and returns one label (tools/scorers.py). A first trial ran them as agents reading packets by hand; the Claude Code path has not run"
   blind_test_of_the_system: "the suites in benchmarks/: sealed cases through every stage under two versions of the definition, compared by a rule stated in advance (tools/benchmark.py); `system_trial.py blind-test` is the same driver on one definition"
   improving_the_procedure:
     rule: "failed process checks and notes are grouped into proposals; every proposal is a pull request with its evidence linked; nothing is adopted automatically"

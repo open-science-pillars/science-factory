@@ -582,7 +582,7 @@ def selftest() -> int:
         (broken / "examples" / "stand-alone" / "system-trial").mkdir(parents=True)
         shutil.copyfile(REPO / "examples" / "stand-alone" / "system-trial" / "analysis-plan.yaml", broken / "examples" / "stand-alone" / "system-trial" / "analysis-plan.yaml")
         s = broken / "factory" / "scorers" / "plan-is-clear" / "scorer.md"
-        s.write_text(s.read_text().replace("reads: [request, plan, known-answer-tests]", "reads: [request, plan, finding]"))
+        s.write_text(s.read_text().replace("reads: [request, plan, known-answer-tests, code]", "reads: [request, plan, finding]"))
         ok("a suite in a definition that is not valid is not run", "a suite is run from a valid definition" in refusal(read_suite, broken / "factory" / "benchmarks" / "built-in-gain"))
         ok("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists())
     finally:

@@ -58,6 +58,12 @@ uv run tools/explore.py start --exploration $X --id EXPLORATION-1 --by $ME \
 
 From here on 2025 is not looked at, by any route. The tool refuses a look that names it.
 
+Before the first look the coordinator writes a fit note from `factory/agents/coordinating/skills/note-the-fit/fit-template.yaml`: is the answer exact, checkable or a judgement, is the data at hand, is the work mostly computation, what must a person supply, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`) and the taste the work will need. It is advice and blocks nothing; it is refused once a look has run:
+
+```
+uv run tools/explore.py fit --exploration $X --by $COORDINATOR --model "$M" --file fit.yaml
+```
+
 ## 4. Record what you read
 
 ```
@@ -134,11 +140,24 @@ uv run tools/explore.py review --exploration $X --by $REVIEWER --model "$M" --ve
 
 Answer each hole by looking again and revising the lead, or by writing it into the lead as a limit. A revised lead is reviewed again.
 
-## 8. End, and hand over
+## 8. The so what: is it worth confirming?
+
+A reviewed lead is often right and unremarkable. Before it goes anywhere, a person who knows the field says so what. The coordinator may draft the question (what the lead shows, why it might matter, what would make it unremarkable) from `factory/agents/analysis/skills/write-up-a-lead/so-what-question.yaml`; the answer is never an agent's:
+
+```
+uv run tools/explore.py ask-so-what --exploration $X --by $COORDINATOR --model "$M" --file question.yaml --read-lead $SHA
+uv run tools/explore.py so-what --exploration $X --by $ME --answer worth-confirming --read-lead $SHA --local-practice
+```
+
+The other answers are `try-instead --direction "..."` (keep exploring that way; a new lead is reviewed and answered again), `not-interesting --reason "..."` (the exploration ends as a lead noted) and `needs-an-expert --expertise "..."`. Typed, the so what is practice. On GitHub it is a comment on the tracking issue whose first lines are `so-what: worth-confirming`, `exploration: explorations/EXPLORATION-1` and `lead: ` with the first 16 characters of `$SHA`; the workflow records it and asks GitHub who wrote it ([WHAT-IS-ENFORCED.md](WHAT-IS-ENFORCED.md)).
+
+## 9. End, and hand over
 
 ```
 uv run tools/explore.py end --exploration $X --by $ME --model "$M" --outcome lead --summary "the gain looks close to one with degraded readings left out"
-uv run tools/explore.py hand-over --exploration $X --by $COORDINATOR --model "$M" --study-id STUDY-1
+uv run tools/explore.py hand-over --exploration $X --by $COORDINATOR --model "$M" --study-id STUDY-1 --local-practice
 ```
 
-The hand-over writes, in `$X/hand-over/`, the request for a confirming study, a stub of its plan, and a copy of the proposal of the fresh data, and prints the `sf.py start` command for the study. [FIRST-STUDY.md](FIRST-STUDY.md) takes a study from there to a lock. An exploration may also end as a note, a method or a stop: all honest outcomes.
+`end --outcome lead` and the hand-over are refused until a person said `worth-confirming` on the lead as it stands; `--local-practice` says the so what was typed.
+
+The hand-over writes, in `$X/hand-over/`, the request for a confirming study, a stub of its plan, and a copy of the proposal of the fresh data, and prints the `sf.py start` command for the study. [FIRST-STUDY.md](FIRST-STUDY.md) takes a study from there to a lock. An exploration may also end as a note, a method, a stop or a lead noted: all honest outcomes. A look script worth keeping becomes a method with `explore.py promote` ([CREATE-A-FACTORY.md](CREATE-A-FACTORY.md) says how); the stand-alone example promotes `looks/gain.py`.

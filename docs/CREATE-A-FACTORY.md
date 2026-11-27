@@ -26,7 +26,7 @@ The path is the name: an agent is called what its folder is called, a runner wha
 | `skills/<skill>/SKILL.md` | a skill two or more agents use (`read-what-is-known`, `propose-fresh-data`) | the agents that name it; the lock, by checksum |
 | `harnesses/<name>/` | what starts an agent (`claude-code`, `by-hand`), and what carries the two acts as pull requests (`github`) | you, or a workflow; the validator |
 | `runners/<name>.yaml` | where a job computes, and how it keeps the job contract; `local` is built | people; the validator |
-| `scorers/<name>/scorer.md` | one check of a study or an exploration: worked out by the tool, or a judge (a rubric for a model) | `sf.py scorecard`; `scorers.py` |
+| `scorers/<name>/scorer.md` | one check of a study or an exploration: worked out by the tool, or a judge (a rubric for a model); an overclaiming check names its `phrases.yaml` beside it | `sf.py scorecard`; `explore.py`; `scorers.py` |
 | `benchmarks/<suite>/` | a blind test suite | `benchmark.py` |
 | `automations/<name>/automation.md` | what would start work without a person; declared, not wired | the validator |
 | `templates/` | the request, a commented analysis plan, the kinds of question, the checklist for bringing a pipeline in | you copy them |
@@ -56,11 +56,12 @@ The checks a stage may name: `started`, `plan-complete`, `tests-pass`, `rehearsa
 | `procedure.coordinator` | the agent that follows `sf.py status` and starts the others |
 | `procedure.agents` | what each agent does, in a sentence its file quotes word for word |
 | `procedure.acts_by_people` | the lock and the signature: `who`, the `command` no agent may call, the `route` (`pull-request` or `practice`), and for a pull request the `harness`, `protected_branch`, `approvals`, `repository` (owner/name), `merge_methods` (`merge`, `squash`; never a rebase), `opening_needs` and `shows` |
+| `procedure.so_what` | a person's answer to a reviewed lead: `who`, the `command` no agent may call, the `route` (`comment` on the platform, through a `harness` and for a `repository`, or `practice`) and the four `answers` |
 | `where_it_runs`, `runner_contract.keys` | runner files, and the twelve keys every runner fills in |
 
 They must be exactly the stages `done_by: people`. A factory declares both acts the same way; a factory whose acts are `practice` is valid, and every study under it is practice.
 
-**Read by people**, stating the design, each saying what does hold it: `product`, `home`, `procedure.study_kinds`, `procedure.request`, `procedure.people`, `procedure.separations`, `procedure.rules_for_people`, `measure`. Unknown keys, and keys given twice, are refused everywhere.
+**Read by people**, stating the design, each saying what does hold it: `product`, `home`, `procedure.study_kinds`, `procedure.request` (with `fit_note`, the intake step of the skill `note-the-fit`), `procedure.people`, `procedure.separations`, `procedure.rules_for_people`, `measure`. Unknown keys, and keys given twice, are refused everywhere.
 
 ## Agents, skills and harnesses
 
@@ -69,6 +70,8 @@ They must be exactly the stages `done_by: people`. A factory declares both acts 
 **What holds an agent to its file.** The validator holds the files to each other: every command is one its tool has, no agent may call an act by people, the review agent may call nothing that does the work, each stage's command is in the file of the agent it is given to, a paragraph an agent file shares with a skill is the same words in both, and every command a file shows parses under the tool's options and passes `--model`. A harness holds an agent to its file while it works. Without a harness the file is instruction.
 
 **Skills.** A skill two or more agents use is in `skills/`; one agent's own is in that agent's folder. A skill is a procedure with any script beside it and no facts about a dataset. Methods for a kind of data belong to the repository where that science lives; the factory ships one built-in method so its own stages can be exercised.
+
+**Promoted methods: tools grow with use.** `explore.py promote` turns a look's script into `methods/<name>/`: the script, the exploration's runs of it as known-answer cases (inputs and outputs), the agent's README (what it computes, on what inputs, known limits), a generated `known_answer_tests.py`, and `method.json` with where it came from and every checksum. It is a change to the factory: the validator refuses it until a change-log record names `methods/<name>` with a prediction. A plan that binds a promoted method must run its `known_answer_tests.py` as a rehearsal, and the study tool refuses the study's tests and lock until that rehearsal has passed on the code as it stands.
 
 **Harnesses.** `harnesses/claude-code/`: `render.py` writes the files Claude Code reads and fails on drift (`--check`); `allow.py` is the per-call check; `run_role.py` starts one agent in a fresh context and keeps its task and answer in `record/<role>/`. `harnesses/by-hand/as_role.py` asks the same check for one command. `harnesses/github/` starts no agent: it carries the two acts. None has run under its platform.
 
@@ -80,13 +83,13 @@ A runner is where a job computes: this machine, a cluster scheduler, a cloud bat
 
 ## Checks, judges, and the outcome firewall
 
-A scorer is one file in `scorers/`, of one of two kinds. A **check** names a test the study tool works out from the log (`sf.py scorecard`); every study gets every one, and one that cannot be judged yet says `pending`. Eight ship: `chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated`. A **judge** is a rubric for a model, with `labels`, a `passingScore`, a `samplingRate`, the `model` and the `agents` it scores. Three ship: `exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`. No judge has been run by a real model.
+A scorer is one file in `scorers/`, of one of two kinds. A **check** names a test the study tool works out from the log (`sf.py scorecard`); every study gets every one, and one that cannot be judged yet says `pending`. Nine ship for studies: `chain-of-custody`, `plan-adherence`, `opening-discipline`, `no-failed-opening`, `lock-committed`, `independent-review`, `acts-by-people`, `notes-curated` and `overclaiming-in-findings`; one, `overclaiming-in-leads`, applies to explorations and `explore.py` works it out. The two overclaiming checks read the phrases in `scorers/overclaiming-in-leads/phrases.yaml`, a list the factory edits (a pattern, why, and optionally `when: not-supported` or `unless`), and warn, never block: a check may say `warn`. A **judge** is a rubric for a model, with `labels`, a `passingScore`, a `samplingRate`, the `model` and the `agents` it scores. Three ship: `exploration-owns-its-count`, `review-finds-holes`, `plan-is-clear`. In a first trial, real-model agents judging six packets by hand, two runs each, matched the key on five, and on the sixth found a fault in the case itself; the Claude Code path (`scorers.py judge`) has not run. A packet names no place outside itself, `JUDGE.md` asks for `verdict.yaml`, and `scorers.py record` reads that file, writes the verdict beside the packet and moves the answer out of it.
 
 Every scorer declares what it `reads`, from a fixed list split at the first opening of fresh data:
 
 | Written before any opening | Written from the first opening on |
 |---|---|
-| `request`, `plan`, `known-answer-tests`, `pre-lock-log`, `exploration-log`, `lead`, `review-before-opening`, `transcript-before-opening` | `opening-outcome`, `finding`, `post-opening-log`, `review-after-opening`, `transcript-after-opening` |
+| `request`, `plan`, `known-answer-tests`, `code`, `pre-lock-log`, `exploration-log`, `lead`, `review-before-opening`, `transcript-before-opening` | `opening-outcome`, `finding`, `post-opening-log`, `review-after-opening`, `transcript-after-opening` |
 
 **The firewall.** What a real opening showed must never reach anything that changes how the next opening is run, or the factory would drift toward agreeing with the claims it is given. So the validator refuses a judge that reads the right-hand column, `selfImprovement: true` on any scorer that reads it, and a benchmark case that is real fresh data. Outcomes may still be counted and shown to people, and they feed the knowledge loop. `tools/scorers.py` builds a judge's packet from exactly the declared material, each file by a checksum recorded before any opening.
 
@@ -111,7 +114,7 @@ uv run tools/check_factory.py --checksum
 uv run tools/check_factory.py --selftest
 ```
 
-Three results: `valid` (exit 0), `invalid` (exit 1, each broken rule printed with its name) and `not validated` (exit 2, which is never a pass). The rules are **form**, **references**, **roles** (every rule of `check_roles.py`), **acts**, **skills**, **firewall**, **acceptance** and **automations**. `--summary OLD NEW` says in plain words what a change does, the acts by people and agents' permissions first.
+Three results: `valid` (exit 0), `invalid` (exit 1, each broken rule printed with its name) and `not validated` (exit 2, which is never a pass). The rules are **form**, **references**, **roles** (every rule of `check_roles.py`), **acts**, **skills**, **firewall**, **acceptance**, **automations** and **methods** (a promoted method beside the definition is whole, unchanged and in the change log). `--summary OLD NEW` says in plain words what a change does, the acts by people and agents' permissions first.
 
 ## What the lock binds
 

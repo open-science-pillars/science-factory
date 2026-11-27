@@ -22,6 +22,10 @@ Nothing in the work tree moves an act past the second standing. A study whose lo
 
 **The exception for a place with no network.** `open-held-out --people-not-verified REASON` opens fresh data on a lock that is a merge found with git, when GitHub cannot be asked. It is refused unless the definition allows it: `opening_without_verification: allowed-with-a-reason` under the lock in `factory.yaml`. The shipped definition says `refused`. The lock binds the definition by checksum and a changed definition blocks the opening, so allowing it is a change people approve and lock, not something typed at the opening. Where it is allowed, the opening is logged with the reason, the finding must say so in its first line, and the study stays unsigned until a verification succeeds. An answer from GitHub that refutes the lock is never waived.
 
+## The so what: a person's answer to a lead, lighter than an act
+
+After a review, a person answers whether a lead is worth confirming (`worth-confirming`, `try-instead`, `not-interesting`, `needs-an-expert`). We made it a comment on the tracking issue, not a pull request review. The two acts are pull requests because each guards something scarce: the lock spends fresh data, the signature makes a finding. The so what spends nothing, and a lead it lets through still meets people at the lock, which shows it. It must be cheap enough to give on every lead and be a person's; a comment is both, and GitHub can be asked who wrote it. Its standings: `practice` (typed, `--local-practice`), `comment recorded, person not verified` (written under `platform:github` by the workflow's `so-what` job) and `verified` (`explore.py verify-so-what` asked GitHub: the comment is in the named repository, by that account, a user who belongs to it, unedited).
+
 ## 1. Enforced by the tools, on any machine
 
 These hold wherever Python runs: the tool refuses or records, and nothing else is needed.
@@ -48,9 +52,15 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.18 | An agent's event names its model (`--model`), or it is refused; an actor's name is matched whole; `platform:<host>` writes nothing but a merged act and its verification. |
 | 1.19 | Every tool restarts itself in a Python that reads no `PYTHON` variable, no user site, no start-up file and not its own folder. |
 | 1.20 | The validator refuses a definition with an unknown key, a dangling name, a judge that reads anything written after an opening, `selfImprovement: true` on a check that does, an act declared as a pull request without a harness, branch, approvals, repository or merge method, a rebase merge, and an unknown value for `opening_without_verification`. |
-| 1.21 | A judging packet holds the material its scorer declares, each file by a checksum recorded before any opening, and nothing written after an opening. |
+| 1.21 | A judging packet holds the material its scorer declares, each file by a checksum recorded before any opening (a plan's packet includes its bound code), nothing written after an opening, and no path outside itself. A verdict is recorded beside the packet, and the answer file leaves it. |
 | 1.22 | The acceptance set of blind cases gives nothing without its seed, which is not in the repository. |
 | 1.23 | Every command shown in an agent file, a skill or AGENTS.md parses under its tool's options as they are now, and passes `--model` where it acts as an agent. |
+| 1.24 | No exploration ends as a lead, and no lead is handed over, without a person's `worth-confirming` on the lead as it stands, after its latest review. An agent's so what is refused, a typed one unless it says practice (and then the hand-over must say so), and a comment only from a user of the named repository naming this lead. |
+| 1.25 | A lock request shows, as pictures with captions, every figure the exploration's looks kept (bound when the study starts) and every figure the plan's steps declare; a signature request shows the opening's. A declared figure not drawn fails its step, a changed one refuses the request, and both manifests bind them. |
+| 1.26 | An attached finding carries who did each kind of work, drawn from the study's log and its exploration's, with each agent's declared model and what the logs cannot show. A draft from an exploration or a study is refused without a **Who did what.** paragraph. |
+| 1.27 | Leads, findings and their reviews are read for the phrases of `scorers/overclaiming-in-leads/phrases.yaml` and for numbers finer than their uncertainty (`confirms` unless the rules gave `supported`); each flag names the phrase and the line, at `lead`, `review` and `attach`, in status, on the scorecard and in the signature request. It warns, never blocks. |
+| 1.28 | A fit note is complete or refused, and refused once the first look or test has run; status, the hand-over and the lock request show it, or say there is none. It never blocks work. |
+| 1.29 | A method is promoted only from a look that passed, with its README's three parts, its runs as cases and every checksum; the validator refuses it changed or absent from the change log. A plan that binds one needs a rehearsal running its tests, and its tests, other rehearsals and lock wait until that rehearsal passed on the code as it stands. |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -74,9 +84,15 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 18. `sf.py selftest`, `explore.py selftest`: "an agent that names no model", "an actor with a line break after the name" (R2-14).
 19. `sf.py selftest`: "the tool's help is words, not its own source", "a file named like a standard module beside the study tool is not imported by it" (R2-09).
 20. `check_factory.py --selftest`: one case for each rule it names.
-21. `scorers.py selftest`: the firewall checks.
+21. `scorers.py selftest`: the firewall checks, "a packet names no place outside itself", "each run's verdict leaves the packet".
 22. `benchmark.py selftest`: the acceptance-case checks.
 23. `check_roles.py --selftest`: "a skill shows an agent's command without `--model`", "a skill shows a command with an option the tool does not have".
+24. `explore.py selftest`: the checks under "the person's so what on a reviewed lead"; `verify_acts.py --selftest`: the five checks named "a so what"; `check_factory.py --selftest`: "a definition with no so what", "an agent that may call the so what"; `allow.py --selftest`: "no role may record a person's so what".
+25. `sf.py selftest`: the checks of `_selftest_figures`; `explore.py selftest`: "the hand-over carries every figure the looks kept"; `verify_request.py --selftest`: "points each figure at the head of the pull request".
+26. `sf.py selftest`: "the finding carries who did each step", "the contribution statement of a study"; `explore.py selftest`: "the contribution statement of a lead"; `knowledge.py selftest`: "does not say who did the work it rests on".
+27. `sf.py selftest`: the checks of `_selftest_overclaiming`; `explore.py selftest`: "a lead that claims more than an exploration can show"; `check_factory.py --selftest`: "an overclaiming check that names no list of phrases", "a list of phrases with a pattern that does not compile".
+28. `sf.py selftest`: the checks of `_selftest_fit`; `explore.py selftest`: "the coordinating agent's fit note is recorded at intake", "a fit note once the first look has run is refused".
+29. `explore.py selftest`: the checks under "a look that proved useful becomes a method"; `check_factory.py --selftest`: the cases named "a promoted method".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 
@@ -109,6 +125,7 @@ Tests, by row: 2.1 `explore.py selftest`, four checks named "N1" (R2-01). 2.2 `e
 | That an act in a study log is such a pull request, and who approved it | GitHub, asked by `sf.py verify-acts`, which anybody with the clone, a network and a read token can run at any time | Each answer is recorded with every address asked and the name of the token's variable (never the token); with no network or token the result is `not checked`, never a pass |
 | That a verification's answer was really GitHub's | Whoever ran it, on the machine it ran on | The entry names the proxy and certificate settings in force. An attestation that needs no such trust is proposed in [proposals/ATTESTED-ACTS.md](proposals/ATTESTED-ACTS.md), not built |
 | Who may approve, and how many; that the branch is protected and nobody bypasses it | The repository's code owners and settings (`factory/harnesses/github/README.md` is the checklist) | `factory.yaml` declares the number; `verify-acts` asks whether the branch is protected, and says what it was not shown |
+| That a lead's so what came from a person | GitHub: a comment on the tracking issue by an account of the repository | `explore.py verify-so-what` asks GitHub; whether the account is the right person is for whoever reads the name |
 | That the fresh data proposed suits the question and is fair | The scientist and the steward, who approve it at the lock, and the review agent before them | The proposal in words, with the tool's caution for its kind and the size of test it allows |
 | That a log was not rewritten before its first commit or posted fingerprint | Fingerprints posted on the tracking issue at the lock and after each opening; a protected branch | `check-log --anchor`. What remains: a log and its whole history rewritten before the first request, on a clone never pushed |
 | That nobody reads the fresh data outside the tool | Nobody, for public data. A place where the analysis agent has no route to the withheld values is not built | Nothing |
@@ -117,7 +134,8 @@ Tests, by row: 2.1 `explore.py selftest`, four checks named "N1" (R2-01). 2.2 `e
 
 Nothing checks these. An agent is told, and the log shows afterwards what the tools saw.
 
-- Which model wrote an event: declared by the caller, recorded, proven by nothing.
+- Which model wrote an event: declared by the caller, recorded, proven by nothing. A contribution statement says so, and cannot show thinking that left no event.
+- That people look at each figure; that a fit note is a fair reading of the request; that a flagged word is rewritten, and that words the list lacks do not overclaim.
 - That only knowledge is read before data is set aside; that nothing is looked at outside the tool; that a choice is written down when it is made; that every comparison inside a look is declared.
 - That the agent proposing the fresh data opened no data file first; that a metadata file holds no values under the names the tool allows; that the reasons in a proposal are true; and that a confirmatory plan names a proposal at all (the lock request says so when it does not).
 - That an agent started outside its rendered file keeps to its role; that the reviewer is a separate agent with a fresh context, and was passed nothing the author said; that the analysis agent had not already read an answer to its question.
@@ -128,4 +146,4 @@ Nothing checks these. An agent is told, and the log shows afterwards what the to
 
 ## What has never run
 
-GitHub: the workflow, the required check and the recording job against real events, and `verify-acts` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher. A real model as one of the three judges. Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.
+GitHub: the workflow, the required check, the recording job and the `so-what` job against real events, and `verify-acts` and `verify-so-what` against GitHub itself; every part of the route is tested on answers written by hand in GitHub's shapes. Claude Code: the harness's per-call check and launcher, and the judges' Claude Code path (a first trial ran the judges as agents reading packets by hand). Any of it on macOS, Windows or a Linux without Landlock. A real study, from request to signature.

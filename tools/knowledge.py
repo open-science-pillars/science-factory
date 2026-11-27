@@ -375,6 +375,10 @@ def draft_problems(draft: tuple, queue: Path, bundles: list, bundle_entries: dic
         problems.append(f"{name}: `drafted_from` names the exploration or study and the notes or the lead it was drafted from")
     elif src.get("exploration") and "exploring" not in str(fm.get("seen_while") or "") + body.casefold():
         problems.append(f"{name}: it was drafted from an exploration and does not say so; say what was seen while exploring and is not tested")
+    if isinstance(src, dict) and (src.get("exploration") or src.get("study")) and not re.search(r"^\*\*Who did what\.\*\*\s+\S", body, re.M):
+        problems.append(f"{name}: it does not say who did the work it rests on. Add a paragraph that begins **Who did what.**, from the "
+                        "contribution statement of the exploration or study it was drafted from (`explore.py contribution`, `sf.py contribution`), "
+                        "with what the log cannot show")
     if isinstance(src, dict) and "by" in src and not re.fullmatch(r"agent:\S+", str(src["by"])):
         problems.append(f"{name}: `drafted_from.by` is `{src['by']}`; it is the drafting agent's own name, agent:<role>-<suffix>, "
                         "the one it acts under in the logs. A person does not draft into this queue")
@@ -644,7 +648,9 @@ def selftest(checker: Path | None) -> int:
                 "drafted_from": {"exploration": "EXPLORATION-0001", "notes": ["NOTE-001"]},
                 "sources": [{"id": "look", "resource": "https://example.invalid/exploration/receipts/LOOK-003.json", "title": "the look"}]}
 
-        def draft(name: str = "gotchas/degraded-at-low-stage.md", body: str = "Seen while exploring.[^look]\n\n[^look]: the look", **change) -> Path:
+        who = "**Who did what.** Explored by agent:analysis-0101 (an AI agent, model test as declared); reviewed by agent:review-0101. The log cannot show thinking that left no event."
+
+        def draft(name: str = "gotchas/degraded-at-low-stage.md", body: str = "Seen while exploring.[^look]\n\n" + who + "\n\n[^look]: the look", **change) -> Path:
             fm = {k: v for k, v in {**base, **change}.items() if v is not None}
             p = queue / name
             p.write_text("---\n" + yaml.safe_dump(fm, sort_keys=False) + "---\n\n# " + str(fm.get("title")) + "\n\n" + body + "\n")
@@ -670,6 +676,8 @@ def selftest(checker: Path | None) -> int:
            any("no sources" in p for p in problems()) and (checker is None or any("format's checker: E7" in p for p in problems())))
         draft(drafted_from=None)
         ok("a draft that does not say what it was drafted from is refused", any("drafted_from" in p for p in problems()))
+        draft(body="Seen while exploring.[^look]\n\n[^look]: the look")
+        ok("a draft from an exploration that does not say who did the work it rests on is refused", any("**Who did what.**" in p for p in problems()))
         draft(seen_while=None, body="A claim.[^look]\n\n[^look]: the look")
         ok("a draft from an exploration that does not say it was exploring is refused", any("does not say so" in p for p in problems()))
         draft(type="finding")

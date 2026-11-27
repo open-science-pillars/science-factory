@@ -18,6 +18,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **exploring**: looking at data to find out what is there; it ends in a lead, a note, a method or a stop.
 - **confirming**: testing one claim, stated in advance, once, on fresh data.
 - **lead**: what an exploration found that looks true and is worth testing; never a finding.
+- **so what**: a person's answer to a reviewed lead: `worth-confirming`, `try-instead`, `not-interesting` or `needs-an-expert`; no agent records it.
+- **lead noted**: how an exploration ends when a person says its lead is not interesting; not a failure.
 - **finding**: the signed result of a confirming study, and nothing else.
 - **the wall**: data used to explore is never used to confirm what the exploring found.
 
@@ -38,6 +40,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 
 - **study**: one question taken from request to signed finding or recorded no; one folder.
 - **request**: what the scientist asks, in their own words (`factory/templates/request.md`, or the issue form).
+- **fit note**: the coordinating agent's advice at intake, before any work: how well the question suits agents, a verdict (`good-fit`, `fit-with-a-person-steering`, `poor-fit`), and what taste or expertise it needs from a person; it blocks nothing.
 - **tracking issue**: the GitHub issue a study's request became; fingerprints are posted there.
 - **analysis plan**: `analysis-plan.yaml`: what is estimated, on which data, and what counts for and against.
 - **the difference that matters**: the smallest difference that would change what you do.
@@ -63,6 +66,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **openings allowed**: how many times a test on fresh data may be opened: one.
 - **inconclusive**: a result, and final for that data.
 - **note**: something missing or wrong, raised during work, with evidence; never deleted.
+- **contribution statement**: who did each kind of work, person or agent and declared model, with counts, drawn from the logs (`sf.py contribution`, `explore.py contribution`); the finding and every draft carry it.
 
 ## An exploration
 
@@ -72,7 +76,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **fence**: what keeps set-aside data out of a look (`tools/fence.py`): the scratch folder, the reading of what goes in and comes out, and the kernel fence.
 - **kernel fence**: Landlock on Linux, which keeps a script from opening anything outside its scratch folder.
 - **keeper**: the small process that puts the kernel fence up and ends what a script leaves running.
-- **hand-over**: what an ended exploration gives a confirming study: the request, a plan stub, the proposal of the fresh data.
+- **hand-over**: what an ended exploration gives a confirming study: the request, a plan stub, the proposal of the fresh data, the figures.
+- **promoted method**: a look script made a method by `explore.py promote`, with the exploration's runs as its known-answer cases; a change to the factory, used by a study only once its tests pass there.
 
 ## The definition
 
@@ -90,7 +95,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **check**: one item of a study's scorecard, worked out by the tool from the log (the files are in `scorers/`).
 - **judge**: a rubric for a model, reading only what was written before any opening.
 - **scorer**: a file in `scorers/`, of either kind.
-- **scorecard**: the eight checks for one study (`sf.py scorecard`).
+- **scorecard**: the nine checks for one study (`sf.py scorecard`).
+- **overclaiming check**: flags words that claim more than the work shows ("good agreement", "clearly", "proves", a dramatic timescale, a number finer than its uncertainty) in leads, reviews and findings, by phrase and line, from a list the factory edits; it warns, never blocks.
 - **firewall**: what an opening showed never reaches a judge or a proposal to change the factory.
 - **benchmark**: a suite of sealed cases run under two versions of the definition and compared.
 - **design set** and **acceptance set**: cases anyone may read, and cases made from a seed nobody proposing a change may read.

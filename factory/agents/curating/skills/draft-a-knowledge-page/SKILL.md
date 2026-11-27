@@ -37,7 +37,7 @@ Front matter the queue requires (the tool refuses a draft without them):
 - `relates_to`: one entry for every page in the wiki this page bears on: `{concept: <the page's path below the wiki>, relation: extends | narrows | corrects | contradicts | beside, why: <words>}`. `beside` is for a page on the same subject that makes another point and conflicts with nothing. If the page would only repeat a concept, do not draft it: link the note.
 - `stale_after`: a date, when what it says can go out of date.
 
-The body: what happens (the mechanism, if known, and say when it is not), what was measured (numbers with units, counts and the receipt they come from), how it makes a wrong answer look right, what to do, and how someone else could check it. Keep one case's numbers as that case's numbers.
+The body: what happens (the mechanism, if known, and say when it is not), what was measured (numbers with units, counts and the receipt they come from), how it makes a wrong answer look right, what to do, and how someone else could check it. Keep one case's numbers as that case's numbers. End with a paragraph that begins **Who did what.**: run `uv run tools/explore.py contribution --exploration <x>` (or `uv run tools/sf.py contribution --study <s>`), take its paragraph and its sentence on what the log cannot show, and do not add credit the log does not show. The tool refuses a draft from an exploration or a study without it.
 
 ## After drafting
 

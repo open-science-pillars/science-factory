@@ -1,0 +1,9 @@
+# The question a person is asked about a reviewed lead: so what? An agent may draft it (`explore.py ask-so-what`);
+# the answer is the person's, and no agent records it. Each part is a sentence or more, in plain words, with no
+# number the lead does not print. Say what would make the lead unremarkable as plainly as what would make it matter.
+what_the_lead_shows: >
+  WHAT THE LEAD SAYS LOOKS TRUE, IN ONE OR TWO SENTENCES, WITH ITS NUMBERS AS THE LOOKS PRINTED THEM.
+why_it_might_matter: >
+  WHAT WOULD CHANGE FOR THE SCIENTIST, OR IN THE FIELD, IF IT HOLDS.
+what_would_make_it_unremarkable: >
+  WHAT A PERSON WHO KNOWS THE DATA MIGHT ALREADY KNOW THAT MAKES THIS EXPECTED, KNOWN OR TRIVIAL.
