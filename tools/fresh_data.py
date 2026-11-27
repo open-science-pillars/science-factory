@@ -31,17 +31,19 @@ rules at that size, which the method's known-answer tests measure), adds a
 caution for the kind, and gives the arguments that set the data aside in
 `explore.py start` and the block for the plan.
 
-A random set aside is drawn by this tool, not by anybody: it makes a seed
-from the operating system's randomness, ranks every item by the sha256 of
-the seed and the item's identifier, and takes the first part. The proposal
-and the record keep only the seed's sha256; the seed itself goes into a
-file of its own beside the proposal (`<proposal>.seed`). The lock request
-prints the seed, and anybody can draw again from it (`reveal`) and get the
-same members. The hash is a commitment: it shows the seed was fixed when
-the proposal was written. It does not show that nobody ran the tool twice
-and kept the draw they liked, which is why every proposal is also written to
-a record beside the studies (`fresh-data.jsonl`), and the lock shows how
-many proposals that record holds for the same subject.
+A random set aside is drawn from something nobody working on the question
+can choose or try again: the merge commit GitHub creates when a person
+merges the lock request, read through the platform's own answer at the
+opening. The seed is the sha256 of that commit and the proposal's checksum;
+every item is ranked by the sha256 of the seed and its identifier, and the
+first part is taken. So the proposal draws nothing: it names the items the
+draw is made from and how many, and says the members are to be drawn at the
+lock. No seed is made or kept, and a seed handed to the tool is refused. A
+seed a proposing tool could make (as this one once did) can be drawn again
+and again until the members suit somebody, record or no record. A study
+whose lock is typed (practice) draws from the practice lock's own log
+entry, which whoever typed it could have made again: such a draw could be
+chosen, and the study says so.
 
 Commands.
 
@@ -50,13 +52,14 @@ Commands.
             year or month, with its count, the file by its sha256, and the
             release the file grows by, with its cadence. It keeps no other
             column. It is the step before a proposal, done at intake
-  propose   write a proposal from a metadata file (and, for a random set
-            aside, its seed file); add it to the record beside the studies
+  propose   write a proposal from a metadata file; add it to the record
+            beside the studies
   show      a proposal in plain words
-  reveal    draw a random set aside again from its seed, and say whether it
-            gives the same members
+  reveal    draw a random set aside from a merge commit (`--merge-commit`),
+            as the opening drew it, so anybody can check the members; a seed
+            handed in is refused
   check     what a reviewer asks of a proposal: it is on the record, its
-            words are written, a random draw comes from its seed, and it
+            words are written, a random set aside is still to be drawn, and it
             was written before the exploration or study it serves started
   selftest  the tool tests itself
 
@@ -65,11 +68,11 @@ Usage: fresh_data.py <command> [...]; fresh_data.py selftest
 import sys
 
 sys.dont_write_bytecode = True
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start, as in the other tools: run again in a Python that reads no PYTHON variable, no user site and no
     # start-up file. What a hostile environment ran before this line has already run (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess
@@ -102,6 +105,20 @@ import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
+
 
 HERE = Path(__file__).resolve().parent
 TOOL = Path(__file__).resolve()
@@ -114,7 +131,7 @@ class Refused(Exception):
 def _fence():
     """tools/fence.py, by its path: what says whether this process was started from inside a look."""
     if "fence" not in sys.modules:
-        spec = importlib.util.spec_from_file_location("fence", HERE / "fence.py")
+        spec = _source_spec("fence", HERE / "fence.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules["fence"] = mod
         spec.loader.exec_module(mod)
@@ -152,6 +169,8 @@ NOT_COMPUTED = ("the power of the plan's rules at this size. This tool counts; i
                 "known-answer tests are where power is measured: run them on synthetic cases of this size before the lock "
                 "(for the built-in gain method, `methods/gain/known_answer_tests.py --passes N`) and compare")
 DRAW = "every item ranked by the sha256 of the seed, a line break and the item's identifier; the first k taken"
+DRAWN_AT = ("the opening, after the lock: the seed is the sha256 of `science-factory random set aside`, the merge commit GitHub created "
+            "for the lock request (as the platform says when asked then) and this proposal's sha256, each on its own line")
 VARIABILITY = (". Nor does it use the record's own variability: that is a measured value, which a metadata file never holds and a "
                "proposal never reads. Take it from the working data in the method's known-answer tests, at the size counted here")
 
@@ -277,6 +296,21 @@ def draw(seed: str, population: list, k: int) -> list:
     return sorted(ranked[:k])
 
 
+def seed_at_the_lock(merge_commit: str, proposal_sha256: str) -> str:
+    """The seed of a random set aside: from the merge commit of the lock request and the proposal, nothing else."""
+    if not re.fullmatch(r"[0-9a-f]{40,64}", str(merge_commit)) or not re.fullmatch(r"[0-9a-f]{64}", str(proposal_sha256)):
+        raise Refused("a random set aside is drawn from the lock's merge commit (its full checksum) and the proposal's sha256")
+    return sha_bytes(f"science-factory random set aside\n{merge_commit}\n{proposal_sha256}".encode())
+
+
+def draw_at_the_lock(p: dict, merge_commit: str, proposal_sha256: str) -> dict:
+    """The members of a random set aside, drawn from the lock's merge commit: {seed, members, k, of}."""
+    d, rule = p.get("draw") or {}, p.get("rule") or {}
+    seed = seed_at_the_lock(merge_commit, proposal_sha256)
+    return {"seed": seed, "merge_commit": merge_commit, "proposal_sha256": proposal_sha256, "k": int(rule.get("k") or 0),
+            "of": len(d.get("drawn_from") or []), "members": draw(seed, list(d.get("drawn_from") or []), int(rule.get("k") or 0))}
+
+
 def observations(items: list) -> int | None:
     return sum(it["count"] for it in items) if items and all("count" in it for it in items) else None
 
@@ -383,15 +417,13 @@ def propose(a) -> dict:
         k = max(1, round(f * len(population)))
         if k >= len(population):
             raise Refused(f"a set aside of {k} of {len(population)} leaves nothing to explore")
-        seed = secrets.token_hex(32)
-        members = draw(seed, population, k)
-        rule = {"fraction": f, "draw_over": unit, "k": k, "of": len(population), "method": DRAW}
-        for it in items:
-            (fresh if it[unit] in members else working).append(it)
-        explore += ["--set-aside-sites", ",".join(members)]
-    if not working:
+        members = []  # to be drawn at the lock, from what nobody here can choose; no seed is made
+        rule = {"fraction": f, "draw_over": unit, "k": k, "of": len(population), "method": DRAW, "drawn_at": DRAWN_AT}
+        working = list(items)  # until the draw, every item may still be drawn: an exploration cannot set any aside, nor explore one
+        explore = []
+    if not working and a.kind != "random":
         raise Refused("this proposal leaves no working data: everything the metadata lists would be kept unopened")
-    if not fresh and a.kind != "next-release":
+    if not fresh and a.kind not in ("next-release", "random"):
         raise Refused("this proposal keeps nothing: no item in the metadata falls in it")
     releases = [r for r in meta.get("releases") or [] if r.get("name") == rule.get("release")]
     size = {"fresh_items": len(fresh), "working_items": len(working), "fresh_observations": observations(fresh),
@@ -425,10 +457,12 @@ def propose(a) -> dict:
         "set_aside_with": explore, "held_out_for_the_plan": held,
         "proposed": {"by": a.by, "model": a.model, "at": now(), "tool_sha256": sha_file(TOOL)},
     }
-    if seed is not None:
-        proposal["draw"] = {"seed_sha256": sha_bytes(seed.encode()), "drawn_from": population,
-                            "seed_file": "beside this file, with the same name and .seed in place of its ending; the lock request prints it"}
-    return {"proposal": proposal, "seed": seed}
+    if a.kind == "random":
+        size.update(fresh_items=rule["k"], working_items=None, fresh_observations=None, working_observations=None,
+                    to_be_drawn=f"{rule['k']} of {rule['of']} ({unit}s), drawn at the lock")
+        proposal["draw"] = {"at": "the lock", "drawn_from": population, "seed_from": DRAWN_AT,
+                            "not_before_the_lock": "no seed exists before the lock request is merged, so nobody can draw again until the members suit them"}
+    return {"proposal": proposal, "seed": None}
 
 
 # ---- describe: the metadata of one long file, from its date column ------------------
@@ -574,8 +608,6 @@ def cmd_propose(a) -> None:
             "# refuse a proposal that is not on it. A new choice is a new proposal.\n"
             + yaml.safe_dump(p, sort_keys=False, allow_unicode=True, width=110))
     out.write_text(body)
-    if seed is not None:
-        seed_path(out).write_text(seed + "\n")
     studies.mkdir(parents=True, exist_ok=True)
     line = {"kind": "fresh-data.proposed", "fresh_kind": p["kind"], "subject": subject_key(p["subject"]), "proposal_sha256": sha_bytes(body.encode()),
             "seed_sha256": (p.get("draw") or {}).get("seed_sha256"), "members": len(p["members"]), "by": p["proposed"]["by"],
@@ -584,8 +616,12 @@ def cmd_propose(a) -> None:
         f.write(json.dumps(line, sort_keys=True) + "\n")
     same = [ln for ln in record_lines(studies) if ln.get("subject") == line["subject"]]
     print("\n".join(in_words(p)))
-    print(f"\nproposal written: {out}" + (f" (its seed, kept for the lock: {seed_path(out)})" if seed else "")
+    print(f"\nproposal written: {out}" + (" (a random set aside: to be drawn at the lock, from the merge commit; no seed exists)" if p["kind"] == "random" else "")
           + f". On the record beside the studies ({studies / RECORD}): proposal {len(same)} for this subject.")
+    if p["kind"] == "random":
+        print("A random set aside is for a confirming study's plan (`data.held_out.fresh_data`): an exploration cannot set aside members "
+              "that are drawn only at the lock, so it cannot start on this proposal")
+        return
     print("To set it aside when the exploration starts: uv run tools/explore.py start ... " + " ".join(
         w if re.fullmatch(r"[A-Za-z0-9_.:,/@=-]+", w) else json.dumps(w) for w in p["set_aside_with"]) + f" --fresh-data {out}")
 
@@ -613,19 +649,10 @@ def on_record(path, studies) -> dict:
             "position": (same.index(mine[0]) + 1) if mine and mine[0] in same else None}
 
 
-def redraw(p: dict, seed: str) -> dict:
-    """Draw again from a revealed seed and compare with the proposal. The proposal alone is enough: it lists the
-    identifiers the draw was made from, so the metadata file need not travel with it."""
-    d = p.get("draw") or {}
-    seed = str(seed).strip()
-    hash_ok = sha_bytes(seed.encode()) == d.get("seed_sha256")
-    again = draw(seed, list(d.get("drawn_from") or []), int((p.get("rule") or {}).get("k") or 0))
-    return {"seed_matches_its_hash": hash_ok, "same_members": again == sorted(p["members"]), "members_again": again}
-
-
-def problems(path, studies=None, seed: str | None = None) -> list:
+def problems(path, studies=None, seed=None) -> list:
     """What is wrong with a proposal, in words; empty when nothing is. With `studies`, that it is on the record there.
-    A random set aside is checked against its seed: the one given, or the seed file beside the proposal."""
+    A random set aside draws nothing before the lock: one that lists members, names a seed or has a seed file beside it
+    was drawn where its proposer could draw again, and is refused; so is a seed handed in."""
     p, out = load(path), []
     for k in ("what", "why_it_suits", "what_would_make_it_unfair"):
         if not str(p.get(k) or "").strip():
@@ -637,17 +664,13 @@ def problems(path, studies=None, seed: str | None = None) -> list:
         out.append("this proposal of the next release fixes no cut-off: nothing binds the data as it stands, so the release could "
                    "arrive in the working data as plain dated rows. Propose again, from metadata that declares the release")
     if p["kind"] == "random":
-        if seed is None:
-            s = seed_path(Path(path))
-            seed = s.read_text() if s.is_file() else None
-        if seed is None:
-            out.append("the seed of this random set aside is missing (its .seed file), so nobody can show the members were drawn and not chosen")
-        else:
-            r = redraw(p, seed)
-            if not r["seed_matches_its_hash"]:
-                out.append("the seed given is not the one whose sha256 the proposal recorded")
-            elif not r["same_members"]:
-                out.append("drawing again from the seed does not give the members the proposal lists: they were changed after the draw")
+        d = p.get("draw") or {}
+        if p.get("members") or d.get("seed_sha256") or seed_path(Path(path)).exists() or seed is not None:
+            out.append("this random set aside was drawn when its proposal was written, from a seed its proposer could make again and again "
+                       "until the members suited them (or a seed is handed in): propose again with this tool, which draws nothing until "
+                       "the lock, from the merge commit GitHub creates for the lock request")
+        if d.get("at") != "the lock" or not isinstance(d.get("drawn_from"), list) or not d.get("drawn_from"):
+            out.append("this random set aside does not name the items it will be drawn from, to be drawn at the lock")
     return out
 
 
@@ -685,8 +708,9 @@ def in_words(p: dict, revealed: str | None = None, record: dict | None = None) -
             + ", ".join(f"{k} (sha256 {str(v)[:12]})" for k, v in (rule.get("files") or {}).items()) if rule.get("files") else
             "; the working data is bound at the start as it stands, by checksum")
     else:
-        what = f"{rule.get('k')} of {rule.get('of')} ({'sites' if rule.get('draw_over') == 'site' else 'items'}), drawn by the tool"
-    lines += [f"**The members.** {what}: " + (", ".join(map(str, p.get("members") or [])) or "none listed yet") + ".", ""]
+        what = f"{rule.get('k')} of {rule.get('of')} ({'sites' if rule.get('draw_over') == 'site' else 'items'}), to be drawn at the lock"
+    lines += [f"**The members.** {what}: " + (", ".join(map(str, p.get("members") or [])) or ("to be drawn at the lock" if p.get("kind") == "random"
+                                                                                              else "none listed yet")) + ".", ""]
     prop = p.get("proposed") or {}
     meta = p.get("metadata") or {}
     lines += [f"**Who chose it, and from what.** Proposed by {prop.get('by')}" + (f" (model {prop.get('model')})" if prop.get("model") else "")
@@ -695,13 +719,12 @@ def in_words(p: dict, revealed: str | None = None, record: dict | None = None) -
               "any other field."]
     if p.get("kind") == "random":
         d = p.get("draw") or {}
-        lines += ["", f"**Nobody chose the members.** The tool drew them: {rule.get('method')}. It recorded the seed's sha256 "
-                  f"({str(d.get('seed_sha256'))[:16]}) when it wrote the proposal, and kept the seed apart."]
-        if revealed is not None:
-            r = redraw(p, revealed)
-            lines += [f"The seed, revealed for this lock: `{revealed.strip()}`. Its sha256 is the one recorded: {'yes' if r['seed_matches_its_hash'] else 'NO'}. "
-                      f"Drawing again from it gives the same members: {'yes' if r['same_members'] else 'NO'}. Anybody can draw again: "
-                      "`uv run tools/fresh_data.py reveal --proposal <this proposal>`."]
+        lines += ["", f"**Nobody can choose the members.** They are to be drawn at the lock: {rule.get('k')} of the {len(d.get('drawn_from') or [])} "
+                  f"items this proposal names, at {rule.get('drawn_at') or DRAWN_AT}. {rule.get('method')}. No seed exists before the lock "
+                  "request is merged, so nobody can draw again until the members suit them; the opening records the commit, the seed and the "
+                  "members, and anybody can draw again from them (`uv run tools/fresh_data.py reveal --proposal <this proposal> "
+                  "--merge-commit <the commit>`). A practice lock is typed, not merged: its draw comes from its own log entry, which whoever "
+                  "typed it could have made again, so a practice study's draw could be chosen, and it says so."]
     if record is not None:
         lines += ["", f"**On the record.** " + ("This proposal is on the record beside the studies, byte for byte" if record.get("on_record")
                                                 else "THIS PROPOSAL IS NOT ON THE RECORD beside the studies")
@@ -719,15 +742,18 @@ def cmd_show(a) -> None:
 def cmd_reveal(a) -> None:
     p = load(a.proposal)
     if p["kind"] != "random":
-        raise Refused("only a random set aside has a seed: this proposal is " + p["kind_in_words"])
-    s = Path(a.seed_file) if a.seed_file else seed_path(Path(a.proposal))
-    if not s.is_file():
-        raise Refused(f"no seed file at {s}")
-    r = redraw(p, s.read_text())
-    print(json.dumps({"seed_matches_its_hash": r["seed_matches_its_hash"], "same_members": r["same_members"],
-                      "members": r["members_again"]}, indent=1))
-    if not (r["seed_matches_its_hash"] and r["same_members"]):
-        raise Refused("the draw does not come out the same: the seed or the members were changed")
+        raise Refused("only a random set aside is drawn: this proposal is " + p["kind_in_words"])
+    if getattr(a, "seed_file", None):
+        raise Refused("a seed handed in is refused: a random set aside is drawn from the lock's merge commit and the proposal, and from "
+                      "nothing anybody chooses. Give `--merge-commit` (the opening records it) to draw again as the opening drew")
+    found = problems(a.proposal)
+    if found:
+        raise Refused("; ".join(found))
+    if not getattr(a, "merge_commit", None):
+        raise Refused("the members are drawn at the lock: give `--merge-commit` (the commit GitHub created when the lock request was "
+                      "merged, which the opening records) to draw them as the opening did")
+    got = draw_at_the_lock(p, a.merge_commit.strip().lower(), sha_file(Path(a.proposal)))
+    print(json.dumps(got, indent=1))
 
 
 def first_event(log: Path) -> tuple:
@@ -856,40 +882,63 @@ def selftest() -> int:
         check("a proposal that would keep everything, or nothing, is refused",
               "no working data" in refused(propose, A(kind="later-period", from_="2020-01-01", **base))
               and "keeps nothing" in refused(propose, A(kind="later-period", from_="2030-01-01", **base)))
-        # the random draw: by the tool, reproducible from the revealed seed, and nobody's choice
+        # the random draw: at the lock, from the merge commit, and nobody's choice (A4-06)
         a1 = A(kind="random", fraction=0.3, out=str(tmp / "p" / "random.yaml"), **base)
         cmd_propose(a1)
         pfile = Path(a1.out)
         p = load(pfile)
-        seed = seed_path(pfile).read_text()
-        check("a random set aside holds only the seed's sha256 in the proposal and the record; the seed is in its own file",
-              seed.strip() not in pfile.read_text() and seed.strip() not in (studies / RECORD).read_text()
-              and p["draw"]["seed_sha256"] == sha_bytes(seed.strip().encode()) and len(p["members"]) == 3)
-        r = redraw(p, seed)
-        check("the draw is reproducible from the revealed seed, from the proposal alone", r["seed_matches_its_hash"] and r["same_members"])
-        check("another seed gives another draw (the members follow the seed, not anybody's wish), and a wrong seed is caught",
-              not redraw(p, "0" * 64)["seed_matches_its_hash"]
-              and any(draw(secrets.token_hex(32), p["draw"]["drawn_from"], 3) != p["members"] for _ in range(5)))
-        check("the draw does not depend on the order of the metadata file", draw(seed.strip(), list(reversed(p["draw"]["drawn_from"])), 3) == p["members"])
-        check("a proposal on the record, with its seed, has no problems", problems(pfile, studies) == [])
-        edited = pfile.read_text().replace(f"- {p['members'][0]}\n", "- S99\n", 1)
-        pfile2 = tmp / "p" / "edited.yaml"
-        pfile2.write_text(edited)
-        shutil.copyfile(seed_path(pfile), seed_path(pfile2))
-        got = problems(pfile2, studies)
-        check("members changed by hand after the draw are caught twice: the file is not on the record, and the seed does not give them",
-              any("not on the record" in q for q in got) and any("does not give the members" in q for q in got))
-        seed_path(pfile2).unlink()
-        check("a random set aside whose seed is missing cannot show it was drawn", any("seed" in q and "missing" in q for q in problems(pfile2)))
-        a2 = A(kind="random", fraction=0.3, out=str(tmp / "p" / "random-2.yaml"), **base)
+        line = [ln for ln in record_lines(studies) if ln.get("proposal_sha256") == sha_file(pfile)][0]
+        check("A4-06: a random set aside draws nothing when it is proposed: no members, no seed and no seed file; it names the items it "
+              "will be drawn from and how many, to be drawn at the lock",
+              p["members"] == [] and not seed_path(pfile).exists() and line["seed_sha256"] is None and line["members"] == 0
+              and p["draw"]["at"] == "the lock" and p["rule"]["k"] == 3 and len(p["draw"]["drawn_from"]) == 10 and "seed_sha256" not in p["draw"])
+        tries = []
+        for i in range(6):
+            ai = A(kind="random", fraction=0.2, out=str(tmp / f"try-{i}" / "p.yaml"), studies=str(tmp / f"try-{i}" / "studies"),
+                   **{k: v for k, v in base.items() if k != "studies"})
+            cmd_propose(ai)
+            tries.append(load(Path(ai.out)))
+        kept_hex = secrets.token_hex
+        secrets.token_hex = lambda n=32: "0" * (2 * n)  # the fourth attack's choose.py: the randomness the tool once drew a seed from
+        try:
+            cmd_propose(A(kind="random", fraction=0.2, out=str(tmp / "chosen" / "p.yaml"), studies=str(tmp / "chosen" / "studies"),
+                          **{k: v for k, v in base.items() if k != "studies"}))
+        finally:
+            secrets.token_hex = kept_hex
+        chosen = load(tmp / "chosen" / "p.yaml")
+        check("A4-06: proposing again and again gives nothing to choose from (six proposals, six times no members), and the randomness the "
+              "tool once drew its seed from, replaced, changes nothing", all(x["members"] == [] for x in tries + [chosen])
+              and all(x["draw"]["drawn_from"] == tries[0]["draw"]["drawn_from"] for x in tries + [chosen]))
+        commit, other = "a" * 40, "b" * 40
+        got = draw_at_the_lock(p, commit, sha_file(pfile))
+        check("the members come from the lock's merge commit and the proposal alone: the same commit draws the same, another commit "
+              "another, and the order of the metadata changes nothing",
+              got == draw_at_the_lock(p, commit, sha_file(pfile)) and len(got["members"]) == 3
+              and any(draw_at_the_lock(p, c * 40, sha_file(pfile))["members"] != got["members"] for c in "bcdef")
+              and draw(got["seed"], list(reversed(p["draw"]["drawn_from"])), 3) == got["members"]
+              and got["seed"] == seed_at_the_lock(commit, sha_file(pfile)) and got["seed"] != seed_at_the_lock(other, sha_file(pfile)))
+        check("a random proposal on the record, still to be drawn, has no problems", problems(pfile, studies) == [])
+        drawn_early = tmp / "p" / "drawn-early.yaml"
+        drawn_early.write_text(yaml.safe_dump({**p, "members": ["S01", "S02", "S03"], "draw": {**p["draw"], "seed_sha256": "0" * 64}}))
+        seed_path(drawn_early).write_text("0" * 64 + "\n")
+        check("A4-06: a random set aside drawn when it was proposed (members listed, a seed recorded or beside it), as the tool once drew "
+              "one, is refused: its proposer could draw again until the members suited them",
+              any("drawn when its proposal was written" in q for q in problems(drawn_early)))
+        check("A4-06: a seed handed in is refused, and so is a reveal with no merge commit; with it, the reveal draws as the opening does",
+              "a seed handed in is refused" in refused(cmd_reveal, A(proposal=str(pfile), seed_file=str(seed_path(drawn_early)), merge_commit=commit))
+              and "give `--merge-commit`" in refused(cmd_reveal, A(proposal=str(pfile), seed_file=None, merge_commit=None))
+              and refused(cmd_reveal, A(proposal=str(pfile), seed_file=None, merge_commit=commit)) == ""
+              and any("drawn when its proposal was written" in q for q in problems(pfile, seed="0" * 64)))
+        a2 = A(kind="random", fraction=0.2, out=str(tmp / "p" / "random-2.yaml"), **base)
         cmd_propose(a2)
         check("a second proposal for the same subject is a new line on the record, and the record says how many there are",
               on_record(a2.out, studies) == {"on_record": True, "sha256": sha_file(Path(a2.out)), "for_this_subject": 2, "position": 2})
         check("a proposal is written once: the same path is refused", "already exists" in refused(cmd_propose, a2))
-        words = "\n".join(in_words(p, revealed=seed, record=on_record(pfile, studies)))
-        check("in words, a random set aside says nobody chose the members, shows the revealed seed and that it draws the same, and says "
-              "where it stands on the record", "Nobody chose the members" in words and seed.strip() in words
-              and "Drawing again from it gives the same members: yes" in words and "number 1" in words and "{" not in words)
+        words = "\n".join(in_words(p, record=on_record(pfile, studies)))
+        check("in words, a random set aside says nobody can choose the members, that they are drawn at the lock from the merge commit, "
+              "that a practice draw could be chosen, and where it stands on the record",
+              "Nobody can choose the members" in words and "to be drawn at the lock" in words and "merge commit" in words
+              and "could be chosen" in words and "number 1" in words and "{" not in words and "Nobody chose the members" not in words)
         # a release binds the data as it stands (found by the first real run of the factory)
         check("a release the metadata does not declare is refused: a set aside is a release the metadata says is coming",
               "not declared in the metadata" in refused(propose, A(kind="next-release", release="v9", **base)))
@@ -991,9 +1040,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--proposal", required=True)
     p.add_argument("--studies", default=None, help="say where the proposal stands on the record kept there")
     p.set_defaults(fn=cmd_show)
-    p = sub.add_parser("reveal", allow_abbrev=False, help="draw a random set aside again from its seed")
+    p = sub.add_parser("reveal", allow_abbrev=False, help="draw a random set aside from the lock's merge commit, as the opening drew it")
     p.add_argument("--proposal", required=True)
-    p.add_argument("--seed-file", dest="seed_file", default=None, help="default: the .seed file beside the proposal")
+    p.add_argument("--merge-commit", dest="merge_commit", default=None, help="the commit GitHub created when the lock request was merged")
+    p.add_argument("--seed-file", dest="seed_file", default=None, help="refused: a seed is never handed in")
     p.set_defaults(fn=cmd_reveal)
     p = sub.add_parser("check", allow_abbrev=False, help="what a reviewer asks of a proposal")
     p.add_argument("--proposal", required=True)

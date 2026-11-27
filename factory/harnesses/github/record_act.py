@@ -36,6 +36,27 @@ GitHub: it is tested here on payloads written in the platform's shapes and a thr
 import sys
 
 sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
+    # A clean start, as in the tools: run again in a Python that reads no PYTHON variable, no user site, no start-up file
+    # and no cached bytecode (its cache prefix is a path that cannot exist). What ran before this line has already run.
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
+if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
+    _own = __file__.replace("\\", "/").rpartition("/")[0]
+    del sys.path[0]
+    sys.path[:] = [p for p in sys.path if p != _own]
 
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
@@ -45,6 +66,20 @@ import os  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent  # the repository: this file is in factory/harnesses/github/
@@ -52,7 +87,7 @@ ROOT = HERE.parent.parent.parent  # the repository: this file is in factory/harn
 
 def _load(name: str, path: Path):
     if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(name, path)
+        spec = _source_spec(name, path)
         mod = importlib.util.module_from_spec(spec)
         sys.modules[name] = mod
         spec.loader.exec_module(mod)
@@ -158,6 +193,7 @@ def selftest(only: str | None = None) -> int:
         base = sha()
         sf.Study.default_model, sf.Study.default_route = "selftest-model", None  # the real route: nothing here is typed as a person's act
         sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; recorded answers are put here where a check needs them
+        sf.STAND_INS_COUNT = True  # inside this self-test a stand-in's `verified` counts; each answer is still marked as a stand-in's
         try:
             g("checkout", "-q", "-b", "lock/S1")
             study = sf._fresh(repo / "studies", "S1", start=A(id="STUDY-TEST", question=sf.PLAN["question"], by="agent:coordinating"))
@@ -285,7 +321,6 @@ def selftest(only: str | None = None) -> int:
                and sf.acts_report(study)["lock"]["approved_by"] == ["example-scientist"], R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the verification of " + merge)
             sf.cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
-            sf.PLATFORM_CALL = sf._dead_platform
             ok("with the lock recorded from the merge, committed, and confirmed by the platform when the opening asks, the held-out data is "
                "opened, with no practice flag anywhere",
                study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == "pull-request"
@@ -295,7 +330,8 @@ def selftest(only: str | None = None) -> int:
             g("checkout", "-q", "-b", "sign/S1")
             (tmp / "finding.md").write_text("a finding drafted from receipts\n")
             (tmp / "verdict.md").write_text("APPROVE\n")
-            sf.cmd_attach(study, A(by="agent:analysis", file=str(tmp / "finding.md")))
+            sf.cmd_attach(study, A(by="agent:analysis", file=str(tmp / "finding.md")))  # the lock is confirmed when attach asks the platform now
+            sf.PLATFORM_CALL = sf._dead_platform
             sf.cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "verdict.md")))
             posted = sf._posted(study)
             sf.cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=posted, evidence=None, comment=None))

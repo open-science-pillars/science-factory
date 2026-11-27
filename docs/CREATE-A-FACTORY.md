@@ -118,7 +118,7 @@ Three results: `valid` (exit 0), `invalid` (exit 1, each broken rule printed wit
 
 ## What the lock binds
 
-The plan, the code, the request, the receipts of the tests, the proposal of the fresh data and its seed, and the definition: the checksum of the whole tree (but the change log), its version, each agent's declared model and harness, and each skill by checksum. A definition changed between the lock and the opening blocks the opening; the remedy is a new lock.
+The plan, the code, the request, the receipts of the tests, the proposal of the fresh data, and the definition: the checksum of the whole tree (but the change log), its version, the checksum of `tools/`, each agent's declared model and harness, and each skill by checksum. A definition changed between the lock and the opening blocks the opening; the remedy is a new lock.
 
 ## What a file can change, and what needs code
 

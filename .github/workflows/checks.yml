@@ -57,8 +57,9 @@ jobs:
       - name: The conformance test fails every deliberately wrong runner
         run: uv run compute/adapter.py conformance --self-check
       # The self-tests below include every attack an independent reviewer made on these tools (docs/reviews/README.md, R1 to
-      # R3). The GitHub harness's verification asks no platform here: it runs on answers written by hand, and its one call on
-      # this machine's loopback address. The exploring tool's tests of the kernel fence run with it where the runner's kernel
+      # R4). The GitHub harness's verification asks no platform here: it runs on answers written by hand, and its one call on
+      # this machine's loopback address, where verify_acts.py --selftest also builds the fourth attack's stand-in for GitHub
+      # (a throwaway certificate authority made with openssl) and checks that the verifier, in its own process, refuses it. The exploring tool's tests of the kernel fence run with it where the runner's kernel
       # has Landlock, and all of them also run with it switched off. The knowledge helpers' self-test checks that
       # factory/checkers.yaml parses; the one checker pinned there belongs to another repository and is run only by the
       # optional demo (demo-with-hydrology.yml), never here.
@@ -86,12 +87,17 @@ jobs:
       # binding the data as it stands, a long series described from its date column, and the rest.
       # From definition 0.15.0 they also carry that release into the confirming study (WHAT-IS-ENFORCED row 1.31): sf.py's checks
       # on a monthly series to a cut-off, explore.py's on a release handed over, fresh_data.py's on the cadence a proposal keeps.
+      # From definition 0.16.0 (R4): the checks named "A4-" in sf.py, explore.py, fresh_data.py, check_factory.py, scorers.py and
+      # verify_acts.py: a standing asked of GitHub where it is used, no bytecode read or bound, the random draw at the lock, the
+      # so what for every study from an exploration, and dates read row by row.
       # The example also shows, in practice mode, a fit note, the overclaiming check, a person's so what, figures at the lock, a
       # look promoted to a method in a scratch copy of the definition, and a contribution statement.
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
         run: uv run examples/stand-alone/run.py
-      - name: The example left nothing in the repository
-        run: test -z "$(git status --porcelain)"
+      - name: The example left nothing in the repository, and nothing anywhere wrote bytecode beside the tools or the definition
+        run: |
+          test -z "$(git status --porcelain)"
+          test -z "$(find . -name __pycache__ -not -path './.git/*')"
       - name: The stand-alone example again, with a setting that makes the launcher warn on standard error
         # uv prints a deprecation warning for this variable on every call; the example once read that warning as part of
         # a tool's answer and crashed. One of its own steps tests the same thing without depending on the launcher.

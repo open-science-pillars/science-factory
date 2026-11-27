@@ -81,12 +81,12 @@ Usage:
 import sys
 
 sys.dont_write_bytecode = True
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
     # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
     # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess
@@ -122,6 +122,20 @@ import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
+
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -211,9 +225,86 @@ def sha_bytes(b: bytes) -> str:
 
 
 def files_of(root: Path) -> list:
-    """Every file of the tree, as paths from the root, sorted. Bytecode folders are no part of a definition."""
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*")
-                  if (p.is_file() or p.is_symlink()) and "__pycache__" not in p.parts and p.suffix != ".pyc")
+    """Every file of the tree, as paths from the root, sorted: every file, a bytecode folder's included, so that the
+    checksum binds whatever is there (and the validator refuses bytecode: a definition is source)."""
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() or p.is_symlink())
+
+
+# The tools a definition is run with, by name: the files of tools/ beside factory/. A file there that is not one of these
+# (a module named like one the tools import, a bytecode folder, anything left behind) is refused at the lock and the
+# opening, because a tool loads its neighbours from that folder.
+TOOL_FILES = ("benchmark.py", "check_factory.py", "check_roles.py", "explore.py", "fence.py", "fresh_data.py", "knowledge.py",
+              "scorers.py", "sf.py", "wiki_server.py")
+
+
+def is_bytecode(rel: str) -> bool:
+    return "__pycache__" in rel.split("/") or rel.endswith((".pyc", ".pyo"))
+
+
+def tools_checksum(tools: Path) -> dict:
+    """The checksum of the tools the definition is run with: every file of tools/, by path, sha256 and mode, in the way
+    the definition tree is bound. The lock binds it beside the definition's, and a change to either blocks the opening."""
+    tools = Path(tools).resolve()
+    listed = [entry_of(tools, rel) for rel in files_of(tools)] if tools.is_dir() else []
+    return {"sha256": sha_bytes(json.dumps(listed, separators=(",", ":")).encode()), "files": len(listed)}
+
+
+def unbound_files(factory: Path, tools: Path) -> list:
+    """What is present under factory/ or tools/ and bound by nothing a tool trusts, in words: any bytecode (a
+    `__pycache__` folder, a .pyc file), anything in tools/ that is not one of the tools, and any symlink. Python would
+    load bytecode in place of a source file whose time and size it names, so it is refused, not merely hashed."""
+    out = []
+    for label, root in (("factory/", Path(factory)), ("tools/", Path(tools))):
+        if not root.is_dir():
+            continue
+        for d in sorted(q for q in root.rglob("__pycache__")):
+            out.append(f"{label}{d.relative_to(root).as_posix()}: a bytecode folder, which Python would load in place of the source beside it")
+        for rel in files_of(root):
+            if is_bytecode(rel) and "__pycache__" not in rel.split("/"):
+                out.append(f"{label}{rel}: a bytecode file")
+            elif (root / rel).is_symlink():
+                out.append(f"{label}{rel}: a symlink")
+            elif label == "tools/" and rel not in TOOL_FILES and "__pycache__" not in rel.split("/"):
+                out.append(f"tools/{rel}: not one of the tools ({', '.join(TOOL_FILES)}), and a tool loads its neighbours from this folder")
+    return out
+
+
+def acts_change_problems(root: Path, spec: dict | None = None) -> list:
+    """Why the definition's acts by people (`procedure.acts_by_people`) are not a recorded change, in words; empty when
+    they are. A record of the change log names them by checksum (`sf.py log-change` writes it) under the version the
+    definition gives, and no record names other acts under that same version: who approves an act, how many, and whether
+    held-out data may be opened on a lock nobody verified change only with the version, on the record."""
+    root = Path(root)
+    if spec is None:
+        try:
+            spec = load_yaml((root / "factory.yaml").read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError, UnicodeDecodeError):
+            return ["factory.yaml cannot be read"]
+    records = []
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for ln in (root / "change-log.jsonl").read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError):
+                r = json.loads(ln)
+                if isinstance(r, dict) and isinstance(r.get("context"), dict):
+                    records.append(r["context"])
+    want, version, out = acts_sha256(spec), str((spec or {}).get("version")), []
+    if not any(c.get("acts_sha256") == want for c in records):
+        out.append(f"factory.yaml: `procedure.acts_by_people` (sha256 {want[:16]}) is not the block any record of the change log names. "
+                   "Who approves an act, how many, and whether held-out data may be opened on a lock nobody verified are changes people "
+                   "approve: give the definition a new version and record the change (`sf.py log-change`, which names this block by "
+                   "checksum), so the summary of the change and the lock request show it")
+    clash = sorted({str(c.get("acts_sha256"))[:16] for c in records if c.get("acts_sha256") not in (None, want)
+                    and str(c.get("definition_version")) == version})
+    if clash:
+        out.append(f"factory.yaml: the acts by people are not the ones the change log recorded under this same version ({version}; it "
+                   f"recorded {', '.join(clash)}): a change to the acts by people changes the version")
+    return out
+
+
+def acts_sha256(spec) -> str:
+    """The checksum of the definition's acts by people (`procedure.acts_by_people`), as a change-log record names it."""
+    acts = ((spec or {}).get("procedure") or {}).get("acts_by_people") if isinstance(spec, dict) else None
+    return sha_bytes(json.dumps(acts, sort_keys=True, default=str).encode())
 
 
 def entry_of(base: Path, rel: str) -> tuple:
@@ -366,7 +457,7 @@ HARNESS = {"description!": TEXT, "starts!": TEXT, "models!": ANY, "status!": ("o
            "holds": STRINGS, "by_instruction_only": STRINGS,
            # a harness that carries the acts by people says where its platform answers and what a verification asks it
            "platform": {"name!": TEXT, "api!": TEXT, "token_from!": STRINGS, "token_needs!": STRINGS, "asks!": STRINGS, "proves!": STRINGS,
-                        "does_not_prove!": STRINGS}}
+                        "does_not_prove!": STRINGS, "proxy": TEXT}}
 RUNNER = {"description!": TEXT, "platform": {"os!": TEXT, "arch!": TEXT, "linux": {"dockerImage!": TEXT}},
           "status!": ("one", ("built", "specified")), "basis!": TEXT, "for!": STRINGS, "contract!": ("map", TEXT), "open_questions!": STRINGS}
 SCORER = {"description!": TEXT, "type!": ("one", ("deterministic", "judge")), "check": TEXT, "reads!": STRINGS, "selfImprovement!": FLAG,
@@ -495,7 +586,7 @@ def names_in(rel: str) -> list:
 
 
 def check_roles_module():
-    spec = importlib.util.spec_from_file_location("check_roles", HERE / "check_roles.py")
+    spec = _source_spec("check_roles", HERE / "check_roles.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -552,6 +643,10 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         f = root / rel
         if f.is_symlink() or any(q.is_symlink() for q in f.parents if root in q.parents or q == root):
             bad("form", f"{rel} is a symlink (or sits under one): a definition is the files themselves, so that its checksum covers what is read")
+            continue
+        if is_bytecode(rel):
+            bad("form", f"{rel} is bytecode: a definition is source, and Python would load bytecode in place of the source beside it, "
+                        "which the checksum of the source does not show. Remove it")
             continue
         if not allowed_path(rel):
             bad("form", f"{rel} is at no place the definition tree has for a file (the tree is listed in this tool's help)")
@@ -737,6 +832,11 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
     if len({(a or {}).get("route") for a in acts.values() if isinstance(a, dict)}) > 1:
         bad("acts", "factory.yaml: one act is a pull request and the other is practice: a study with a typed act never closes as a signed "
                     "finding, so a factory declares both acts the same way")
+
+    # ---- the acts by people change only under a new version, with a record of the change log that names them
+    if acts:
+        for q in acts_change_problems(root, spec):
+            bad("acts", q)
 
     # ---- the so what: a person's answer to a reviewed lead, which no agent may call
     so = proc.get("so_what")
@@ -1204,6 +1304,15 @@ def selftest() -> int:
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
             (d / rel).write_text(text)
 
+        def recorded_change(d: Path, version: str = "99.0.0-selftest") -> None:
+            """What a person does when they change the acts by people: a new version, and a record of the change log naming them."""
+            text = (d / "factory.yaml").read_text()
+            (d / "factory.yaml").write_text(re.sub(r"(?m)^version: (\S+)", f"version: {version}", text, count=1))
+            spec = load_yaml((d / "factory.yaml").read_text())
+            with (d / "change-log.jsonl").open("a") as f:
+                f.write(json.dumps({"problem_class": "a selftest", "change": "the acts by people changed", "predicted": "as said",
+                                    "context": {"definition_version": version, "acts_sha256": acts_sha256(spec)}}) + "\n")
+
         def case(name: str, change, expect: str, word: str = "invalid") -> None:
             d = copy(f"case-{len(results)}")
             change(d)
@@ -1328,8 +1437,12 @@ def selftest() -> int:
                                                        if not ln.startswith(("      repository: ", "      merge_methods: ", "      opening_needs: ",
                                                                              "      opening_without_verification: "))))
         edit(practice, "factory.yaml", "      route: pull-request\n      harness: github\n      protected_branch: main\n      approvals: 1\n", "      route: practice\n")
-        results.append(("a factory whose two acts are both declared as practice is valid, and the summary of that change says what practice means",
-                        result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
+        unrecorded = result(practice)
+        recorded_change(practice)
+        results.append(("a factory whose two acts are both declared as practice is valid once the change is recorded under a new version, and "
+                        "the summary of that change says what practice means",
+                        unrecorded[0] == "invalid" and any("is not the block any record of the change log names" in q for q in unrecorded[2])
+                        and result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
                         in "\n".join(summary(clean, practice))))
         case("an act that is a pull request and names no repository on the platform",
              lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
@@ -1402,9 +1515,47 @@ def selftest() -> int:
              "which belongs to the lock")
         allows = copy("allows-an-unverified-opening")
         edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
-        results.append(("a definition that allows an opening on an unverified lock is valid, and the summary of that change says so in words",
+        one_word = result(allows)
+        recorded_change(allows, "99.0.0-the-acts-as-shipped")
+        edit(allows, "factory.yaml", "      opening_without_verification: allowed-with-a-reason", "      opening_without_verification: refused")
+        recorded_change(allows, "99.0.0-the-acts-as-shipped")
+        edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
+        results.append(("A4-11: the exception allowed by a one-word edit, with the version unchanged and no record in the change log, is invalid, "
+                        "and says that a change to the acts by people is recorded under a new version",
+                        one_word[0] == "invalid" and any("not the block any record of the change log names" in q and "new version" in q for q in one_word[2])))
+        with (allows / "change-log.jsonl").open("a") as f:
+            f.write(json.dumps({"problem_class": "x", "change": "allow it", "predicted": "x", "context": {
+                "definition_version": load_yaml((allows / "factory.yaml").read_text())["version"],
+                "acts_sha256": acts_sha256(load_yaml((allows / "factory.yaml").read_text()))}}) + "\n")
+        same_version = result(allows)
+        results.append(("A4-11: a record of the change made under the version the earlier acts were recorded under is not enough: a change to "
+                        "the acts by people changes the version",
+                        same_version[0] == "invalid" and any("a change to the acts by people changes the version" in q for q in same_version[2])))
+        allows = copy("allows-an-unverified-opening-recorded")
+        edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
+        recorded_change(allows)
+        results.append(("a definition that allows an opening on an unverified lock, under a new version with a record of the change, is valid, "
+                        "and the summary of that change says so in words",
                         result(allows)[0] == "valid" and "From now on a person may open the held-out data on a lock nobody verified"
                         in "\n".join(summary(clean, allows))))
+        # A4-02: bytecode is part of what the checksum binds, the validator refuses it, and the lock refuses what nothing binds
+        planted = copy("bytecode-planted")
+        before_sum, before_tools = tree_checksum(planted)["sha256"], tools_checksum(planted.parent / "tools")["sha256"]
+        (planted / "harnesses/github/__pycache__").mkdir()
+        (planted / "harnesses/github/__pycache__/verify_acts.cpython-313.pyc").write_bytes(b"\x00 ATTACK MARKER")
+        (planted.parent / "tools/__pycache__").mkdir()
+        (planted.parent / "tools/__pycache__/check_factory.cpython-313.pyc").write_bytes(b"\x00 ATTACK MARKER")
+        (planted.parent / "tools/json.py").write_text("raise SystemExit('a module named like one the tools import')\n")
+        got = result(planted)
+        found = unbound_files(planted, planted.parent / "tools")
+        results.append(("A4-02: bytecode beside the verifier changes the definition's checksum, and the definition is invalid: a definition is source",
+                        tree_checksum(planted)["sha256"] != before_sum and got[0] == "invalid"
+                        and any("harnesses/github/__pycache__/verify_acts.cpython-313.pyc is bytecode" in q for q in got[2])))
+        results.append(("A4-02: bytecode and a stray file in tools/ change the tools' checksum, and both are listed as bound by nothing",
+                        tools_checksum(planted.parent / "tools")["sha256"] != before_tools
+                        and any(q.startswith("tools/__pycache__") for q in found) and any(q.startswith("tools/json.py") for q in found)
+                        and any(q.startswith("factory/harnesses/github/__pycache__") for q in found)))
+        results.append(("a clean copy of the definition and the tools holds nothing bound by nothing", unbound_files(clean, clean.parent / "tools") == []))
         case("a harness that carries the acts and does not say where its platform answers",
              lambda d: edit(d, "harnesses/github/harness.yaml", "  api: https://api.github.com", "  api: http://localhost:8080"),
              "names no `platform.api` that begins with https://")

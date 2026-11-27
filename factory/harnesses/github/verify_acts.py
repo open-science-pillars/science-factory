@@ -52,7 +52,29 @@ the machine's own loopback address for its self-test.
 import sys
 
 sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
+    # A clean start, as in the tools: run again in a Python that reads no PYTHON variable, no user site, no start-up file
+    # and no cached bytecode (its cache prefix is a path that cannot exist). What ran before this line has already run.
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
+if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
+    _own = __file__.replace("\\", "/").rpartition("/")[0]
+    del sys.path[0]
+    sys.path[:] = [p for p in sys.path if p != _own]
 
+import contextlib  # noqa: E402
 import copy  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
@@ -60,15 +82,23 @@ import os  # noqa: E402
 import re  # noqa: E402
 import urllib.error  # noqa: E402
 import urllib.parse  # noqa: E402
+import ssl  # noqa: E402
 import urllib.request  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PLATFORM = "github"
 API = "https://api.github.com"
+HOST = "api.github.com"  # the one host a verification asks; harness.yaml must name it as `platform.api`, and nothing else can
+# Where the system's own certificate authorities are, tried in order when this program is asked to verify; the first file
+# that exists is used, and recorded with its checksum. A certificate setting of the caller's (SSL_CERT_FILE and the like)
+# is never read: the program that asks runs with an environment that holds the token and nothing else.
+SYSTEM_CERTIFICATES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem",
+                       "/etc/ssl/cert.pem", "/usr/local/etc/openssl/cert.pem", "/opt/homebrew/etc/openssl@3/cert.pem")
 TOKEN_NAMES = ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")  # the first that is set; a token is never read from a file
 REQUIRED_CHECK = "request-check"  # the job of acts.workflow.yml that the branch protection makes a required status check
-DECIDES_THE_ROUTE = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR")
+DECIDES_THE_ROUTE = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
+                     "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")  # read by nothing that asks: recorded as ignored
 VERIFIED, REFUTED, NOT_CHECKED = "verified", "refuted", "not checked"
 NOT_REACHED = (0, 401, 403, 429)  # no answer, or an answer that says only that this token may not ask
 MAX_PAGES = 20
@@ -81,16 +111,45 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def certificates() -> dict:
+    """The certificate authorities a verification trusts: the system's own file, by path and checksum, or the system's
+    default store where no such file is found. Never what an environment variable names."""
+    defaults = ssl.get_default_verify_paths()
+    for f in (defaults.openssl_cafile, *SYSTEM_CERTIFICATES):
+        if f and os.path.isfile(f):
+            with open(f, "rb") as fh:
+                return {"path": f, "sha256": hashlib.sha256(fh.read()).hexdigest()}
+    return {"path": None, "sha256": None, "store": "the system's default store (no certificate file was found)"}
+
+
+def opener_for(proxy: str | None = None) -> tuple:
+    """(the opener a verification asks through, how it asks). Only the proxy the definition names (harness.yaml,
+    `platform.proxy`) is used, as a tunnel: no proxy setting of the environment is read, and the certificates are the
+    system's (`certificates`), whatever the environment says."""
+    certs = certificates()
+    ctx = ssl.create_default_context(cafile=certs["path"]) if certs["path"] else ssl.create_default_context()
+    if not certs["path"]:
+        ctx.load_default_certs()
+    proxies = {"https": str(proxy)} if proxy else {}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies), urllib.request.HTTPSHandler(context=ctx), _NoRedirect)
+    return opener, {"host": HOST, "proxy": str(proxy) if proxy else None, "certificates": certs}
+
+
 def platform_call(api: str, path: str, token: str, opener=None) -> dict:
     """The one function that talks to the platform: one GET, one answer, as {"status", "body"} or {"status": 0,
-    "error"}. Nothing is retried and no redirect is followed. Everything else in this file works on what this
+    "error"}. Nothing is retried and no redirect is followed. Without an opener it asks the one host this file names
+    (HOST), with no proxy and the system's certificates; an opener is given only by `ask` (the definition's proxy) and
+    by this file's self-test (a server on the loopback address). Everything else in this file works on what this
     returns, and the self-tests put recorded answers in its place."""
     if opener is None and not str(api).startswith("https://"):
         return {"status": 0, "error": "the platform is asked over https and nothing else"}
+    if opener is None and urllib.parse.urlsplit(str(api)).hostname != HOST:
+        return {"status": 0, "error": f"the platform is asked at {HOST} and nowhere else"}
+    if opener is None:
+        opener = opener_for(None)[0]
     req = urllib.request.Request(api.rstrip("/") + path, headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
         "Authorization": f"Bearer {token}", "User-Agent": "science-factory-verify-acts"})
-    opener = opener or urllib.request.build_opener(_NoRedirect)
     try:
         with opener.open(req, timeout=30) as resp:
             return {"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))}
@@ -114,8 +173,9 @@ def token_from(environ) -> tuple:
 
 
 def through(environ) -> list:
-    """The names of the caller's settings that decide how the request travels (a proxy, a certificate store). They
-    are recorded by name: a request sent through a proxy with its own certificates is answered by that proxy."""
+    """The names of the caller's settings that would decide how a request travels (a proxy, a certificate store). The
+    program that asks never sees them (`ask` runs with an environment that holds the token alone), so they are recorded
+    by name as ignored: a request sent through a proxy with its own certificates would be answered by that proxy."""
     return sorted(n for n in DECIDES_THE_ROUTE if environ.get(n))
 
 
@@ -476,6 +536,88 @@ EXPECT = {"repository": FILL["REPOSITORY"], "branch": "main", "commit": FILL["ME
                       "evidence": {"path": FILL["EVIDENCE_PATH"], "blob": FILL["EVIDENCE_BLOB"]}}}
 
 
+def _throwaway_tls(folder: Path) -> dict | None:
+    """For the self-tests: a certificate authority made up here and a certificate it signed for the platform's host, as the
+    fourth attack made, by `openssl`; None when openssl is not on this machine. Nothing made here is kept."""
+    import shutil
+    import subprocess
+    openssl = shutil.which("openssl")
+    if not openssl:
+        return None
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "ext.cnf").write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n"
+                                    f"extendedKeyUsage=serverAuth\nsubjectAltName=DNS:{HOST}\nauthorityKeyIdentifier=keyid\nsubjectKeyIdentifier=hash\n")
+    steps = [[openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "2",
+              "-subj", "/CN=a throwaway authority of a self-test", "-addext", "basicConstraints=critical,CA:TRUE",
+              "-addext", "keyUsage=critical,keyCertSign,cRLSign"],
+             [openssl, "req", "-newkey", "rsa:2048", "-nodes", "-keyout", "srv.key", "-out", "srv.csr", "-subj", f"/CN={HOST}"],
+             [openssl, "x509", "-req", "-in", "srv.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "srv.pem",
+              "-days", "2", "-extfile", "ext.cnf"]]
+    for argv in steps:
+        if subprocess.run(argv, cwd=folder, capture_output=True, stdin=subprocess.DEVNULL).returncode != 0:
+            return None
+    return {"ca": str(folder / "ca.pem"), "cert": str(folder / "srv.pem"), "key": str(folder / "srv.key")}
+
+
+def _loopback_tls_proxy(tls: dict) -> tuple:
+    """For the self-tests: a stand-in for the platform on the loopback address, as the fourth attack built one. It answers
+    `CONNECT api.github.com:443` with 200, then speaks TLS with the throwaway certificate and answers any request with a
+    repository. It forwards nothing anywhere. Returns (its address as a proxy, what it saw, a function that stops it)."""
+    import socket
+    import threading
+    seen = {"connects": [], "handshakes": 0, "requests": []}
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(tls["cert"], tls["key"])
+    lsock = socket.socket()
+    lsock.bind(("127.0.0.1", 0))
+    lsock.listen(8)
+    lsock.settimeout(0.5)
+    stop = threading.Event()
+
+    def one(c):
+        try:
+            c.settimeout(10)
+            head = b""
+            while b"\r\n\r\n" not in head and len(head) < 8192:
+                got = c.recv(1024)
+                if not got:
+                    return
+                head += got
+            line = head.split(b"\r\n", 1)[0].decode("latin-1")
+            seen["connects"].append(line)
+            if not line.startswith(f"CONNECT {HOST}:443 "):
+                c.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                return
+            c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            t = ctx.wrap_socket(c, server_side=True)
+            seen["handshakes"] += 1
+            req = t.recv(65536).decode("latin-1")
+            seen["requests"].append(req.split("\r\n", 1)[0])
+            body = json.dumps({"full_name": "example-org/example-studies"}).encode()
+            t.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+            t.close()
+        except (OSError, ssl.SSLError):
+            pass
+        finally:
+            with contextlib.suppress(OSError):
+                c.close()
+
+    def serve():
+        while not stop.is_set():
+            try:
+                c, _ = lsock.accept()
+            except (socket.timeout, OSError):
+                continue
+            threading.Thread(target=one, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def halt():
+        stop.set()
+        with contextlib.suppress(OSError):
+            lsock.close()
+    return f"http://127.0.0.1:{lsock.getsockname()[1]}", seen, halt
+
+
 def selftest() -> int:
     import http.server
     import threading
@@ -572,6 +714,57 @@ def selftest() -> int:
     renamed = verify(lambda api, path, token: {"status": 301, "body": None}, API, "a-token", EXPECT)
     ok("a repository that answers with a redirect is `not checked`, and the answer says to name it as it is called now",
        renamed["result"] == NOT_CHECKED and "has moved or been renamed" in renamed["problems"][0])
+    # ---- the route the question takes: a fixed host, no proxy or certificate of the environment's, and the answer says how it went
+    kept_env = {k: os.environ.get(k) for k in ("SSL_CERT_FILE", "HTTPS_PROXY", "https_proxy")}
+    os.environ.update(SSL_CERT_FILE="/nonexistent/a-certificate-of-the-callers.pem", HTTPS_PROXY="http://127.0.0.1:9", https_proxy="http://127.0.0.1:9")
+    try:
+        opener, via = opener_for(None)
+        proxies = [h.proxies for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
+        ok("A4-03: the opener a verification asks through uses no proxy of the environment's and trusts the system's certificates, not "
+           "a file an environment variable names, and says so",
+           proxies == [] and via["host"] == HOST and via["proxy"] is None and via["certificates"]["path"] != os.environ["SSL_CERT_FILE"])
+        ok("A4-03: a proxy is used only where the definition names one, as a tunnel",
+           [h.proxies for h in opener_for("http://proxy.invalid:3128")[0].handlers if isinstance(h, urllib.request.ProxyHandler)] == [{"https": "http://proxy.invalid:3128"}])
+    finally:
+        for k, v in kept_env.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    ok("A4-03: the call asks the one host this file names and refuses any other address without sending anything",
+       platform_call("https://127.0.0.1:18443", "/repos/a/b", "a-token") == {"status": 0, "error": f"the platform is asked at {HOST} and nowhere else"}
+       and platform_call("https://api.github.com.example.invalid", "/repos/a/b", "a-token")["status"] == 0)
+    ok("asked in a process of its own with no token in its environment, nothing is asked and the result is `not checked`",
+       (lambda got: got["result"] == NOT_CHECKED and got["asked"] == [] and got["via"]["host"] == HOST)(globals()["ask"]({"what": "act", "expect": EXPECT, "proxy": None})))
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        tls = _throwaway_tls(Path(tmp) / "tls")
+        ok("openssl is on this machine, so the loopback stand-in of the fourth attack can be built", tls is not None)
+        if tls:
+            proxy, seen, halt = _loopback_tls_proxy(tls)
+            try:
+                env = {"SF_PLATFORM_TOKEN": "a-fake-token-sent-only-to-the-loopback-address", "SSL_CERT_FILE": tls["ca"],
+                       "HTTPS_PROXY": proxy, "https_proxy": proxy}
+                ctl = ssl.create_default_context(cafile=tls["ca"])
+                import socket
+                raw = socket.create_connection(("127.0.0.1", int(proxy.rsplit(":", 1)[1])), timeout=10)
+                raw.sendall(f"CONNECT {HOST}:443 HTTP/1.1\r\nHost: {HOST}:443\r\n\r\n".encode())
+                raw.recv(1024)
+                with ctl.wrap_socket(raw, server_hostname=HOST) as s:
+                    s.sendall(b"GET /control HTTP/1.1\r\nHost: api.github.com\r\n\r\n")
+                    control = s.recv(4096)
+                ok("the stand-in's certificate is good for the platform's host to anybody who trusts the throwaway authority (the control)",
+                   control.startswith(b"HTTP/1.1 200"))
+                question = json.dumps({"what": "act", "expect": EXPECT, "proxy": proxy})
+                done = subprocess.run([sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=/dev/null/sf-no-bytecode", str(Path(__file__).resolve()), "--ask"],
+                                      input=question, capture_output=True, text=True, env=env, timeout=120)
+                got = json.loads(done.stdout.strip().splitlines()[-1])
+                ok("A4-03: behind a proxy the definition names, the stand-in of the fourth attack (a throwaway authority named by "
+                   "SSL_CERT_FILE) is not trusted: the certificate fails, the answer is `not checked`, the request never reached it, and "
+                   "the answer records the host, the proxy and the certificate file it trusted",
+                   got["result"] == NOT_CHECKED and "CERTIFICATE_VERIFY_FAILED" in json.dumps(got["asked"]) and seen["requests"] == ["GET /control HTTP/1.1"]
+                   and seen["connects"][-1].startswith(f"CONNECT {HOST}:443") and got["via"]["proxy"] == proxy and got["via"]["host"] == HOST
+                   and got["via"]["certificates"]["path"] != tls["ca"])
+            finally:
+                halt()
     comment = {"id": 41, "html_url": "https://github.com/example-org/example-studies/issues/3#issuecomment-41",
                "user": {"login": "a-scientist", "type": "User"}, "author_association": "MEMBER", "created_at": "2026-11-26T10:00:00Z",
                "body": "so-what: worth-confirming\nexploration: EXPLORATION-1\nlead: 0123456789ab\n"}
@@ -601,9 +794,36 @@ def selftest() -> int:
     return 0 if good_n == len(results) else 1
 
 
+def ask(question: dict) -> dict:
+    """What the study tool runs in a process of its own (`verify_acts.py --ask`, the question on standard input), so that
+    nothing in the study tool's process can stand in for the call: {"what": "act" or "comment", "expect": as `verify` or
+    `verify_comment` takes it, "proxy": the definition's proxy or null}. The token is read from this process's
+    environment, which the study tool builds to hold the token and nothing else. Returns the verification with `via`:
+    the host asked, the proxy used if any, and the certificates trusted."""
+    opener, via = opener_for(question.get("proxy"))
+    name, token = token_from(os.environ)
+    if not token:
+        return {"result": NOT_CHECKED, "problems": ["no token in the environment of the program that asks: nothing was asked"], "told": {},
+                "asked": [], "answers_sha256": None, "via": via, "token_from": None}
+
+    def call(api: str, path: str, tok: str) -> dict:
+        return platform_call(API, path, tok, opener=opener)
+    fn = verify if question.get("what") == "act" else verify_comment
+    got = fn(call, API, token, question["expect"])
+    got.update(via=via, token_from=name)
+    return got
+
+
 def main() -> int:
     if sys.argv[1:] == ["--selftest"]:
         return selftest()
+    if sys.argv[1:] == ["--ask"]:
+        try:
+            question = json.loads(sys.stdin.read())
+            print(json.dumps(ask(question), sort_keys=True, default=str))
+        except (ValueError, KeyError, TypeError) as e:
+            print(json.dumps({"result": NOT_CHECKED, "problems": [f"the question could not be read ({type(e).__name__})"], "told": {}, "asked": []}))
+        return 0
     print(__doc__)
     print("This file is called by the study tool: `uv run tools/sf.py verify-acts --study studies/<study> --by <name>`.")
     return 0 if sys.argv[1:] in ([], ["--help"], ["-h"]) else 2

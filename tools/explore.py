@@ -235,12 +235,12 @@ Usage: explore.py <command> --exploration DIR [...]; explore.py selftest
 import sys
 
 sys.dont_write_bytecode = True
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
     # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
     # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess
@@ -277,6 +277,20 @@ import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
+
 
 HERE = Path(__file__).resolve().parent
 
@@ -284,7 +298,7 @@ HERE = Path(__file__).resolve().parent
 def _load(name: str, path: Path):
     """Another tool of this package, loaded by its path: nothing is copied, and nothing beside this file
     can stand in for it by name."""
-    spec = importlib.util.spec_from_file_location(name, path)
+    spec = _source_spec(name, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
@@ -540,6 +554,275 @@ def past_cut_off(text: str, cut: str) -> list:
     return sorted(out)
 
 
+# ---- one reader of the dates of the rows of a data file, for a release set aside (A4-07, A4-08) ----------------------
+# Under a release set aside, the fence, the start and the opening read a data file row by row. A row's date comes from a
+# column (or a key) named like a time, from the year, month, day or day-of-year columns together, or from any cell that
+# reads as a whole date. The forms read: a day as year, month and day with a hyphen, a slash or a point, or run together
+# as eight digits; a month as year and month, or six digits in a date column; a year in a year column; a day of the year
+# (2025-015, or a year and a doy column); an ISO week (2025-W03-2); day or month first with the year last, read both
+# ways; a month by its English name, with or without a day (Jan 2025, 15 January 2025, 2025 Jan 15); a timestamp with a
+# time and a time zone (read in its own zone and in UTC, and a row is taken at whichever of the two days counts against
+# it); in a date column, a decimal year (2025.0417), and seconds or milliseconds since 1970. A tabular file (CSV, TSV,
+# JSON rows) in which any row is dated, or any column is named like a time, has every row dated, or it is refused: a
+# row the reader cannot date may be a row of the release. Other text is read for the dates it holds, as before.
+DATE_COLUMN_WORDS = ("date", "time", "epoch", "unix", "timestamp", "period", "when", "yyyymm", "doy", "day_of_year", "dayofyear", "decimal_year")
+DATE_COLUMN_NAMES = set(TIME_KEYS) | {"ts", "t_s", "seconds", "ms", "year", "yr", "month", "mon", "mo", "day", "dy", "dom"}
+ISO_WHEN = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,]\d+)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$", re.I)
+MONTH_NAME = r"(" + "|".join(MONTHS) + r")[a-z]*\.?"
+NAMED_MONTH = [re.compile(rf"^{MONTH_NAME}[\s,.-]*(\d{{4}})$", re.I), re.compile(rf"^(\d{{4}})[\s,.-]*{MONTH_NAME}$", re.I)]
+
+
+def date_column(name) -> bool:
+    n = re.sub(r"[^a-z0-9_]", "_", str(name or "").strip().casefold())
+    return n in DATE_COLUMN_NAMES or any(w in n for w in DATE_COLUMN_WORDS)
+
+
+def span_words(a: dt.date, b: dt.date) -> str:
+    """A span of days as it would be written: a day, a month (2026-08), a year, or the first and last days."""
+    if a == b:
+        return a.isoformat()
+    if a.day == 1 and (a.year, a.month) == (b.year, b.month) and (b + dt.timedelta(days=1)).day == 1:
+        return a.isoformat()[:7]
+    if (a.month, a.day, b.month, b.day) == (1, 1, 12, 31) and a.year == b.year:
+        return str(a.year)
+    return f"{a.isoformat()} to {b.isoformat()}"
+
+
+def _month(y: int, m: int) -> tuple:
+    first = dt.date(y, m, 1)
+    return first, (dt.date(y + (m == 12), m % 12 + 1, 1) - dt.timedelta(days=1))
+
+
+def read_date(value, column=None) -> tuple | None:
+    """(the first day, the last day) a cell stands for, or None when it is no date this reader knows. `column` is the name
+    of the cell's column or key: numbers are read as times only in a date column."""
+    import unicodedata
+    named = date_column(column) if column is not None else False
+    col = re.sub(r"[^a-z0-9_]", "_", str(column or "").strip().casefold())
+    try:
+        if isinstance(value, bool) or value is None:
+            return None
+        if isinstance(value, (int, float)):
+            if value != value or not named:
+                return None
+            if isinstance(value, int) or float(value).is_integer():
+                n = int(value)
+                if col in ("year", "yr") and 1000 <= n <= 2999:
+                    return dt.date(n, 1, 1), dt.date(n, 12, 31)
+                if 18000101 <= n <= 22001231:
+                    d = dt.date(n // 10000, n // 100 % 100, n % 100)
+                    return d, d
+                if 180001 <= n <= 220012 and 1 <= n % 100 <= 12:
+                    return _month(n // 100, n % 100)
+            if 1800 <= value <= 2200 and not float(value).is_integer():  # a decimal year
+                y = int(value)
+                d = dt.date(y, 1, 1) + dt.timedelta(days=int((value - y) * (366 if y % 4 == 0 and (y % 100 or y % 400 == 0) else 365)))
+                return d, d
+            s = value / 1000 if value >= 1e11 else value
+            if 3e8 <= s <= 8e9:
+                d = dt.datetime.fromtimestamp(s, dt.timezone.utc).date()
+                return d, d
+            return None
+        text = unicodedata.normalize("NFKC", str(value)).translate(HYPHENS).strip().strip('"').strip()
+        if not text or len(text) > 64:
+            return None
+        if re.fullmatch(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?", text):
+            num = float(text)
+            if re.fullmatch(r"\d{8}", text) and 18000101 <= int(text) <= 22001231:
+                d = dt.date(int(text[:4]), int(text[4:6]), int(text[6:]))
+                return d, d
+            return read_date(int(num) if num.is_integer() and "." not in text else num, column) if named else None
+        m = ISO_WHEN.match(text)
+        if m:
+            y, mo, d, h, mi = (int(m.group(i)) for i in range(1, 6))
+            local = dt.datetime(y, mo, d, h, mi, int(m.group(6) or 0))
+            zone = m.group(7)
+            if zone and zone.upper() != "Z":
+                sign = 1 if zone[0] == "+" else -1
+                digits = zone[1:].replace(":", "")
+                off = dt.timedelta(hours=int(digits[:2]), minutes=int(digits[2:4] or 0))
+                utc = (local - sign * off).date()
+            else:
+                utc = local.date()
+            return min(local.date(), utc), max(local.date(), utc)
+        m = re.fullmatch(r"(\d{4})\s?[-/.]\s?(\d{1,2})\s?[-/.]\s?(\d{1,2})", text)
+        if m:
+            d = dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return d, d
+        m = re.fullmatch(r"(\d{4})[-/.](\d{1,2})", text)
+        if m and 1 <= int(m.group(2)) <= 12:
+            return _month(int(m.group(1)), int(m.group(2)))
+        m = re.fullmatch(r"(\d{4})-?(\d{3})", text) if "-" in text or named else None
+        if m and 1 <= int(m.group(2)) <= 366:
+            d = dt.date(int(m.group(1)), 1, 1) + dt.timedelta(days=int(m.group(2)) - 1)
+            return d, d
+        m = re.fullmatch(r"(\d{4})-?W(\d{2})(?:-?(\d))?", text, re.I)
+        if m:
+            first = dt.date.fromisocalendar(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1))
+            return first, (first if m.group(3) else first + dt.timedelta(days=6))
+        m = re.fullmatch(r"(\d{1,2})\s?[-/.]\s?(\d{1,2})\s?[-/.]\s?(\d{4})", text)
+        if m:
+            ways = []
+            for mo, d in ((int(m.group(2)), int(m.group(1))), (int(m.group(1)), int(m.group(2)))):
+                with contextlib.suppress(ValueError):
+                    ways.append(dt.date(int(m.group(3)), mo, d))
+            return (min(ways), max(ways)) if ways else None
+        for pat in NAMED_MONTH:
+            m = pat.fullmatch(text)
+            if m:
+                g = m.groups()
+                y, name = (int(g[1]), g[0]) if g[0][:1].isalpha() else (int(g[0]), g[1])
+                return _month(y, MONTHS.index(name[:3].lower()) + 1)
+        found = dates_in(text) if NAMED.fullmatch(text) or YMD.fullmatch(text) else []
+        if found:
+            return min(found), max(found)
+    except (ValueError, OverflowError, OSError):
+        return None
+    return None
+
+
+def _row_date(cells: dict) -> list:
+    """Every (first, last) a row holds: from its year, month, day or day-of-year columns together, from each date column,
+    and from any other cell that reads as a whole date in words or digits that are not a plain number."""
+    norm = {re.sub(r"[^a-z0-9_]", "_", str(k).strip().casefold()): v for k, v in cells.items()}
+
+    def num(k):
+        v = norm.get(k)
+        try:
+            return int(float(str(v).strip())) if v is not None and str(v).strip() != "" else None
+        except ValueError:
+            return None
+    out = []
+    y = num("year") if "year" in norm else num("yr")
+    mo = next((num(k) for k in ("month", "mon", "mo") if k in norm), None)
+    day = next((num(k) for k in ("day", "dy", "dom") if k in norm), None)
+    doy = next((num(k) for k in ("doy", "day_of_year", "dayofyear") if k in norm), None)
+    with contextlib.suppress(ValueError, TypeError, OverflowError):
+        if y and mo and day:
+            d = dt.date(y, mo, day)
+            out.append((d, d))
+        elif y and mo:
+            out.append(_month(y, mo))
+        elif y and doy:
+            d = dt.date(y, 1, 1) + dt.timedelta(days=doy - 1)
+            out.append((d, d))
+    composite = {"year", "yr", "month", "mon", "mo", "day", "dy", "dom", "doy", "day_of_year", "dayofyear"}
+    for k, v in cells.items():
+        kk = re.sub(r"[^a-z0-9_]", "_", str(k).strip().casefold())
+        if out and kk in composite:
+            continue
+        got = read_date(v, k) if date_column(k) else (read_date(v) if isinstance(v, str) else None)
+        if got:
+            out.append(got)
+    return out
+
+
+def dated_rows(f: Path) -> dict | None:
+    """The rows of a tabular data file and the dates each holds: {"rows", "dated": [(row, first, last)], "undated": [rows],
+    "dated_columns": bool}. None for a file that is not tabular (other text is read by `past_cut_off`)."""
+    import csv
+    import io
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return None
+    rows = []
+    if f.suffix.lower() == ".json":
+        try:
+            obj = json.loads(text)
+        except ValueError:
+            return None
+        dated_keys = [False]
+
+        def walk(o):
+            if isinstance(o, list) and o and all(isinstance(x, dict) for x in o):
+                rows.extend(o)
+                dated_keys[0] = dated_keys[0] or any(date_column(k) for x in o for k in x)
+                for x in o:
+                    for v in x.values():
+                        walk(v)
+            elif isinstance(o, list) and o and all(isinstance(x, list) for x in o):
+                rows.extend({str(i): c for i, c in enumerate(x)} for x in o)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+            elif isinstance(o, dict):
+                keyed = [k for k, v in o.items() if isinstance(v, (dict, list)) and read_date(str(k))]
+                if len(keyed) >= 2 or (keyed and len(o) == len(keyed)):  # rows kept under their dates: the keys are the dates
+                    rows.extend({"date": k} for k in keyed)
+                for v in o.values():
+                    walk(v)
+        walk(obj)
+        if not rows:
+            return None
+        return _rows_report(rows, dated_keys[0])
+    if f.suffix.lower() not in (".csv", ".tsv", ".txt", ".dat", ".psv", "") or "\x00" in text[:4096]:
+        return None
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(lines) < 2:
+        return None
+    try:
+        dialect = csv.Sniffer().sniff("\n".join(lines[:20]), delimiters=",\t;|")
+    except csv.Error:
+        if f.suffix.lower() not in (".csv", ".tsv"):
+            return None
+        dialect = csv.excel_tab if f.suffix.lower() == ".tsv" else csv.excel
+    table = list(csv.reader(io.StringIO("\n".join(lines)), dialect))
+    width = max(len(r) for r in table)
+    if width < 2 and f.suffix.lower() not in (".csv", ".tsv"):
+        return None
+    head = table[0]
+    header = any(c.strip() and not re.fullmatch(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?", c.strip()) and read_date(c) is None for c in head)
+    names = [c.strip() or str(i) for i, c in enumerate(head)] if header else [str(i) for i in range(width)]
+    body = table[1:] if header else table
+    rows = [{names[i] if i < len(names) else str(i): c for i, c in enumerate(r)} for r in body]
+    return _rows_report(rows, header and any(date_column(n) for n in names))
+
+
+def _rows_report(rows: list, dated_columns: bool) -> dict:
+    out = {"rows": len(rows), "dated": [], "undated": [], "dated_columns": bool(dated_columns)}
+    for i, r in enumerate(rows):
+        got = _row_date(r)
+        if got:
+            out["dated"].append((i + 1, min(a for a, _b in got), max(b for _a, b in got)))
+        else:
+            out["undated"].append(i + 1)
+    return out
+
+
+def release_problems_in_file(f: Path, cut: str) -> tuple:
+    """(the dates past the cut-off, the rows it cannot date) of one file, read row by row where it is tabular. Rows it cannot
+    date are counted only in a file that is dated data: some row dated, or a column named like a time."""
+    rep = dated_rows(f)
+    if rep is None:
+        return past_cut_off_text(f, cut), []
+    cutd = dt.date.fromisoformat(cut) if cut else dt.date.min
+    later = sorted({span_words(a, b) for _i, a, b in rep["dated"] if b > cutd})
+    undated = rep["undated"] if (rep["dated"] or rep["dated_columns"]) else []
+    return later, undated
+
+
+def past_cut_off_text(f: Path, cut: str) -> list:
+    try:
+        text = f.read_text(errors="replace")
+    except OSError:
+        return []
+    out = set(past_cut_off(text, cut))
+    import unicodedata
+    norm = unicodedata.normalize("NFKC", text).translate(HYPHENS)
+    for m in re.finditer(rf"(?<![0-9A-Za-z]){MONTH_NAME}[\s,.-]*(\d{{4}})(?!\d)", norm, re.I):
+        with contextlib.suppress(ValueError):
+            first, _last = _month(int(m.group(2)), MONTHS.index(m.group(1)[:3].lower()) + 1)
+            if first.isoformat() > cut:
+                out.add(first.isoformat()[:7])
+    for m in re.finditer(r"(?<![0-9A-Za-z])(\d{4})-(\d{3})(?![0-9])", norm):
+        with contextlib.suppress(ValueError):
+            d = dt.date(int(m.group(1)), 1, 1) + dt.timedelta(days=int(m.group(2)) - 1)
+            if 1 <= int(m.group(2)) <= 366 and d.isoformat() > cut:
+                out.add(d.isoformat())
+    return sorted(out)
+
+
 def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
     """The same, read the way the fence reads a JSON data file: a time under a declared time key anywhere, or under any key
     inside a list of rows, is a time of the data; a single date at the top of the file (when it was retrieved) is not."""
@@ -565,16 +848,14 @@ def past_cut_off_in_json(obj, cut: str, keys: set) -> list:
 
 
 def past_cut_off_in_file(f: Path, cut: str, keys: set) -> list:
-    try:
-        text = f.read_text(errors="replace")
-    except OSError:
-        return []
+    """The dates past a release's cut-off that a file holds, row by row where it is tabular (`release_problems_in_file`),
+    together with what the JSON reading of time keys finds; a row it cannot date is reported as such."""
+    later, undated = release_problems_in_file(f, cut)
+    out = set(later)
     if f.suffix.lower() == ".json":
-        try:
-            return past_cut_off_in_json(json.loads(text), cut, keys)
-        except ValueError:
-            pass
-    return past_cut_off(text, cut)
+        with contextlib.suppress(OSError, ValueError):
+            out.update(past_cut_off_in_json(json.loads(f.read_text(errors="replace")), cut, keys))
+    return sorted(out) + ([f"{len(undated)} row(s) with no date the tool can read (row {', '.join(map(str, undated[:3]))})"] if undated else [])
 
 
 def bound_files(places: list) -> list:
@@ -610,10 +891,18 @@ def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
             elif sf.sha_file(real) != bound[str(real)]:
                 out.append(f"`{tok}` has changed since the exploration started (its sha256 is not the one bound at the start): the "
                            f"release set aside after {cut} may have arrived in it")
-        later = past_cut_off_in_file(real, cut, {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})
+        later, undated = release_problems_in_file(real, cut)
+        if real.suffix.lower() == ".json":
+            with contextlib.suppress(OSError, ValueError):
+                later = sorted(set(later) | set(past_cut_off_in_json(json.loads(real.read_text(errors="replace")), cut,
+                                                                      {k.casefold() for k in sa.get("time_keys") or TIME_KEYS})))
         if later:
             out.append(f"`{tok}` holds a date past the cut-off of the release set aside ({cut}): {', '.join(later[:3])}"
                        + (f", and {len(later) - 3} more" if len(later) > 3 else ""))
+        if undated:
+            out.append(f"`{tok}` is dated data with {len(undated)} row(s) whose date the tool cannot read (row "
+                       f"{', '.join(map(str, undated[:3]))}): under a release set aside after {cut}, a row the tool cannot date may be a "
+                       "row of the release, so the file is not given to a look")
     return out
 
 
@@ -1081,6 +1370,10 @@ def cmd_start(x: Exploration, a) -> None:
     if request is None or not request.is_file():
         raise Refused("`--request` names the request this exploration answers, in the scientist's own words; it is bound by checksum")
     studies = Path(os.path.abspath(a.studies)) if a.studies else x.d.parent.parent / "studies"
+    if studies.resolve() != (x.d.parent.parent / "studies").resolve():
+        raise Refused(f"`--studies {a.studies}` names a record other than the workspace's own ({x.d.parent.parent / 'studies'}): what an "
+                      "exploration explored and set aside goes on the record the studies of the workspace read, so a record of the "
+                      "caller's choosing would hide it from them (A4-09). Nothing was started")
     if (studies / x.d.name).exists():
         raise Refused(f"a study directory named {x.d.name} exists beside the record; an exploration and a study do not share a name")
     record = studies / "openings.jsonl"
@@ -1116,6 +1409,20 @@ def cmd_start(x: Exploration, a) -> None:
         if any(Path(p).resolve() == q or Path(p).resolve().is_relative_to(q) or q.is_relative_to(Path(p).resolve()) for p in paths):
             raise Refused(f"`--working-data {given}` is, holds or lies in a set-aside path: data that is set aside is not working data")
         places.append(os.path.relpath(q, x.d.resolve()))
+    mine = bound_files([Path(os.path.normpath(x.d.resolve() / q)) for q in places]) if places else []
+    for ln in record_lines(record):  # a release another exploration set aside is bound to the data, whatever the subject is called
+        c = (ln.get("set_aside") or {}).get("cut_off") if ln.get("kind") == "set-aside" else None
+        if not c:
+            continue
+        theirs = {str(Path(q)) for q in ln.get("working_files") or []}
+        if ln.get("subject") != key and not any(str(f) in theirs for f, _sha in mine):
+            continue
+        for f, _sha in mine:
+            later, undated = release_problems_in_file(f, c)
+            if later or undated:
+                raise Refused(f"{ln.get('exploration')} set aside the release after {c} of this data, and {f.name} holds "
+                              + (f"dates past it ({', '.join(later[:3])})" if later else f"{len(undated)} row(s) the tool cannot date")
+                              + ": what one exploration set aside, another does not explore, with or without a working window. Nothing was started")
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
@@ -1181,11 +1488,14 @@ def cmd_start(x: Exploration, a) -> None:
     if how != "nothing":
         lines.append({"way": WAY, "kind": "set-aside", "exploration": a.id, "exploration_dir": x.d.name, "subject": key,
                       "set_aside": {"how": how, "window": window, "sites": sites, "releases": releases, **({"cut_off": cut} if cut else {})},
+                      **({"working_files": sorted(str(Path(os.path.normpath(x.d.resolve() / b["path"]))) for b in bound)} if cut else {}),
                       "at": e["at"], "started": mark})
     explored = {"way": WAY, "kind": "explored", "study": a.id, "dir": x.d.name, "test": WAY, "key": key,
                 "at": e["at"], "started": mark}
     if working:
         explored["window"] = {"start": working["start"], "end": working["end"]}
+    elif cut:  # what is explored is the data as it stands, up to the cut-off (A4-14): the release after it was not explored
+        explored["window"] = {"start": "0001-01-01", "end": cut}
     lines.append(explored)  # the study tool reads `key` and `window`: a study that holds this out is marked exploratory
     with record.open("a") as rec:
         for ln in lines:
@@ -1226,7 +1536,11 @@ def fresh_data_problems(path: Path, studies: Path, how: str, window, sites: list
     elif kind == "later-period" and (not window or window["start"] != rule.get("from")
                                      or (rule.get("until") and window.get("end") != rule["until"]) or (not rule.get("until") and not window.get("open_ended"))):
         found.append(f"the window set aside is not the later period the proposal names ({rule.get('from')} to {rule.get('until') or 'onward'})")
-    elif kind in ("another-site", "random") and sorted(sites) != sorted(prop["members"]):
+    elif kind == "random":
+        found.append("a random set aside is drawn only at the lock of a confirming study, from the merge commit GitHub creates for the lock "
+                     "request, so nobody can choose its members; an exploration cannot set aside members not yet drawn. Name the proposal in "
+                     "a confirming study's plan (`data.held_out.fresh_data`), or set aside another kind here")
+    elif kind == "another-site" and sorted(sites) != sorted(prop["members"]):
         found.append("the sites set aside are not the members the proposal names" + (": a random set aside is drawn by the tool, and "
                      "nobody adds a site to it or takes one out" if kind == "random" else ""))
     elif kind == "next-release" and rule.get("release") not in releases:
@@ -2079,14 +2393,37 @@ def so_what_declared(factory=None) -> dict:
     return block if isinstance(block, dict) else {}
 
 
-def so_what_standing(ev: list, e: dict | None) -> str | None:
-    """One of the three standings of a so what: typed (practice), a comment the job recorded, or a comment the platform confirmed."""
+def so_what_standing(ev: list, e: dict | None, live: dict | None = None) -> str | None:
+    """One of the three standings of a so what: typed (practice), a comment the job recorded, or a comment the platform
+    confirmed, and that last only on the platform's answer asked now (`so_what_ask_now`): a verification in the log is a
+    note of what was asked and when, and decides nothing."""
     if not e:
         return None
     if e["data"].get("route") != COMMENT:
         return sf.PRACTICE
-    checks = [v for v in ev if v["kind"] == "so-what.verification" and (v["data"].get("of") or {}).get("seq") == e["seq"]]
-    return sf.VERIFIED if checks and checks[-1]["data"].get("result") == sf.VERIFIED else COMMENT_FOUND
+    return sf.VERIFIED if sf.counts(live) else COMMENT_FOUND
+
+
+def so_what_ask_now(x: "Exploration", e: dict | None, factory=None) -> dict | None:
+    """The platform, asked now about the comment a so what was recorded from: the answer, or None for a typed so what."""
+    if not e or e["data"].get("route") != COMMENT:
+        return None
+    key = (str(x.d), e["hash"], "so-what")
+    if sf.LIVE is not None and key in sf.LIVE:
+        return sf.LIVE[key]
+    c = e["data"].get("comment") or {}
+    declared = so_what_declared(factory)
+    try:
+        mod, block = so_what_harness(declared)
+        got = sf.platform_answer("comment", {"repository": declared.get("repository"), "id": c.get("id"), "author": c.get("author"),
+                                             "body_sha256": c.get("body_sha256")}, mod, block)
+    except (Refused, KeyError, TypeError, ValueError) as r:
+        got = {"result": sf.NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": [], "stand_in_for_the_platform": sf.PLATFORM_CALL is not None}
+    got = {"of": {"seq": e["seq"], "hash": e["hash"], "comment": c.get("id")}, "repository": declared.get("repository"), **got,
+           "asked_now_at": sf.now()}
+    if sf.LIVE is not None:
+        sf.LIVE[key] = got
+    return got
 
 
 def so_what_now(ev: list):
@@ -2100,14 +2437,29 @@ def so_what_now(ev: list):
     return given[-1] if given else None
 
 
-def so_what_in_words(ev: list, e: dict | None) -> str:
+def so_what_last_checked(ev: list, e: dict | None) -> str | None:
+    """What the log says the platform answered about a so what when last asked: shown, never decisive."""
+    if not e:
+        return None
+    checks = [v for v in ev if v["kind"] == "so-what.verification" and (v["data"].get("of") or {}).get("hash", e["hash"]) == e["hash"]
+              and (v["data"].get("of") or {}).get("seq") == e["seq"] and v["data"].get("result") in (sf.VERIFIED, sf.REFUTED)]
+    if not checks or checks[-1]["data"].get("result") != sf.VERIFIED:
+        return None
+    return f"verified when last checked at {checks[-1]['at']}; not re-checked now (as the log records it: a note, which decides nothing)"
+
+
+def so_what_in_words(ev: list, e: dict | None, live: dict | None = None) -> str:
     if not e:
         return "no person has said whether the lead as it stands is worth confirming"
     d = e["data"]
     words = d.get(SO_WHAT_NEEDS.get(d["answer"], ""), "")
+    st = so_what_standing(ev, e, live)
+    note = so_what_last_checked(ev, e) if st != sf.VERIFIED else None
     return (f"{d['answer']}" + (f" ({SO_WHAT_NEEDS[d['answer']]}: {words})" if words else "") + f", by {e['actor']}"
-            + (f" (the comment's author on the platform: {d['comment']['author']})" if d.get("comment") else "")
-            + f", on lead version {d['of_lead_version']}; standing: {so_what_standing(ev, e)}")
+            + (f" (the comment's author as the job recorded it: {d['comment']['author']}"
+               + (", confirmed by the platform asked now" if st == sf.VERIFIED else ", not confirmed by the platform") + ")" if d.get("comment") else "")
+            + f", on lead version {d['of_lead_version']}; standing: {st}" + (", asked now" if d.get("comment") else "")
+            + (f" ({note})" if note else ""))
 
 
 def so_what_problems(ev: list) -> list:
@@ -2287,43 +2639,27 @@ def cmd_so_what(x: Exploration, a) -> None:
 
 def so_what_harness(declared: dict):
     """The verifier of the harness the definition names for the so what, from this factory's own definition."""
-    name = str(declared.get("harness") or "")
-    folder = sf.FACTORY.resolve() / "harnesses" / name
     try:
-        block = (yaml.safe_load((folder / "harness.yaml").read_text()) or {}).get("platform") if re.fullmatch(r"[a-z][a-z0-9-]{0,40}", name) else None
-    except (OSError, yaml.YAMLError):
-        block = None
-    if not isinstance(block, dict) or not str(block.get("api") or "").startswith("https://") or not (folder / "verify_acts.py").is_file():
+        return sf.harness_of(str(declared.get("harness") or ""))
+    except Refused:
         raise Refused("the definition names no harness for the so what that can ask a platform (`procedure.so_what.harness`)")
-    return _load(f"sf_verify_so_what_{name.replace('-', '_')}", folder / "verify_acts.py"), block
 
 
 def cmd_verify_so_what(x: Exploration, a) -> None:
-    """Ask the platform about each so what that was a comment, and record what it said. Anybody may run it, at any time."""
+    """Ask the platform about each so what that was a comment, and record what it said, as a note of what was asked and
+    when. Anybody may run it, at any time. What decides anything is the platform asked again where it is used."""
     ev = x.events()
     x.started()
     targets = [e for e in ev if e["kind"] == "so-what.recorded" and e["data"].get("route") == COMMENT]
     if not targets:
         print("verify-so-what: nothing to ask the platform about: every so what here was typed (practice), or there is none")
         return
-    declared = so_what_declared(getattr(a, "factory", None))
-    mod, block = so_what_harness(declared)
-    name, token = mod.token_from(os.environ)
     for e in targets:
-        c = e["data"]["comment"]
-        data = {"of": {"seq": e["seq"], "hash": e["hash"], "comment": c["id"]}, "result": sf.NOT_CHECKED, "problems": [], "told": {}, "asked": [],
-                "platform": block.get("name"), "api": block["api"], "repository": declared.get("repository"), "token_from": name,
-                "through": mod.through(os.environ), "stand_in_for_the_platform": sf.PLATFORM_CALL is not None}
-        if sf.PLATFORM_CALL is None and not token:
-            data["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES)
-                                + "), and none of those is set. Nothing was asked, so nothing is verified"]
-        else:
-            got = mod.verify_comment(sf.PLATFORM_CALL or mod.platform_call, block["api"], token or "a-self-test",
-                                     {"repository": declared.get("repository"), "id": c["id"], "author": c["author"], "body_sha256": c["body_sha256"]})
-            data.update({k: got[k] for k in ("result", "problems", "told", "asked", "answers_sha256")})
+        data = so_what_ask_now(x, e, getattr(a, "factory", None))
         if not getattr(a, "report_only", False):
             x.add(a.by, "so-what.verification", data)
-        print(f"so what at event {e['seq']} ({e['data']['answer']}): {data['result']}" + (": " + "; ".join(data["problems"]) if data["problems"] else ""))
+        print(f"so what at event {e['seq']} ({e['data']['answer']}): {data['result']}" + (", from a stand-in for the platform" if data.get("stand_in_for_the_platform") else "")
+              + f"; standing {so_what_standing(ev, e, data)} ({sf.via_words(data)})" + (": " + "; ".join(data["problems"]) if data["problems"] else ""))
 
 
 def cmd_end(x: Exploration, a) -> None:
@@ -2405,10 +2741,17 @@ def cmd_hand_over(x: Exploration, a) -> None:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", a.study_id or "") or a.study_id == x.d.name:
         raise Refused("`--study-id` names the confirming study (for example STUDY-0002); it is not the exploration's name")
     said = so_what_now(ev)
-    if so_what_standing(ev, said) == sf.PRACTICE and not practice_so_what(a):
+    asked = so_what_ask_now(x, said, getattr(a, "factory", None))
+    standing = so_what_standing(ev, said, asked)
+    if standing == sf.PRACTICE and not practice_so_what(a):
         raise Refused("the person's so what on this lead was typed at a command line (practice), and on this factory a so what is a "
                       "person's comment on the tracking issue. A hand-over from a practice so what says so: add `--local-practice`, and the "
                       "lock request will show it")
+    if standing == COMMENT_FOUND and not practice_so_what(a):
+        raise Refused("the person's so what on this lead is a comment the platform did not confirm when asked now ("
+                      + "; ".join((asked or {}).get("problems") or ["no answer"])[:300] + "): a comment recorded from a file is a file anybody "
+                      "with the account can write. Hand over when the platform can be asked (a token and a network), or, to try the tools "
+                      "out, with `--local-practice`, which the hand-over and the lock request show")
     lead = json.loads((x.d / "lead.json").read_text())
     sa, stub = start["data"]["set_aside"], lead["proposed_plan"]
     verdict = [e for e in ev if e["kind"] == "review.verdict"][-1]
@@ -2440,7 +2783,8 @@ def cmd_hand_over(x: Exploration, a) -> None:
         + (f". The lead's wording was corrected {len(lead['corrections'])} time(s) before that review, and not since" if lead.get("corrections") else "")
         + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
         "Names are typed, not proven: whether the reviewer was a separate agent with a fresh context is in the run's record, not in this line.", "",
-        f"**The so what.** {so_what_in_words(ev, said)}.", "",
+        f"**The so what.** {so_what_in_words(ev, said, asked)}" + (" (handed over in practice: the so what was not confirmed by the platform)"
+                                                                  if standing != sf.VERIFIED else "") + ".", "",
         f"**The fit note.** {' '.join(sf.fit_in_words(last(ev, 'fit.noted'))[:2])}", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
@@ -2494,7 +2838,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
         "plan_stub": {"file": "hand-over/analysis-plan.stub.yaml", "sha256": sf.sha_file(out / "analysis-plan.stub.yaml")},
         "lead": {"version": lead["version"], "sha256": sf.sha_file(x.d / "lead.json"), "status": LEAD_STATUS},
         "review": verdict["data"], "so_what": {"seq": said["seq"], "hash": said["hash"], "answer": said["data"]["answer"], "by": said["actor"],
-                                              "standing": so_what_standing(ev, said)},
+                                              "standing_at_the_hand_over": standing, "asked_at_the_hand_over": (asked or {}).get("asked_now_at"),
+                                              "practice": standing != sf.VERIFIED,
+                                              "note": "a standing shown here is what it was at the hand-over; the study asks the platform again"},
         "set_aside": sa, "record": start["data"]["record"], "start_command": command,
         "then": "after the plan is written: explore.py check-study --exploration <this> --study <the study>"})
     x.add(a.by, "handed.over", {"study_id": a.study_id, "hand_over_sha": sha,
@@ -2684,7 +3030,7 @@ def stage_of(x: Exploration) -> dict:
                             "the tracking issue). The coordinating agent asks them, and may have the question drafted (explore.py ask-so-what)",
                     "not_yet": "no agent ends the exploration as a lead, or hands it over, before a person says it is worth confirming"}
         if said:
-            here["so_what"] = so_what_in_words(ev, said)
+            here["so_what"] = so_what_in_words(ev, said, so_what_ask_now(x, said))
     if lead:
         counts["lead_json_sha256"] = lead_on_file(ev)["data"]["json_sha"]
     if lead:
@@ -2692,7 +3038,8 @@ def stage_of(x: Exploration) -> dict:
     given = [e for e in ev if e["kind"] == "so-what.recorded"]
     if given:
         counts["so_whats"] = [{"seq": e["seq"], "answer": e["data"]["answer"], "by": e["actor"], "of_lead_version": e["data"]["of_lead_version"],
-                               "standing": so_what_standing(ev, e)} for e in given]
+                               "standing": so_what_standing(ev, e, so_what_ask_now(x, e)),
+                               **({"last_checked": so_what_last_checked(ev, e)} if so_what_last_checked(ev, e) else {})} for e in given]
     counts["looks_by_fence"] = fence_counts(ev)
     counts["working_data_declared"] = (start["set_aside"].get("working") or {}).get("places") or []
     counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
@@ -2896,6 +3243,27 @@ def inline_dependencies(script: Path) -> list:
     return [str(d) for d in deps] if isinstance(deps, list) else []
 
 
+def not_working_data(x: "Exploration", sa: dict, placed: list) -> str | None:
+    """Why a look's inputs are not the exploration's working data as it stood, or None: under a release set aside, a working
+    file that is not the file the start bound, by checksum, and any input that holds a date past the cut-off or rows the
+    tool cannot date. A promoted method's cases are working data and never what was set aside (A4-07)."""
+    cut = sa.get("cut_off")
+    if not cut:
+        return None
+    bound = {str(Path(os.path.normpath(x.d / b["path"])).resolve()): b["sha256"] for b in sa.get("bound") or []}
+    places = working_places(x)
+    for f in placed:
+        if f.get("role") == "script":
+            continue
+        real = Path(os.path.normpath(x.d / f["from"])).resolve()
+        if any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d) and bound.get(str(real)) != f.get("sha256"):
+            return f"`{f['from']}` is not a working file the start bound, as it stood"
+        later, undated = release_problems_in_file(real, cut)
+        if later or undated:
+            return f"`{f['from']}` holds " + (f"dates past the cut-off {cut} ({', '.join(later[:2])})" if later else f"{len(undated)} row(s) the tool cannot date")
+    return None
+
+
 def cmd_promote(x: Exploration, a) -> None:
     """A look's script that proved useful becomes a method: copied under methods/<name>/, with the exploration's runs of it as its
     first known-answer cases, the agent's README, a test file the study tool can run, and where it came from. It is a change
@@ -2926,6 +3294,11 @@ def cmd_promote(x: Exploration, a) -> None:
         raise Refused("the README says, each in a sentence or more: " + ", ".join(missing))
     runs = [r for r in ev if r["kind"] == "look.run" and r["data"]["script_sha"] == e["data"]["script_sha"] and r["data"]["exit_code"] == 0
             and r["data"].get("ran_in")]
+    sa = start["data"]["set_aside"]
+    left_out = {r["data"]["id"]: why for r in runs for why in [not_working_data(x, sa, r["data"]["ran_in"].get("placed") or [])] if why}
+    if a.look in left_out:
+        raise Refused(f"{a.look} was given what is not the exploration's working data as it stood ({left_out[a.look]}); nothing is promoted")
+    runs = [r for r in runs if r["data"]["id"] not in left_out]
     dest.mkdir(parents=True)
     try:
         shutil.copyfile(script, dest / script.name)
@@ -2974,8 +3347,11 @@ def cmd_promote(x: Exploration, a) -> None:
         shutil.rmtree(dest, ignore_errors=True)
         raise
     x.add(a.by, "method.promoted", {"name": a.name, "folder": os.path.relpath(dest, x.d), "look": a.look, "cases": sorted(cases),
-                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json")})
-    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s). This is a change to the factory: "
+                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json"),
+                                    **({"left_out": left_out} if left_out else {})})
+    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s)"
+          + (f"; left out, because they were not given the working data as it stood: " + "; ".join(f"{k}: {v}" for k, v in sorted(left_out.items()))
+             if left_out else "") + ". This is a change to the factory: "
           f"record it with `sf.py log-change` naming methods/{a.name}, with a prediction, then run `check_factory.py`, which validates the method")
 
 
@@ -2998,7 +3374,8 @@ def cmd_contribution(x: Exploration, a) -> None:
     with contextlib.suppress(OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
         model = yaml.safe_load(Path(fresh["file"]).read_text())["proposed"]["model"]
     extra = [{"kind": "fresh-data.proposed", "actor": fresh["proposed_by"], "model": model, "data": {}}] if fresh.get("proposed_by") else []
-    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra)
+    live = {e["hash"]: v for e in ev if e["kind"] == "so-what.recorded" for v in [so_what_ask_now(x, e)] if v}
+    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra, live)
     lines = sf.contribution_lines(c, f"{start['data']['id']} ({WAY}; a lead, not a finding)")
     (x.d / "contribution.md").write_text("\n".join(lines))
     write_json(x.d / "contribution.json", c)
@@ -3039,6 +3416,8 @@ def selftest() -> int:
     import io
     results = []
     sf.Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
+    sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; a check that needs an answer puts a stand-in here
+    sf.STAND_INS_COUNT = True  # inside this self-test a stand-in's `verified` counts; each answer is still marked as a stand-in's
 
     def ok(name: str, cond) -> None:
         results.append((name, bool(cond)))
@@ -3167,18 +3546,13 @@ def selftest() -> int:
                                                               set_aside_sites="USGS-01000001", subject="reach_id=R9,gauge=G9"))
            and not xr.log.exists())
         rp = proposal("random", kind="random", fraction=0.3)
-        drawn = fdt.load(rp)["members"]
-        others = [m for m in fdt.load(rp)["draw"]["drawn_from"] if m not in drawn]
-        ok("a random set aside with one site swapped for a site of one's own choosing is refused: nobody adds a site or takes one out",
-           "nobody adds a site" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9",
-                                                          set_aside_sites=",".join(drawn[1:] + others[:1]), fresh_data=str(rp)))
+        pool = fdt.load(rp)["draw"]["drawn_from"]
+        ok("A4-06: a random set aside is drawn at the lock of a confirming study, so an exploration cannot start on one: whatever sites it "
+           "names, the members are not drawn yet, and nothing is started",
+           all("drawn only at the lock" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None,
+                                                                   subject="reach_id=R9,gauge=G9", set_aside_sites=sites, fresh_data=str(rp)))
+               for sites in (",".join(pool[:3]), ",".join(pool[1:4]), ",".join(pool)))
            and not xr.log.exists())
-        quiet(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9", working_window=None,
-                               set_aside_sites=",".join(drawn), fresh_data=str(rp), working_data=[str(data)]))
-        got_sa = xr.set_aside()
-        ok("with the proposal and exactly its members the random set aside starts, and the start records the proposal by checksum",
-           got_sa["how"] == "a random set aside" and sorted(got_sa["sites"]) == drawn and got_sa["fresh_data"]["sha256"] == sf.sha_file(rp)
-           and got_sa["fresh_data"]["seed_sha256"] == fdt.load(rp)["draw"]["seed_sha256"])
         lp = proposal("later", kind="later-period", from_="2026-01-01")
         xl = Exploration(fwork / "explorations" / "E-LATER")
         ok("a proposal is set aside as it was proposed: a later period with another window than the proposal's is refused",
@@ -3328,6 +3702,42 @@ def selftest() -> int:
         (xc.d / "looks" / "copy.csv").write_text((monthly / "monthly.csv").read_text())
         ok("a copy of the refreshed file put in the exploration is refused too: it holds months past the cut-off",
            "holds a date past the cut-off" in look(xc, ["{python}", sc, "looks/copy.csv"]))
+        # A4-07: copies of the release in the forms the fourth attack used, and in more: each is read row by row and refused
+        e25 = int(dt.datetime(2025, 1, 15, tzinfo=dt.timezone.utc).timestamp())
+        forms = {"split.csv": "year,month,value\n2024,12,0.1\n2025,1,0.9\n", "decimal.csv": "time,value\n2024.9583,0.1\n2025.0417,0.9\n",
+                 "named.csv": "when,value\nDec 2024,0.1\nJan 2025,0.9\n", "doy.csv": "date,value\n2024-366,0.1\n2025-015,0.9\n",
+                 "epoch.csv": f"epoch,value\n{e25 - 40 * 86400},0.1\n{e25},0.9\n", "rows.json": json.dumps([{"epoch": e25 - 40 * 86400, "v": 0.1}, {"epoch": e25, "v": 0.9}]),
+                 "week.csv": "period,value\n2024-W51,0.1\n2025-W03,0.9\n", "compact.csv": "day,value\n20241215,0.1\n20250115,0.9\n",
+                 "dmy.csv": "date,value\n15/12/2024,0.1\n15/01/2025,0.9\n", "mdy.csv": "date,value\n12/15/2024,0.1\n01/15/2025,0.9\n",
+                 "yyyymm.csv": "yyyymm,value\n202412,0.1\n202501,0.9\n", "named-day.csv": "date,value\n15 December 2024,0.1\nJanuary 15 2025,0.9\n",
+                 "zone.csv": "timestamp,value\n2024-12-31T12:00:00Z,0.1\n2024-12-31T23:30:00-05:00,0.9\n",
+                 "doy-columns.csv": "year,doy,value\n2024,300,0.1\n2025,15,0.9\n", "nested.json": json.dumps({"series": {"rows": [{"date": "2024-12"}, {"date": "2025-01"}]}}),
+                 "keyed.json": json.dumps({"2024-12": {"v": 0.1}, "2025-01": {"v": 0.9}}), "lists.json": json.dumps([["2024-12", 0.1], ["Jan 2025", 0.9]])}
+        let_through = []
+        for name, body in forms.items():
+            (xc.d / "looks" / name).write_text(body)
+            if "holds a date past the cut-off" not in look(xc, ["{python}", sc, f"looks/{name}"]):
+                let_through.append(name)
+        ok("A4-07: a copy of the release given to a look is refused in every form the fourth attack used (year and month in two columns, a "
+           "decimal year, a month by its name, a day of the year, seconds since 1970 in a CSV and in JSON under a key not listed as a time) "
+           "and in more (an ISO week, eight digits, day first and month first, six digits, a named day, a timestamp after the cut-off in "
+           "UTC, a year and a day-of-year column, rows nested in JSON, rows kept under their dates, rows as lists)"
+           + (f" (let through: {let_through})" if let_through else ""), not let_through)
+        (xc.d / "looks" / "undated.csv").write_text("date,value\n2024-11,0.1\nsometime,0.2\n")
+        ok("A4-07: under a release set aside, dated data with a row the tool cannot date is refused: that row may be a row of the release",
+           "whose date the tool cannot read" in look(xc, ["{python}", sc, "looks/undated.csv"]))
+        before_forms = {"split.csv": "year,month,value\n2024,11,0.1\n2024,12,0.9\n", "zone.csv": "timestamp,value\n2024-12-31T23:30:00Z,0.9\n",
+                        "named.csv": "when,value\nNov 2024,0.1\nDec 2024,0.9\n", "plain.csv": "site,lat,lon\nG70,30.1,-91.2\n"}
+        ran_before = []
+        for name, body in before_forms.items():
+            (xc.d / "looks" / f"ok-{name}").write_text(body)
+            ran_before.append(look(xc, ["{python}", sc, f"looks/ok-{name}"]) == "")
+        ok("the same forms holding only dates on or before the cut-off are given to a look, and so is a table with no dates at all",
+           all(ran_before))
+        placed = [{"role": "script", "from": "looks/tail.py", "at": "tail.py", "sha256": "0"}, {"role": "input", "from": "looks/split.csv", "at": "split.csv"}]
+        ok("A4-07: a promoted method leaves out every run whose inputs were not the working data as it stood (here, a copy of the release's "
+           "months), so its cases never hold set-aside data", "dates past the cut-off" in str(not_working_data(xc, xc.set_aside(), placed))
+           and not_working_data(xc, xc.set_aside(), [placed[0], {"role": "input", "from": "looks/ok-split.csv", "at": "s.csv"}]) is None)
         (monthly / "monthly.csv").write_text(rows)
         (monthly / "extra.csv").write_text("Source,Year,Mean\nA,2024-12,1.0\n")
         ok("a file that was not in the working data at the start is refused, whatever its dates",
@@ -3337,6 +3747,25 @@ def selftest() -> int:
            "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-2"), A(
                request=str(req), id="E-CUT-2", **{**rel, "set_aside_release": ["a-later-update"], "working_window": "2024-01-01:2025-06-30"},
                release_cut_off="2025-06-30", working_data=[str(monthly)])))
+        (monthly / "monthly.csv").write_text(rows + "A,2025-01,9.9\n")  # the release arrives in place
+        no_window = said(cmd_start, Exploration(work / "explorations" / "E-CUT-3"), A(
+            request=str(req), id="E-CUT-3", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window=None,
+            subject="reach_id=R70,gauge=G70", why="a site nobody uses", working_data=[str(monthly)]))
+        other_name = said(cmd_start, Exploration(work / "explorations" / "E-CUT-4"), A(
+            request=str(req), id="E-CUT-4", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window=None,
+            subject="record=the-same-file-by-another-name", why="a site nobody uses", working_data=[str(monthly)]))
+        elsewhere = said(cmd_start, Exploration(work / "explorations" / "E-CUT-5"), A(
+            request=str(req), id="E-CUT-5", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window="2020-01-01:2025-12-31",
+            subject="reach_id=R70,gauge=G70", why="a site nobody uses", working_data=[str(monthly)], studies=str(tmp / "other-studies")))
+        (monthly / "monthly.csv").write_text(rows)
+        ok("A4-09: another exploration of the data whose release is set aside cannot explore past the cut-off: with no working window, under "
+           "another name for the subject, and with a record of its own choosing, each start is refused and nothing is started",
+           "another does not explore, with or without a working window" in no_window and "another does not explore, with or without a working window" in other_name
+           and "names a record other than the workspace's own" in elsewhere
+           and not any((work / "explorations" / n).exists() for n in ("E-CUT-3", "E-CUT-4", "E-CUT-5")) and not (tmp / "other-studies").exists())
+        explored = [ln for ln in record_lines(work / "studies" / "openings.jsonl") if ln.get("kind") == "explored" and ln.get("study") == "E-CUT"]
+        ok("A4-14: an exploration that set a release aside, with no working window, is on the record as having explored the data up to the "
+           "cut-off, and not the release after it", explored and explored[-1]["window"] == {"start": "0001-01-01", "end": "2024-12-31"})
         rmeta = tmp / "fd-release.json"
         rmeta.write_text(json.dumps({"subject": {"reach_id": "R71", "gauge": "G71"}, "files": [{"name": "monthly.csv", "sha256": sf.sha_file(monthly / "monthly.csv")}],
                                      "items": [{"id": "A-2024", "series": "A", "start": "2024-01-01", "end": "2024-12-31", "count": 12}],
@@ -3485,6 +3914,11 @@ def selftest() -> int:
            study.events()[0]["data"]["from_exploration"]["id"] == y.started()["data"]["id"] and len(whole["logs"]) == 2
            and any(w["actor"].startswith("agent:tester-analysis") for r in whole["rows"] if r["work"] == "exploring" for w in r["who"]))
         ok("check-study waits for the plan", any("no analysis plan yet" in q for q in study_problems(y, study.d)))
+        loose_so, _lines = sf.so_what_for_study(study, None, study.events(), needs_confirmed=False)
+        firm_so, lines_so = sf.so_what_for_study(study, None, study.events(), needs_confirmed=True)
+        ok("a study from a hand-over carries its exploration's so what: a typed (practice) worth-confirming is taken for a practice lock, and "
+           "named, and refused for the opening on a real lock, which needs a so what the platform confirms",
+           loose_so == [] and any("typed at a command line (practice)" in q for q in firm_so) and any("worth-confirming" in ln for ln in lines_so))
 
         def plan(window: dict, pair: dict | None = None) -> None:
             study.plan_path.write_text(yaml.safe_dump({
@@ -3555,6 +3989,24 @@ def selftest() -> int:
            and f"fresh data is the release after 2024-12-31; the data seen while exploring was monthly.csv with checksum "
                f"{sf.sha_file(monthly_ho / 'monthly.csv')}" in sf.release_in_words(rel)
            and not any("did not start with that cut-off" in q for q in study_problems(xh, srel.d)))
+        rel_plan = json.loads(json.dumps(sf.PLAN))
+        rel_plan["data"]["held_out"].update(window={"start": "2025-01-01", "end": "2025-06-30"}, pair={"reach_id": "R72", "gauge": "G72"})
+        mark_h = f"{xh.started()['seq']}:{xh.started()['hash']}"
+        rec_h = work / "studies" / "openings.jsonl"
+        kept_rec = rec_h.read_text()
+        with rec_h.open("a") as fh:  # the line an exploration of 0.15.0 wrote: no window at all
+            fh.write(json.dumps({"kind": "explored", "study": "E-REL-HO", "dir": "E-REL-HO", "key": subject_key({"reach_id": "R72", "gauge": "G72"}),
+                                 "started": mark_h, "test": WAY}) + "\n")
+        mine = sf.earlier_openings(srel, rel_plan, rel_plan["tests"]["held-out"], srel.events())
+        with rec_h.open("a") as fh:  # another exploration of the subject, with no release and no window: it explored everything
+            fh.write(json.dumps({"kind": "explored", "study": "E-OTHER", "dir": "E-OTHER", "key": subject_key({"reach_id": "R72", "gauge": "G72"}),
+                                 "started": "0:" + "0" * 64, "test": WAY}) + "\n")
+        theirs = sf.earlier_openings(srel, rel_plan, rel_plan["tests"]["held-out"], srel.events())
+        rec_h.write_text(kept_rec)
+        ok("A4-14: a study handed over from an exploration that set a release aside is not made exploratory by that exploration, which "
+           "explored the data up to the cut-off (also as an exploration of 0.15.0 wrote its line, with no window); another exploration "
+           "that explored the subject with no window still makes it exploratory",
+           mine == [] and [x["study"] for x in theirs] == ["E-OTHER"])
         ok("a cut-off or working data an agent gives at the start of a study from a hand-over is refused: they come from the exploration",
            "not given with a hand-over" in _refusal(lambda: study_from("STUDY-REL-1", hreq, fresh_data=str(rp_), working_data=None))
            and not (work / "studies" / "STUDY-REL-1").exists())
@@ -4074,7 +4526,7 @@ def selftest() -> int:
            and json.loads((sw.d / "contribution.json").read_text())["rows"][0]["work"] == "asking the question")
         ok("the hand-over carries the so what, who gave it and its standing, and the fit note, and the log checks out",
            "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "**The fit note.** **fit-with-a-person-steering**" in swho and "standing: practice" in swho
-           and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
+           and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing_at_the_hand_over"] == sf.PRACTICE and check_log(sw) == [])
         # ---- a look that proved useful becomes a method, and a study may use it once its own tests pass there
         methods = tmp / "repo" / "methods"
         rd = tmp / "method-readme.md"
@@ -4135,6 +4587,30 @@ def selftest() -> int:
         ok("not-interesting ends the exploration as a lead noted, with the reason, and nothing is handed over",
            last(no.events(), "exploration.ended")["data"]["outcome"] == "lead-noted" and "shared source" in last(no.events(), "exploration.ended")["data"]["summary"]
            and "has not ended as a lead" in said(cmd_hand_over, no, A(by="agent:tester-coordinating", study_id="STUDY-NO", local_practice=True)))
+        # A4-05: a study started with no hand-over, whose plan names a proposal in the folder of an exploration the person called not interesting
+        a4meta = tmp / "a4-05-metadata.json"
+        a4meta.write_text(json.dumps({"subject": {"record": "a4-05"}, "items": [
+            {"id": f"S{i}-{y}", "site": f"S{i}", "start": f"{y}-01-01", "end": f"{y}-12-31", "count": 5} for i in range(1, 5) for y in (2024, 2025)]}))
+        quiet(fdt.cmd_propose, fdt.A(metadata=str(a4meta), what="the year 2025", why="it comes after", unfair="a change in 2025",
+                                     studies=str(work / "studies"), out=str(no.d / "fresh-data.yaml"), kind="later-period", from_="2025-01-01"))
+        a405 = json.loads(json.dumps(sf.PLAN))
+        a405["data"]["held_out"].update(pair="a4-05", fresh_data=os.path.relpath(no.d / "fresh-data.yaml", work / "studies" / "STUDY-A405"))
+        s405 = sf._fresh(work / "studies", "STUDY-A405", plan=a405, start=A(id="STUDY-A405", question=sf.PLAN["question"], by="agent:tester-coordinating"))
+        quiet(sf.cmd_test, s405, A(what="known-answers", by="agent:tester-analysis"))
+        quiet(sf.cmd_test, s405, A(what="working-data", by="agent:tester-analysis"))
+        at_request = said(sf.cmd_request_lock, s405, A(by="agent:tester-coordinating"))
+        at_lock = said(sf.cmd_lock, s405, A(by="human:throwaway-placeholder", evidence="https://example.invalid/a4", local_practice=True))
+        ok("A4-05: a study started without the hand-over, whose plan names a proposal in the folder of an exploration whose person said "
+           "not-interesting, is refused at the lock request and at the lock, which name the exploration and the so what",
+           "E-SO-WHAT-NO" in at_request and "not-interesting" in at_request and "not worth-confirming" in at_request
+           and "not-interesting" in at_lock and not s405.last("lock.recorded") and not s405.last("lock.requested"))
+        via = os.path.relpath(no.d / "fresh-data.yaml", work / "studies" / "STUDY-A405").replace("explorations/", "explorations/./")
+        a405["data"]["held_out"]["fresh_data"] = via.replace("E-SO-WHAT-NO", "../explorations/E-SO-WHAT-NO", 1)
+        s405.plan_path.write_text(yaml.safe_dump(a405, sort_keys=False))
+        quiet(sf.cmd_held_out_change, s405, A(by="agent:tester-coordinating", reason="the same proposal, named another way"))
+        quiet(sf.cmd_test, s405, A(what="known-answers", by="agent:tester-analysis"))
+        quiet(sf.cmd_test, s405, A(what="working-data", by="agent:tester-analysis"))
+        ok("A4-05: the same proposal named by another spelling of its path is the same link", "not-interesting" in said(sf.cmd_request_lock, s405, A(by="agent:tester-coordinating")))
         # the platform route: a comment on the tracking issue, recorded by the job that follows it, verified by asking the platform
         pc = fresh("E-SO-WHAT-PR", subject="reach_id=R42,gauge=G42")
         known(pc)
@@ -4168,22 +4644,45 @@ def selftest() -> int:
         ok("a person's comment is recorded under the platform's name, with its author as handed, standing `comment recorded, person not verified`",
            got_sw["actor"] == "platform:github" and got_sw["data"]["comment"]["author"] == "a-scientist" and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
         quiet(cmd_end, pc, A(outcome="lead", summary="worth a test, a person said on the platform"))
-        ok("a hand-over on a comment needs no word of practice", said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")) == "")
+        unconfirmed = said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR"))
+        ok("A4-04: a so what recorded from a comment the platform does not confirm when asked now is not handed over without a word of "
+           "practice: a comment recorded from a file is a file anybody can write", "did not confirm when asked now" in unconfirmed
+           and "--local-practice" in unconfirmed and not last(pc.events(), "handed.over"))
+        pc.add("platform:github", "so-what.verification", {"of": {"seq": got_sw["seq"], "hash": got_sw["hash"], "comment": 77}, "result": sf.VERIFIED,
+                                                          "problems": [], "told": {}, "asked": [], "stand_in_for_the_platform": False,
+                                                          "note": "written by hand, as the fourth attack did; no platform was asked"})
+        forged = stage_of(pc)
+        ok("A4-04: a verification appended to the log by hand moves nothing: the so what stays `comment recorded, person not verified` "
+           "in status (which says it was verified when last checked, and not re-checked now), and the hand-over is still refused",
+           so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND
+           and forged["so_whats"][-1]["standing"] == COMMENT_FOUND and "not re-checked now" in forged["so_whats"][-1]["last_checked"]
+           and "did not confirm when asked now" in said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")))
         vmod = so_what_harness(so_what_declared())[0]
         sf.PLATFORM_CALL = lambda api, path, token: ({"status": 200, "body": cm} if path == f"/repos/{repo}/issues/comments/77" else {"status": 404, "body": None})
         try:
             quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
+            ok("asked, the platform confirms the comment, and the so what stands as verified on that answer, marked as a stand-in's here",
+               so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == sf.VERIFIED
+               and last(pc.events(), "so-what.verification")["data"]["asked"][0]["endpoint"].endswith("/comments/77") and vmod.PEOPLE
+               and last(pc.events(), "so-what.verification")["data"]["stand_in_for_the_platform"] is True)
+            ok("a hand-over on a comment the platform confirms when asked now needs no word of practice, and says the standing it had then",
+               said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")) == ""
+               and json.loads((pc.d / "hand-over" / "hand-over.json").read_text())["so_what"]["standing_at_the_hand_over"] == sf.VERIFIED)
+            sf.STAND_INS_COUNT = False
+            ok("outside a self-test a stand-in's answer is no verification: the so what stays `comment recorded, person not verified`",
+               so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND)
         finally:
+            sf.STAND_INS_COUNT = True
             sf.PLATFORM_CALL = None
-        ok("asked, the platform confirms the comment, and the so what stands as verified", so_what_standing(pc.events(), got_sw) == sf.VERIFIED
-           and last(pc.events(), "so-what.verification")["data"]["asked"][0]["endpoint"].endswith("/comments/77") and vmod.PEOPLE)
         saved_tokens = {k: os.environ.pop(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if k in os.environ}
         try:
             quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
         finally:
             os.environ.update(saved_tokens)
         ok("with no token nothing is asked, the result is `not checked`, and the standing falls back to what the job was handed",
-           last(pc.events(), "so-what.verification")["data"]["result"] == sf.NOT_CHECKED and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
+           last(pc.events(), "so-what.verification")["data"]["result"] == sf.NOT_CHECKED
+           and so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND)
+        sf.PLATFORM_CALL = sf._dead_platform
 
         # M1: a number is a number however it is written, and a page the explorer wrote backs nothing
         m1 = fresh("E-13", subject="reach_id=R17,gauge=G17")
@@ -4563,6 +5062,7 @@ def main() -> int:
         sf.refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
+        sf.LIVE = {}  # this command asks the platform about each so what once
         x = Exploration(a.exploration)
         x.model = getattr(a, "model", None)
         if str(getattr(a, "by", "")).startswith("agent:") and not x.model:

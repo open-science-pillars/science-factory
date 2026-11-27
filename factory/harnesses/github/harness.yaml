@@ -5,8 +5,11 @@ description: "Carries the lock and the signature as pull requests on a protected
 starts: "no agent: a GitHub workflow (acts.workflow.yml) runs verify_request.py on a pull request that touches a study's request, and record_act.py after the merge; `sf.py verify-acts` runs verify_acts.py, there and on any machine"
 models: any                         # no model runs here; the two scripts call no model
 status: "built, not exercised"      # the scripts test themselves on recorded payloads and a throwaway repository; the workflow has never run on GitHub, and verify_acts.py has never asked GitHub anything
-# The platform a verification asks (`sf.py verify-acts`, and the opening of held-out data). The address is here, in
-# the definition and under its checksum, and not in an option or an environment variable.
+# The platform a verification asks (`sf.py verify-acts`, and every command where an act's standing decides or is shown).
+# The address is here, in the definition and under its checksum, and verify_acts.py asks that one host and no other. It
+# runs in a process of its own, with an environment that holds the token alone: no proxy or certificate setting of the
+# environment is read, and the system's certificates are trusted. A proxy is used only when this block names one, as
+# `proxy: http://host:port` (a tunnel; none is named here), and the answer records it.
 platform:
   name: github
   api: https://api.github.com
@@ -29,7 +32,7 @@ platform:
     - "that the commit is on that branch now and the branch is protected; and, where the rules were shown, that they ask for a pull request, as many approvals and the request check"
   does_not_prove:
     - "that the approving accounts are the right people: whoever reads the names judges that, and the repository's code owners say who may approve"
-    - "that whoever ran the verification ran this code on an honest machine: the answer is a log entry like any other, and its worth is that anybody can ask again"
+    - "that whoever ran the verification ran this code on an honest machine: a recorded answer is a note of what was asked and when, so the tools ask again wherever a standing decides or is shown, and anybody can ask again"
     - "anything at all against GitHub so far: it has been tested on answers written by hand in the platform's shapes, never on the platform"
 holds:
   - "that the request's manifest matches the files at the head of the pull request (verify_request.py, through sf.py check-request)"
@@ -37,7 +40,7 @@ holds:
   - "that no commit after an approval changed what the approval covered (verify_request.py)"
   - "that a pull request which carries a request changes nothing in tools/, factory/ or .github/ (verify_request.py)"
   - "that the lock or the signature in the study log cites the merge commit, and that the commit has the shape of an allowed merge method (record_act.py, through sf.py --record-merge); the names it copies are not verified by being copied"
-  - "that an act is called `verified` only on the platform's own answer, asked over https with a token from the environment (verify_acts.py, through sf.py verify-acts and at the opening)"
+  - "that an act is called `verified` only on the platform's own answer, asked now over https at api.github.com with a token from the environment (verify_acts.py, through sf.py at every point an act's standing is used)"
 by_instruction_only:
   - "that the branch is protected, the check is required and the code owners are the right people: the repository's settings, which README.md lists as a checklist"
   - "that the workflow file in the repository is this one, unchanged: a change to .github/ is itself a pull request the same people review"

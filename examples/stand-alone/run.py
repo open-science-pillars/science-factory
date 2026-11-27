@@ -461,10 +461,10 @@ def main() -> int:
         checked = json.loads(tool("sf.py", "verify-acts", *S, "--by", coordinator, answer=True))
         step("the status names the three standings an act can have and gives this lock the first, practice; asked to verify it, the tool "
              "says a typed lock has nothing to verify and stays practice",
-             practice["acts"]["standings"] == "each act has one of three standings: practice; merge found, people not verified; verified"
+             practice["acts"]["standings"].startswith("each act has one of three standings: practice; merge found, people not verified; verified.")
              and practice["acts"]["lock"]["standing"] == "practice" and checked["acts"]["lock"]["standing"] == "practice"
              and "nothing to verify" in checked["acts"]["lock"]["said"] and checked["acts"]["signature"]["standing"] is None)
-        standings_shown = f"{practice['acts']['standings']}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
+        standings_shown = f"{practice['acts']['standings'].split('.')[0]}. The lock of STUDY-B: {practice['acts']['lock']['standing']}."
     except AssertionError as err:
         print(f"FAIL at step {len(steps) + (0 if steps and not steps[-1][1] else 1)}: {err}")
         print(f"stand-alone example: FAIL ({sum(1 for _, good in steps if good)} steps passed)")
