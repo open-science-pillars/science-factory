@@ -6,7 +6,7 @@
 uv run examples/stand-alone/run.py
 ```
 
-It ends with `stand-alone example: PASS (N of N steps)` in about three minutes, most of it the known-answer tests of its last part. At the end it prints the path of a scratch folder outside the repository and what is in it. Nothing is written into the repository. Open the folder to see what the work looks like on disk, then delete it, or run with `--remove` to have the run delete it.
+It ends with `stand-alone example: PASS (N of N steps)` in about three minutes and prints the path of a scratch folder outside the repository holding what it made; nothing is written into the repository. Look, then delete it, or run with `--remove`.
 
 | In the scratch folder | What it is |
 |---|---|
@@ -19,7 +19,7 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes, 
 | `judging/` | two judging packets: what a model judge would be given for the review of the lead and for STUDY-B's plan. No model was asked |
 | `data/`, `request.md`, `review.md` | the record, the request the exploration began with, and the review of its lead |
 
-**What it has.** `record-2024.json`, a synthetic two-sensor record, one row a week, made by `make_record.py` from a fixed seed, with a gain of 1.03 put in by hand; `metadata.yaml`, what that record holds and what 2025 will hold, as metadata only; `looks/gain.py`, the one look script; `system-trial/analysis-plan.yaml`, a system trial's plan; and `run.py`, the run. The wiki it reads is `openwiki/` at the top of the repository.
+**What it has.** `record-2024.json`, a synthetic two-sensor record, a row a week, made by `make_record.py` from a fixed seed with a gain of 1.03 put in; `metadata.yaml`, what it and 2025 hold, as metadata only; `looks/gain.py`; `system-trial/analysis-plan.yaml`; and `run.py`. It reads the wiki `openwiki/`.
 
 **What the run does, in order.**
 
@@ -34,8 +34,6 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes, 
 9. Writes who did what, drafts a page into a queue for the wiki carrying it, and builds two judging packets.
 10. Takes a system trial through its tests (with a figure) to a lock request that shows the fit note and the figure, shows the three standings an act can have, and records a practice lock.
 
-Each step's refusals are printed in the run's own output.
+Each step prints its refusals. **Practice at the end**, because a scratch folder has no pull request to merge; a practice study never closes as signed. The pull request route is tested in `tools/sf.py selftest` and `factory/harnesses/github/record_act.py --selftest`, in a throwaway git repository.
 
-**Why practice mode at the end.** The scratch folder is no repository, so there is no pull request to merge. A practice lock says of itself that it is practice, and its study can never close as a signed finding. The pull request route is tested in `tools/sf.py selftest` and `factory/harnesses/github/record_act.py --selftest`, in a throwaway git repository.
-
-**What it shows.** That the loops hold together and the refusals refuse; and that the exploring comes within 0.02 of the gain that was put in once the degraded readings are left out (`lead.md` has both numbers). **What it does not show.** Anything about agents (no language model runs in it), and nothing past the lock.
+**It shows** that the loops hold together, the refusals refuse, and the exploring comes within 0.02 of the gain put in once degraded readings are left out (`lead.md` has both numbers). **It does not show** anything about agents (no language model runs) or past the lock.
