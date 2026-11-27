@@ -293,6 +293,33 @@ def main() -> int:
         step("no role's commands include the lock or the signature, and the tool has no command that signs",
              "invalid choice" in tool("explore.py", "signature", *E, expect=2))
 
+        # a look that proved useful becomes a method of the factory: here in a scratch copy of the definition, because the
+        # repository keeps no runs. The promotion is a change to the factory, recorded with a prediction and validated.
+        repo_copy = work / "factory-copy"
+        for part in ("factory", "tools"):
+            shutil.copytree(ROOT / part, repo_copy / part, ignore=shutil.ignore_patterns("__pycache__"))
+        (repo_copy / "examples" / "stand-alone").mkdir(parents=True)
+        shutil.copytree(HERE / "system-trial", repo_copy / "examples" / "stand-alone" / "system-trial")
+        readme = work / "method-readme.md"
+        readme.write_text("# gain-with-intercept\n\n**What it computes.** The gain of the second sensor on the reference by least squares with an "
+                          "intercept, the intercept and the residual spread, with an optional screen on the flag.\n\n**On what inputs.** One JSON record "
+                          "with `rows`, each holding `reference`, `sensor`, `flag` and `time`.\n\n**Known limits.** No uncertainty on the gain, "
+                          "no handling of a step in the offset, and readings are taken as independent.\n")
+        tool("explore.py", "promote", *E, "--by", me, "--look", "LOOK-002", "--name", "gain-with-intercept", "--readme", readme, "--methods", repo_copy / "methods")
+        method = repo_copy / "methods" / "gain-with-intercept"
+        kat = ran(["uv", "run", str(method / "known_answer_tests.py")])
+        step("a look's script is promoted to a method, with the exploration's runs of it as known-answer cases, and its tests reproduce them",
+             sorted(json.loads((method / "method.json").read_text())["cases"]) == ["LOOK-001", "LOOK-002"] and "PASS (2 of 2)" in kat)
+        step("the promotion is a change to the factory: the validator refuses it until the change log records it with a prediction",
+             "no record of the change log names" in tool("check_factory.py", repo_copy / "factory", expect=1))
+        change = work / "studies" / "CHANGE-PROMOTE"
+        tool("sf.py", "start", "--study", change, "--id", "CHANGE-PROMOTE", "--by", coordinator, "--question", "Does the promoted gain method reproduce its looks?")
+        tool("sf.py", "log-change", "--study", change, "--by", coordinator, "--log", repo_copy / "factory" / "change-log.jsonl",
+             "--factory", repo_copy / "factory", "--problem", "a look that proved useful is rewritten by hand in every study",
+             "--change", "Promote methods/gain-with-intercept from EXPLORATION-A, LOOK-002", "--rationale", "tools grow as they are used",
+             "--predicted", "its two known-answer cases reproduce, and a study that uses it runs them first")
+        step("recorded with a prediction, the promoted method is valid", "check-factory: VALID" in tool("check_factory.py", repo_copy / "factory"))
+
         # after work: a draft for the queue, checked, and found again as a draft
         tool("explore.py", "curation-list", *E)
         (queue / "pages").mkdir(parents=True)

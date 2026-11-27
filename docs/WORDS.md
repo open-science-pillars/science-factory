@@ -76,7 +76,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **fence**: what keeps set-aside data out of a look (`tools/fence.py`): the scratch folder, the reading of what goes in and comes out, and the kernel fence.
 - **kernel fence**: Landlock on Linux, which keeps a script from opening anything outside its scratch folder.
 - **keeper**: the small process that puts the kernel fence up and ends what a script leaves running.
-- **hand-over**: what an ended exploration gives a confirming study: the request, a plan stub, the proposal of the fresh data.
+- **hand-over**: what an ended exploration gives a confirming study: the request, a plan stub, the proposal of the fresh data, the figures.
+- **promoted method**: a look script made a method by `explore.py promote`, with the exploration's runs as its known-answer cases; a change to the factory, used by a study only once its tests pass there.
 
 ## The definition
 

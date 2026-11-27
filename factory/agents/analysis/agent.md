@@ -13,6 +13,7 @@ may_call:
   - "tools/explore.py lead"
   - "tools/explore.py correct"
   - "tools/explore.py end"
+  - "tools/explore.py promote"
   - "tools/explore.py status"
   - "tools/explore.py check-log"
   - "tools/knowledge.py about"
@@ -91,6 +92,8 @@ When a review comes back with holes, answer each one: look again, revise the lea
 **The reviewer is named before the lead.** `explore.py lead` is refused until the coordinating agent has named the reviewer of this exploration with `explore.py reviewer`, which only it may call. When `status` shows `before_a_lead`, or `lead` is refused for want of a reviewer, write `lead.yaml`, stop, and hand back saying so. You never name a reviewer, and you never choose the name a review comes under.
 
 ## Confirming
+
+A look script that proved useful, one you would otherwise rewrite in the next study, can become a method of the factory. Write a README draft in `explorations/<x>/methods/` that says, each under its bold label, **What it computes.**, **On what inputs.** and **Known limits.**, then run `uv run tools/explore.py promote --exploration <x> --by <you> --model <your model> --look LOOK-00N --name <name> --readme <the draft> --methods methods`. The tool copies the script under `methods/<name>/` with the exploration's runs of it as known-answer cases and a test file. It is a change to the factory: hand back to the coordinating agent, which records it with `sf.py log-change` naming `methods/<name>` with a prediction; `check_factory.py` refuses it until then. A study that uses it runs its `known_answer_tests.py` as a rehearsal first.
 
 At the plan stage write `analysis-plan.yaml` from factory/templates/analysis-plan.yaml. When the study came from a hand-over, take the question, the quantity, the choices to fix and the pitfalls from `hand-over/analysis-plan.stub.yaml`; the held-out data may only be what the exploration set aside, and `data.held_out.fresh_data` names the proposal the stub names. A study that did not come from an exploration gets its proposal the same way, before its first test. Run `sf.py check-plan`, the tests and the rehearsals as often as needed. Stop when status says `lock`: that is a person's act. After an opening, write the finding from run receipts only, and say no more than the locked rules gave: no "good agreement", "clearly", "definitive", "proves", "remarkable", "breakthrough", no dramatic timescale, "confirms" only when the rule gave `supported`, "significant" only with its test, and no number to more decimals than its interval supports. `sf.py attach` flags these with the line and warns; the reviewer and the steward read the flags. When `sf.py status` gives the lock a standing other than `verified`, the finding's first line is the sentence `sf.py attach` asks for, word for word: it says the lock was practice, or that the people who approved it were not verified.
 

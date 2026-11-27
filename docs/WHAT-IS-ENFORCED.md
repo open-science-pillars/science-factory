@@ -60,6 +60,7 @@ These hold wherever Python runs: the tool refuses or records, and nothing else i
 | 1.26 | An attached finding carries a statement of who did each kind of work, drawn by the tool from the study's log and the log of the exploration it came from, with each agent's declared model and what the logs cannot show. A draft from an exploration or a study is refused without a paragraph that begins **Who did what.** |
 | 1.27 | Every lead and its reviews, and every finding and its reviews, are read for the phrases of the factory's list (`scorers/overclaiming-in-leads/phrases.yaml`) and for numbers stated more finely than the uncertainty beside them or in the opening's receipt; `confirms` is flagged unless the locked rules gave `supported`. Each flag names the phrase and the line, at `lead`, `review` and `attach`, in status, on the scorecard and in the signature request. It warns and never blocks. |
 | 1.28 | A fit note is complete (the five answers, a verdict from the three, why, and the taste the work needs) or refused, and refused once the first look or test has run; status, the hand-over and the lock request show it, and say so when there is none. It never blocks work. |
+| 1.29 | A look's script is promoted to a method only from a look that passed, with a README that says what it computes, on what inputs and its known limits, the exploration's runs of it as cases and every checksum; the validator refuses the method if a file changed or no change-log record names it with a prediction. A plan that binds a promoted method fails its check without a rehearsal that runs the method's tests, and the study's tests, other rehearsals and lock are refused until that rehearsal has passed on the code as it stands. |
 
 Tests, by row (each command is `uv run tools/<tool>`, or the harness script named):
 
@@ -91,6 +92,7 @@ Tests, by row (each command is `uv run tools/<tool>`, or the harness script name
 26. `sf.py selftest`: "the finding carries who did each step", "the contribution statement of a study"; `explore.py selftest`: "the contribution statement of a lead"; `knowledge.py selftest`: "does not say who did the work it rests on".
 27. `sf.py selftest`: the checks of `_selftest_overclaiming`; `explore.py selftest`: "a lead that claims more than an exploration can show"; `check_factory.py --selftest`: "an overclaiming check that names no list of phrases", "a list of phrases with a pattern that does not compile".
 28. `sf.py selftest`: the checks of `_selftest_fit`; `explore.py selftest`: "the coordinating agent's fit note is recorded at intake", "a fit note once the first look has run is refused".
+29. `explore.py selftest`: the checks under "a look that proved useful becomes a method"; `check_factory.py --selftest`: the cases named "a promoted method".
 
 ## 2. Enforced only with the kernel fence, or inside a harness's check
 

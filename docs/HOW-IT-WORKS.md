@@ -22,7 +22,7 @@ A random set aside is drawn by the tool from a seed it makes, so nobody chooses 
 
 ## Exploring: most of the work
 
-This is what you do with a new dataset or a result that looks odd: plot it, compare it with another record, try a method, see where it breaks, change it, look again. Nothing in that loop needs to be slowed down, and an agent is at its most useful inside it. It produces an understanding of the data, pitfalls written down as notes, a method, and a **lead**: something that looks true and is worth testing. It cannot produce a tested claim, because every choice made after looking was made knowing how the answer would move.
+This is what you do with a new dataset or a result that looks odd: plot it, compare it with another record, try a method, see where it breaks, change it, look again. Nothing in that loop needs to be slowed down, and an agent is at its most useful inside it. It produces an understanding of the data, pitfalls written down as notes, a method (a look script that proved useful can be promoted to one, with its runs as known-answer tests), and a **lead**: something that looks true and is worth testing. It cannot produce a tested claim, because every choice made after looking was made knowing how the answer would move.
 
 The one rule is to say that it was exploring. The exploring tool (`tools/explore.py`) makes that easy in five steps:
 

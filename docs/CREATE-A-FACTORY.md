@@ -71,6 +71,8 @@ They must be exactly the stages `done_by: people`. A factory declares both acts 
 
 **Skills.** A skill two or more agents use is in `skills/`; one agent's own is in that agent's folder. A skill is a procedure with any script beside it and no facts about a dataset. Methods for a kind of data belong to the repository where that science lives; the factory ships one built-in method so its own stages can be exercised.
 
+**Promoted methods: tools grow with use.** `explore.py promote` turns a look's script into `methods/<name>/`: the script, the exploration's runs of it as known-answer cases (inputs and outputs), the agent's README (what it computes, on what inputs, known limits), a generated `known_answer_tests.py`, and `method.json` with where it came from and every checksum. It is a change to the factory: the validator refuses it until a change-log record names `methods/<name>` with a prediction. A plan that binds a promoted method must run its `known_answer_tests.py` as a rehearsal, and the study tool refuses the study's tests and lock until that rehearsal has passed on the code as it stands.
+
 **Harnesses.** `harnesses/claude-code/`: `render.py` writes the files Claude Code reads and fails on drift (`--check`); `allow.py` is the per-call check; `run_role.py` starts one agent in a fresh context and keeps its task and answer in `record/<role>/`. `harnesses/by-hand/as_role.py` asks the same check for one command. `harnesses/github/` starts no agent: it carries the two acts. None has run under its platform.
 
 **The model is declared, not proven.** An agent passes `--model`; the tool writes it into the event and refuses an agent's event without one. The lock records the models the agents declare and the models the log recorded.
@@ -112,7 +114,7 @@ uv run tools/check_factory.py --checksum
 uv run tools/check_factory.py --selftest
 ```
 
-Three results: `valid` (exit 0), `invalid` (exit 1, each broken rule printed with its name) and `not validated` (exit 2, which is never a pass). The rules are **form**, **references**, **roles** (every rule of `check_roles.py`), **acts**, **skills**, **firewall**, **acceptance** and **automations**. `--summary OLD NEW` says in plain words what a change does, the acts by people and agents' permissions first.
+Three results: `valid` (exit 0), `invalid` (exit 1, each broken rule printed with its name) and `not validated` (exit 2, which is never a pass). The rules are **form**, **references**, **roles** (every rule of `check_roles.py`), **acts**, **skills**, **firewall**, **acceptance**, **automations** and **methods** (a promoted method beside the definition is whole, unchanged and in the change log). `--summary OLD NEW` says in plain words what a change does, the acts by people and agents' permissions first.
 
 ## What the lock binds
 

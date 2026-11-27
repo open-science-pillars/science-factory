@@ -104,6 +104,10 @@ Commands.
   status         where the exploration stands and who is next
   check-log      everything re-checked from the files
   fingerprint    the log's fingerprint, to post outside the workspace
+  promote        a look's script that proved useful becomes a method under
+                 methods/<name>/: the script, the exploration's runs of it as
+                 known-answer cases, the agent's README, a test file, and
+                 where it came from; a change to the factory
   contribution   who did each step, from the log: a paragraph for a paper,
                  and what the log cannot show
   selftest       the tool tests itself, attacks included
@@ -269,6 +273,7 @@ import signal  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
+import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
@@ -349,7 +354,7 @@ SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32"
                   "/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/run/systemd/resolve")
 CONFINED_BY_THE_KERNEL = "kernel"   # Landlock was applied and tried: the script could open the system's folders, its interpreter and its scratch folder, nothing else
 SCRATCH_ONLY = "scratch-only"       # no kernel fence here: the script ran in a scratch folder and could still open a path it built itself
-AFTER_END = ("note.resolved", "handed.over", "review.verdict", "so-what.verification")
+AFTER_END = ("note.resolved", "handed.over", "review.verdict", "so-what.verification", "method.promoted")
 LEAD_KEYS = ("what_looks_true", "how_it_was_found", "evidence", "choices_that_would_change_it", "choices_that_would_not",
              "pitfalls", "proposed_plan")
 LEAD_OPTIONAL = ("what_does_not_hold", "open_explanations", "figures")
@@ -2542,6 +2547,173 @@ def cmd_check_log(x: Exploration, a) -> None:
           "earlier one: a log rewritten and then committed again passes this check.")
 
 
+README_PARTS = ("**What it computes.**", "**On what inputs.**", "**Known limits.**")  # what the agent's README of a promoted method says
+KNOWN_ANSWER_TESTS = """# /// script
+# requires-python = ">=3.11"
+# dependencies = DEPENDENCIES
+# ///
+\"\"\"Known-answer tests of the promoted method NAME, written by `explore.py promote`.
+
+Each case is a look of the exploration the method came from: the files it was given and the output its script
+printed. This runs the script on each case's files, in a folder of its own, and compares what it prints with what
+the look printed, byte for byte. The checksum of every case file is written below, so a case changed after the
+promotion fails here, and the lock that binds this file binds the cases with it.
+
+  uv run known_answer_tests.py [--out RECEIPT.json]
+
+Exit 0 when every case reproduces; 1 otherwise.
+\"\"\"
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SCRIPT = HERE / SCRIPT_NAME
+CASES = CASE_SHAS
+
+
+def sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--out", default=None)
+    a = ap.parse_args()
+    results = []
+    for case, files in sorted(CASES.items()):
+        folder = HERE / "known-answers" / case
+        changed = [rel for rel, h in files.items() if not (folder / rel).is_file() or sha(folder / rel) != h]
+        if changed:
+            results.append({"case": case, "passed": False, "why": "case files changed since the promotion: " + ", ".join(changed)})
+            continue
+        c = json.loads((folder / "case.json").read_text())
+        with tempfile.TemporaryDirectory() as t:
+            for rel in c["inputs"]:
+                (Path(t) / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(folder / "inputs" / rel, Path(t) / rel)
+            done = subprocess.run([sys.executable, str(SCRIPT), *c["args"]], cwd=t, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        same = done.returncode == 0 and done.stdout == (folder / "expected.out.txt").read_text()
+        results.append({"case": case, "passed": same, "why": "" if same else f"exit {done.returncode}; the output differs from what the look printed"})
+    passed = sum(r["passed"] for r in results)
+    receipt = {"method": NAME_JSON, "script_sha256": sha(SCRIPT), "cases": len(results), "passed": passed, "results": results}
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(receipt, indent=1) + "\\n")
+    for r in results:
+        print(("pass  " if r["passed"] else "FAIL  ") + r["case"] + (f": {r['why']}" if r["why"] else ""))
+    good = bool(results) and passed == len(results)
+    print(f"known-answer tests of NAME: {'PASS' if good else 'FAIL'} ({passed} of {len(results)})")
+    return 0 if good else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+
+
+def inline_dependencies(script: Path) -> list:
+    """The `dependencies` of a script's inline header (PEP 723), so the method's tests run in the same environment."""
+    text = script.read_text(errors="replace")
+    block = re.search(r"^# /// script\n((?:#.*\n)+?)# ///", text, re.M)
+    if not block:
+        return []
+    try:
+        meta = tomllib.loads("\n".join(ln[2:] if ln.startswith("# ") else ln[1:] for ln in block.group(1).splitlines()))
+    except (tomllib.TOMLDecodeError, ValueError):
+        return []
+    deps = meta.get("dependencies") or []
+    return [str(d) for d in deps] if isinstance(deps, list) else []
+
+
+def cmd_promote(x: Exploration, a) -> None:
+    """A look's script that proved useful becomes a method: copied under methods/<name>/, with the exploration's runs of it as its
+    first known-answer cases, the agent's README, a test file the study tool can run, and where it came from. It is a change
+    to the factory: `sf.py log-change` records it with a prediction, and `check_factory.py` validates it."""
+    ev = x.events()
+    start = x.started()
+    if breached(ev):
+        raise Refused("this exploration is spoiled (set-aside data reached it); nothing from it becomes a method")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,40}", str(a.name or "")):
+        raise Refused("`--name` names the method: lower-case letters, digits and hyphens, such as gain-with-intercept")
+    e = next((e for e in ev if e["kind"] == "look.run" and e["data"]["id"] == a.look), None)
+    if e is None or e["data"]["exit_code"] != 0 or not e["data"].get("ran_in"):
+        raise Refused(f"{a.look} is not a look of this exploration that ran in a scratch folder and passed; a method is promoted from one that did")
+    receipt = json.loads((x.d / f"receipts/{e['data']['id']}.json").read_text())
+    script = Path(os.path.normpath(x.d / receipt["script"]["word"]))
+    if sf.sha_file(script) != e["data"]["script_sha"]:
+        raise Refused(f"the script of {a.look} is not the script that was logged; nothing is promoted")
+    methods = Path(os.path.abspath(a.methods))
+    dest = methods / a.name
+    if dest.exists():
+        raise Refused(f"{dest} exists; a promoted method is a new folder, and a change to an existing method is a change of its own")
+    try:
+        readme = Path(a.readme).read_text()
+    except (OSError, TypeError):
+        raise Refused("`--readme` names the README you wrote: what it computes, on what inputs, and its known limits")
+    missing = [part for part in README_PARTS if not re.search(re.escape(part) + r"\s+\S+(\s+\S+){3,}", readme)]
+    if missing:
+        raise Refused("the README says, each in a sentence or more: " + ", ".join(missing))
+    runs = [r for r in ev if r["kind"] == "look.run" and r["data"]["script_sha"] == e["data"]["script_sha"] and r["data"]["exit_code"] == 0
+            and r["data"].get("ran_in")]
+    dest.mkdir(parents=True)
+    try:
+        shutil.copyfile(script, dest / script.name)
+        cases = {}
+        for r in runs:
+            how, lid = r["data"]["ran_in"], r["data"]["id"]
+            folder = dest / "known-answers" / lid
+            (folder / "inputs").mkdir(parents=True)
+            at_script = next(f["at"] for f in how["placed"] if f["role"] == "script")
+            inputs = []
+            for f in how["placed"]:
+                if f["role"] == "script":
+                    continue
+                src = Path(os.path.normpath(x.d / f["from"]))
+                if sf.sha_file(src) != f["sha256"]:
+                    raise Refused(f"`{f['from']}` is not the file {lid} was given; nothing is promoted")
+                (folder / "inputs" / f["at"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, folder / "inputs" / f["at"])
+                inputs.append(f["at"])
+            out = (x.d / f"receipts/{lid}.out.txt").read_text()
+            if sf.sha_text(out) != r["data"]["output_sha"]:
+                raise Refused(f"the output of {lid} is not what was logged; nothing is promoted")
+            (folder / "expected.out.txt").write_text(out.split("\n", 1)[1] if out.startswith(f"[{WAY}: output of {lid}]\n") else out)
+            words = how["argv_as_run"]
+            (folder / "case.json").write_text(json.dumps({"look": lid, "why": r["data"]["why"], "args": words[words.index(at_script) + 1:],
+                                                          "inputs": inputs, "from_exploration": start["data"]["id"]}, indent=1) + "\n")
+            cases[lid] = {rel.relative_to(folder).as_posix(): sf.sha_file(rel) for rel in sorted(folder.rglob("*")) if rel.is_file()}
+        test = (KNOWN_ANSWER_TESTS.replace("DEPENDENCIES", json.dumps(inline_dependencies(script))).replace("SCRIPT_NAME", repr(script.name))
+                .replace("CASE_SHAS", json.dumps(cases, indent=1, sort_keys=True)).replace("NAME_JSON", json.dumps(a.name)).replace("NAME", a.name))
+        (dest / "known_answer_tests.py").write_text(test)
+        provenance = (f"\n\n## Where it came from\n\nPromoted by {a.by}" + (f" (model {x.model} as declared)" if x.model else "")
+                      + f" from {start['data']['id']} ({WAY}), the script of {a.look} (sha256 {e['data']['script_sha']}). Its first known-answer "
+                      f"cases are the {len(cases)} look(s) of that exploration that ran it: {', '.join(sorted(cases))}. They hold the exploration's "
+                      "working data, never data it set aside. `known_answer_tests.py` runs them; a confirming study that uses this method runs "
+                      "it as a rehearsal, and the study tool refuses its tests and its lock until that passes. A lead is not a finding, and "
+                      "neither is a method: it is a tool that worked here.\n")
+        (dest / "README.md").write_text(readme.rstrip() + provenance)
+        method = {"promoted": True, "name": a.name, "script": {"file": script.name, "sha256": e["data"]["script_sha"]},
+                  "tests": {"file": "known_answer_tests.py", "sha256": sf.sha_file(dest / "known_answer_tests.py")},
+                  "readme": {"file": "README.md", "sha256": sf.sha_file(dest / "README.md")},
+                  "from": {"exploration": start["data"]["id"], "look": a.look, "looks": sorted(cases), "log_fingerprint": f"{ev[-1]['seq']}:{ev[-1]['hash']}"},
+                  "cases": cases, "by": a.by, "model": x.model, "at": sf.now(),
+                  "change_log": "a promotion is a change to the factory: record it with `sf.py log-change`, naming methods/" + a.name + ", with a prediction"}
+        (dest / "method.json").write_text(json.dumps(method, indent=1, sort_keys=True) + "\n")
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
+    x.add(a.by, "method.promoted", {"name": a.name, "folder": os.path.relpath(dest, x.d), "look": a.look, "cases": sorted(cases),
+                                    "script_sha": e["data"]["script_sha"], "method_json_sha": sf.sha_file(dest / "method.json")})
+    print(f"promoted {a.look} to the method {a.name} ({WAY}): {dest} with {len(cases)} known-answer case(s). This is a change to the factory: "
+          f"record it with `sf.py log-change` naming methods/{a.name}, with a prediction, then run `check_factory.py`, which validates the method")
+
+
 def cmd_fit(x: Exploration, a) -> None:
     """The coordinating agent's fit note at intake: how well the question suits agents, a verdict, and what it needs from a person."""
     ev = x.events()
@@ -3474,6 +3646,55 @@ def selftest() -> int:
         ok("the hand-over carries the so what, who gave it and its standing, and the fit note, and the log checks out",
            "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "**The fit note.** **fit-with-a-person-steering**" in swho and "standing: practice" in swho
            and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
+        # ---- a look that proved useful becomes a method, and a study may use it once its own tests pass there
+        methods = tmp / "repo" / "methods"
+        rd = tmp / "method-readme.md"
+        rd.write_text("# rows-counted\n\n**What it computes.** How many rows a record holds, printed as one line.\n\n")
+        ok("a method is promoted only with a README that says what it computes, on what inputs and its known limits, under a proper name",
+           "**On what inputs.**" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods)))
+           and "`--name`" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="Rows Counted", readme=str(rd), methods=str(methods)))
+           and not methods.exists())
+        rd.write_text("# rows-counted\n\n**What it computes.** How many rows a record holds, printed as one line.\n\n"
+                      "**On what inputs.** One JSON file of working data with a list under `rows`.\n\n"
+                      "**Known limits.** It checks no row and reads nothing but the one file.\n")
+        quiet(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods)))
+        mdir = methods / "rows-counted"
+        mj = json.loads((mdir / "method.json").read_text())
+        ok("the promoted method holds the script by checksum, the exploration's runs of it as known-answer cases with their inputs and "
+           "outputs, the agent's README with where it came from, and a test file",
+           sf.sha_file(mdir / "rows.py") == last(sw.events(), "look.run")["data"]["script_sha"] and sorted(mj["cases"]) == ["LOOK-002", "LOOK-003"]
+           and (mdir / "known-answers" / "LOOK-002" / "expected.out.txt").read_text() == "rows 12\n"
+           and "## Where it came from" in (mdir / "README.md").read_text() and mj["from"]["exploration"] == "E-SO-WHAT"
+           and last(sw.events(), "method.promoted")["data"]["name"] == "rows-counted")
+        ran = subprocess.run([sys.executable, str(mdir / "known_answer_tests.py")], capture_output=True, text=True)
+        ok("the method's known-answer tests reproduce every case", ran.returncode == 0 and "PASS (2 of 2)" in ran.stdout)
+        exp = mdir / "known-answers" / "LOOK-003" / "expected.out.txt"
+        kept_exp = exp.read_text()
+        exp.write_text("rows 13\n")
+        ran = subprocess.run([sys.executable, str(mdir / "known_answer_tests.py")], capture_output=True, text=True)
+        exp.write_text(kept_exp)
+        ok("a case changed after the promotion fails the tests", ran.returncode == 1 and "changed since the promotion" in ran.stdout)
+        ok("a second promotion under the same name is refused",
+           "exists" in said(cmd_promote, sw, A(by="agent:tester-analysis", look="LOOK-002", name="rows-counted", readme=str(rd), methods=str(methods))))
+        uses = json.loads(json.dumps(sf.PLAN))
+        uses["code"] = uses["code"] + [str(mdir / "rows.py")]
+        uses["data"]["held_out"]["pair"] = "uses-a-promoted-method"
+        ps = sf._fresh(work / "studies", "STUDY-USES-METHOD", plan=uses)
+        ok("a plan that uses a promoted method without running its tests as a rehearsal fails the plan check",
+           any("promoted method `rows-counted`" in q for q in sf.check_plan(ps.plan(), ps)))
+        uses["rehearsals"] = [{"id": "method-rows-counted", "why": "the promoted method's own known-answer tests, in this study",
+                               "steps": [["{python}", str(mdir / "known_answer_tests.py")]]}]
+        ps.plan_path.write_text(yaml.safe_dump(uses, sort_keys=False))
+        ok("with the rehearsal declared, the study's tests are refused until the method's own tests have passed in this study",
+           sf.check_plan(ps.plan(), ps) == [] and "have not passed in this study" in said(sf.cmd_test, ps, A(what="known-answers", by="agent:tester-analysis")))
+        quiet(sf.cmd_rehearse, ps, A(id="method-rows-counted", by="agent:tester-analysis"))
+        ok("once the method's tests pass as a rehearsal of this study, the study's tests run",
+           ps.last("rehearsal.run", id="method-rows-counted")["data"]["exit"] == 0
+           and said(sf.cmd_test, ps, A(what="known-answers", by="agent:tester-analysis")) == "")
+        (mdir / "rows.py").write_text((mdir / "rows.py").read_text() + "# changed\n")
+        ok("a promoted method changed after its tests passed is refused again: the code they passed on is not the code now",
+           "have not passed in this study" in said(sf.cmd_test, ps, A(what="working-data", by="agent:tester-analysis")))
+
         no = fresh("E-SO-WHAT-NO", subject="reach_id=R41,gauge=G41")
         known(no)
         look(no, ["{python}", script(no, "rows.py", "import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n"), str(data)])
@@ -3842,6 +4063,10 @@ def build_parser() -> argparse.ArgumentParser:
         (["--time-keys"], {"default": None, "help": "the keys under which a data file carries its times (default: " + ",".join(TIME_KEYS) + ")"}),
         (["--studies"], {"default": None, "help": "the folder of confirming studies, where the record is (default: ../../studies from the exploration)"}))
     add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(sf.FIT_KEYS)}))
+    add("promote", cmd_promote, by, (["--look"], {"required": True, "help": "the look whose script becomes a method, such as LOOK-002"}),
+        (["--name"], {"required": True, "help": "the method's name: lower-case letters, digits and hyphens"}),
+        (["--readme"], {"required": True, "help": "the README you wrote: " + ", ".join(README_PARTS)}),
+        (["--methods"], {"required": True, "help": "the methods folder of the repository, such as methods"}))
     add("known", cmd_known, by, (["--wiki", "--bundle"], {"dest": "bundle", "action": "append", "required": True,
                                                          "help": "a wiki: a directory of Markdown pages; repeatable"}),
         (["--drafts"], {"action": "append", "default": None, "help": "a queue of drafted pages, listed as drafts; repeatable"}),

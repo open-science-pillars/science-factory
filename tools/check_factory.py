@@ -107,6 +107,7 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     sys.path[:] = [p for p in sys.path if p != _own]
 
 import argparse  # noqa: E402
+import contextlib  # noqa: E402
 import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import io  # noqa: E402
@@ -428,6 +429,11 @@ def conforms(obj, spec, where: str) -> list:
         if k in obj:
             p += conforms(obj[k], sub, f"{where}.{k}" if where else k)
     return p
+
+
+def sha_of(f: Path) -> str | None:
+    """The sha256 of a plain file, or None when there is none."""
+    return hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() and not f.is_symlink() else None
 
 
 def model_problem(model) -> str | None:
@@ -964,6 +970,49 @@ def validate(root: Path, repository: Path | None = None) -> tuple:
         for t in a.get("triggers") or []:
             if isinstance(t, dict) and t.get("provider") == "schedule" and "schedule" not in t:
                 bad("form", f"{where}: a schedule trigger carries `schedule` (a name and a cron line)")
+
+    # ---- methods: a method promoted from a look is whole, unchanged, and recorded as a change with a prediction
+    changes = []
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for ln in (root / "change-log.jsonl").read_text(encoding="utf-8").splitlines():
+            with contextlib.suppress(ValueError):
+                rec = json.loads(ln)
+                if isinstance(rec, dict):
+                    changes.append(rec)
+    for mj in sorted((repository / "methods").glob("*/method.json")) if (repository / "methods").is_dir() else []:
+        folder, where = mj.parent, f"methods/{mj.parent.name}"
+        try:
+            m = json.loads(mj.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError):
+            bad("methods", f"{where}/method.json cannot be read as JSON")
+            continue
+        if not isinstance(m, dict) or m.get("promoted") is not True or m.get("name") != folder.name:
+            bad("methods", f"{where}/method.json does not say it is the promoted method `{folder.name}` (promoted: true, name)")
+            continue
+
+        def same(rel, h, what) -> None:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]*", str(rel or "")) or ".." in str(rel) or sha_of(folder / str(rel)) != h:
+                bad("methods", f"{where}: {what} `{rel}` is missing or is not the file the promotion recorded (its checksum differs)")
+        for key, what in (("script", "the script"), ("tests", "the known-answer tests"), ("readme", "the README")):
+            same((m.get(key) or {}).get("file"), (m.get(key) or {}).get("sha256"), what)
+        if (m.get("tests") or {}).get("file") != "known_answer_tests.py":
+            bad("methods", f"{where}: the known-answer tests are `known_answer_tests.py`, which a study runs as a rehearsal")
+        cases = m.get("cases") if isinstance(m.get("cases"), dict) else {}
+        if not cases:
+            bad("methods", f"{where}: a promoted method has at least one known-answer case, from the looks it came from")
+        for case, files in cases.items():
+            for rel, h in (files.items() if isinstance(files, dict) else []):
+                same(f"known-answers/{case}/{rel}", h, f"the case {case}'s file")
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            text = (folder / "README.md").read_text(encoding="utf-8")
+            for part in ("**What it computes.**", "**On what inputs.**", "**Known limits.**"):
+                if part not in text:
+                    bad("methods", f"{where}/README.md does not say {part.strip('*').rstrip('.').lower()}")
+        if not str((m.get("from") or {}).get("exploration") or "").strip() or not str((m.get("from") or {}).get("look") or "").strip():
+            bad("methods", f"{where}/method.json does not say which exploration and look it came from")
+        if not any(f"methods/{folder.name}" in str(c.get("change") or "") and str(c.get("predicted") or "").strip() for c in changes):
+            bad("methods", f"{where} is a promoted method that no record of the change log names with a prediction: a promotion is a "
+                           f"change to the factory, recorded with `sf.py log-change` naming methods/{folder.name}")
     return p, nv
 
 
@@ -1293,6 +1342,37 @@ def selftest() -> int:
              lambda d: edit(d, "scorers/overclaiming-in-leads/phrases.yaml", 'why: "if it is clear', 'severity: high, why: "if it is clear'), "the key `severity` is not one")
         case("the overclaiming check of findings marked as feeding a proposal",
              lambda d: edit(d, "scorers/overclaiming-in-findings/scorer.md", "selfImprovement: false", "selfImprovement: true"), "`selfImprovement: true` on a scorer that reads finding")
+        def promoted(d: Path, recorded: bool = True) -> None:
+            """A method promoted from a look, made by hand in the shape `explore.py promote` writes, beside the definition."""
+            m = d.parent / "methods" / "rows-counted"
+            (m / "known-answers" / "LOOK-001" / "inputs").mkdir(parents=True)
+            (m / "rows.py").write_text("import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']))\n")
+            (m / "known_answer_tests.py").write_text("print('the cases of rows-counted')\n")
+            (m / "README.md").write_text("# rows-counted\n\n**What it computes.** The number of rows in a record, as one line.\n\n"
+                                         "**On what inputs.** One JSON file with a list under `rows`.\n\n**Known limits.** It reads nothing else and checks no row.\n")
+            case_dir = m / "known-answers" / "LOOK-001"
+            (case_dir / "case.json").write_text('{"look": "LOOK-001", "args": ["d.json"], "inputs": ["d.json"]}\n')
+            (case_dir / "expected.out.txt").write_text("rows 2\n")
+            (case_dir / "inputs" / "d.json").write_text('{"rows": [1, 2]}\n')
+            files = {q.relative_to(case_dir).as_posix(): sha_of(q) for q in sorted(case_dir.rglob("*")) if q.is_file()}
+            (m / "method.json").write_text(json.dumps({"promoted": True, "name": "rows-counted", "from": {"exploration": "E-1", "look": "LOOK-001"},
+                                                       "script": {"file": "rows.py", "sha256": sha_of(m / "rows.py")},
+                                                       "tests": {"file": "known_answer_tests.py", "sha256": sha_of(m / "known_answer_tests.py")},
+                                                       "readme": {"file": "README.md", "sha256": sha_of(m / "README.md")}, "cases": {"LOOK-001": files}}))
+            if recorded:
+                with (d / "change-log.jsonl").open("a") as f:
+                    f.write(json.dumps({"change": "Promote methods/rows-counted from E-1", "predicted": "its cases reproduce"}) + "\n")
+        good_method = copy("method-good")
+        promoted(good_method)
+        results.append(("a method promoted from a look, whole and recorded in the change log with a prediction, is valid", result(good_method)[0] == "valid"))
+        case("a promoted method that no record of the change log names", lambda d: promoted(d, recorded=False), "no record of the change log names")
+        case("a promoted method whose script was changed after the promotion",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "rows.py").write_text("print('rows', 3)\n")), "the script `rows.py` is missing or is not the file")
+        case("a promoted method whose known-answer case was changed",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "known-answers" / "LOOK-001" / "expected.out.txt").write_text("rows 3\n")),
+             "the case LOOK-001's file")
+        case("a promoted method whose README does not say its known limits",
+             lambda d: (promoted(d), (d.parent / "methods" / "rows-counted" / "README.md").write_text("# rows-counted\n")), "the README `README.md` is missing or is not the file")
         case("a definition with no so what for a reviewed lead",
              lambda d: write(d, "factory.yaml", "\n".join(ln for ln in (d / "factory.yaml").read_text().split("\n  so_what:\n")[0].split("\n"))
                             + "\n  rules_for_people:" + (d / "factory.yaml").read_text().split("\n  rules_for_people:", 1)[1]), "`procedure.so_what` is missing")

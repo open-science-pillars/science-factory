@@ -160,4 +160,4 @@ uv run tools/explore.py hand-over --exploration $X --by $COORDINATOR --model "$M
 
 `end --outcome lead` and the hand-over are refused until a person said `worth-confirming` on the lead as it stands; `--local-practice` says the so what was typed.
 
-The hand-over writes, in `$X/hand-over/`, the request for a confirming study, a stub of its plan, and a copy of the proposal of the fresh data, and prints the `sf.py start` command for the study. [FIRST-STUDY.md](FIRST-STUDY.md) takes a study from there to a lock. An exploration may also end as a note, a method, a stop or a lead noted: all honest outcomes.
+The hand-over writes, in `$X/hand-over/`, the request for a confirming study, a stub of its plan, and a copy of the proposal of the fresh data, and prints the `sf.py start` command for the study. [FIRST-STUDY.md](FIRST-STUDY.md) takes a study from there to a lock. An exploration may also end as a note, a method, a stop or a lead noted: all honest outcomes. A look script worth keeping becomes a method with `explore.py promote` ([CREATE-A-FACTORY.md](CREATE-A-FACTORY.md) says how); the stand-alone example promotes `looks/gain.py`.

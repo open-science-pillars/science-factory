@@ -1021,11 +1021,65 @@ def subject_and_window(where: str, spec: dict, required: bool) -> list:
     return p
 
 
+def promoted_method_of(f: Path) -> Path | None:
+    """The folder of a promoted method a file belongs to: the nearest folder above it, up to five levels, that holds a method.json
+    (explore.py promote writes it). A method.json that cannot be read counts as a promotion, so a broken one is not a way round."""
+    for d in [f.parent, *f.parents][:6]:
+        m = d / "method.json"
+        if m.is_file():
+            try:
+                return d if json.loads(m.read_text()).get("promoted") is not False else None
+            except (OSError, ValueError, AttributeError):
+                return d
+    return None
+
+
+def promoted_in(study: Study, plan: dict) -> dict:
+    """{the folder of each promoted method the plan's bound code belongs to: the ids of the rehearsals that run its known-answer tests}."""
+    used = {}
+    for word in study.code_hashes(plan):
+        if word.startswith("("):
+            continue
+        with contextlib.suppress(Refused, OSError, ValueError):
+            f = study.word(word, plan).resolve()
+            m = promoted_method_of(f) if f.is_file() else None
+            if m:
+                used.setdefault(m, [])
+    for reh in plan.get("rehearsals") or []:
+        for st in reh.get("steps") or []:
+            launcher, script = launch(st)
+            with contextlib.suppress(Refused, OSError, ValueError):
+                f = study.word(script, plan).resolve() if launcher else None
+                if f is not None and f.name == "known_answer_tests.py" and f.parent in used and reh["id"] not in used[f.parent]:
+                    used[f.parent].append(reh["id"])
+    return used
+
+
+def promoted_problems(study: Study, plan: dict) -> list:
+    """A plan that uses a promoted method runs that method's own known-answer tests as a rehearsal, in this study."""
+    return [f"the plan uses the promoted method `{m.name}` ({m}); a promoted method is used only once its own known-answer tests pass in "
+            f"this study: add a rehearsal whose step runs `{m / 'known_answer_tests.py'}`" for m, rehs in promoted_in(study, plan).items() if not rehs]
+
+
+def promoted_untested(study: Study, plan: dict, but: str | None = None) -> list:
+    """The promoted methods the plan uses whose known-answer tests have not passed in this study on exactly this plan and code."""
+    code, psha, out = study.code_hashes(plan), study.plan_sha(), []
+    for m, rehs in promoted_in(study, plan).items():
+        if but in rehs:
+            continue
+        ok = any((lambda e: e and e["data"]["exit"] == 0 and e["data"]["plan_sha"] == psha and e["data"]["code"] == code)(study.last("rehearsal.run", id=r))
+                 for r in rehs)
+        if not ok:
+            out.append(f"`{m.name}` (run `sf.py rehearse --id {rehs[0] if rehs else '<its rehearsal>'}` first)")
+    return out
+
+
 def check_plan(plan, study: Study | None = None) -> list:
     """The plan check: is the analysis plan complete and well formed enough to be locked? Every message names
     the key and what it accepts."""
     try:
-        return _check_plan(plan, study)
+        problems = _check_plan(plan, study)
+        return problems or (promoted_problems(study, plan) if study is not None else [])
     except Refused as r:
         return [str(r)]
     except (KeyError, TypeError, ValueError, AttributeError, IndexError):
@@ -1775,6 +1829,10 @@ def cmd_test(study: Study, a) -> None:
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
     spec = plan["tests"][a.what]
+    untested = promoted_untested(study, plan)
+    if untested:
+        raise Refused("the plan uses promoted methods whose own known-answer tests have not passed in this study on this plan and code: "
+                      + ", ".join(untested) + ". Nothing was run")
     if not_set(spec):
         raise Refused(f"the plan passes {', '.join(not_set(spec))} to this test (`passes_environment`) and it is not set in "
                       "the environment; set it and run again. Nothing was run")
@@ -1826,6 +1884,10 @@ def cmd_rehearse(study: Study, a) -> None:
     reh = next((r for r in plan.get("rehearsals") or [] if r["id"] == a.id), None)
     if not reh:
         raise Refused(f"no rehearsal `{a.id}` is in the plan")
+    untested = promoted_untested(study, plan, but=a.id)
+    if untested:
+        raise Refused("the plan uses promoted methods whose own known-answer tests have not passed in this study on this plan and code: "
+                      + ", ".join(untested) + ". Nothing was run")
     if early_data(study, plan, study.events()):
         raise Refused("held-out data is present in the workspace before any opening; testing stops here")
     note_held_out(study, plan, study.events())
