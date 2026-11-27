@@ -36,12 +36,12 @@ Usage: render.py            write the rendered files
 import sys
 
 sys.dont_write_bytecode = True
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
     # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
     # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess

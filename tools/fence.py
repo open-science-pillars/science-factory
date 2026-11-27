@@ -78,6 +78,7 @@ import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 THIS = Path(__file__).resolve()
+NO_BYTECODE = "/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(tempfile.gettempdir(), "sf-no-bytecode")  # a cache prefix that cannot exist: no bytecode is read
 TOOLS = THIS.parent
 
 KERNEL = "kernel"             # Landlock was applied and tried: the script could open what the receipt lists, nothing else
@@ -509,7 +510,7 @@ def run_fenced(argv: list, cwd: Path, env: dict, scratch: Path, read: list, writ
     r, w = os.pipe()
     try:
         with out_file.open("w") as o, err_file.open("w") as e:
-            proc = subprocess.Popen([sys.executable, "-I", "-S", "-B", str(THIS), "--inside", str(spec_file), str(w)], cwd=str(scratch),
+            proc = subprocess.Popen([sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}", str(THIS), "--inside", str(spec_file), str(w)], cwd=str(scratch),
                                     env=env, stdin=subprocess.DEVNULL, stdout=None if inherit else o,
                                     stderr=None if inherit else (subprocess.STDOUT if merged else e),
                                     start_new_session=True, pass_fds=(w,))

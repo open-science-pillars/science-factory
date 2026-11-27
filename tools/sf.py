@@ -188,12 +188,12 @@ Usage: sf.py <command> --study STUDY_DIR [...]; sf.py selftest
 import sys
 
 sys.dont_write_bytecode = True  # the tool never leaves bytecode beside its own source
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
     # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
     # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess
@@ -234,13 +234,26 @@ import urllib.parse  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
 
 
 def _beside(name: str):
     """Another file of this package, loaded from beside this one by its path, so that nothing can stand in for it by name."""
     if name not in sys.modules:
         import importlib.util
-        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parent / f"{name}.py")
+        spec = _source_spec(name, Path(__file__).resolve().parent / f"{name}.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules[name] = mod
         spec.loader.exec_module(mod)
@@ -1949,7 +1962,7 @@ def definition_tool():
     what its checksum is, so the lock, `status` and the scorecard name a definition the same way it does."""
     if "check_factory" not in sys.modules:
         import importlib.util
-        spec = importlib.util.spec_from_file_location("check_factory", TOOL.parent / "check_factory.py")
+        spec = _source_spec("check_factory", TOOL.parent / "check_factory.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules["check_factory"] = mod
         spec.loader.exec_module(mod)
@@ -1982,12 +1995,18 @@ def definition_stamp(root: Path, lock: dict | None = None) -> dict:
     whole = definition_tool().stamp(root)
     out = {"path": "factory/ (this factory's own)" if beside else str(root), "sha256": tree["sha256"], "files": tree["files"],
            "version": str(spec.get("version")), "models": whole["models"], "skills": whole["skills"],
+           "tools": definition_tool().tools_checksum(TOOL.parent),
+           "opening_without_verification": ((spec.get("procedure") or {}).get("acts_by_people") or {}).get("lock", {}).get("opening_without_verification", "refused")
+           if isinstance(((spec.get("procedure") or {}).get("acts_by_people") or {}).get("lock"), dict) else "refused",
            "this_factorys_own": beside, "remarks": []}
     if not beside:
         out["remarks"].append("this is not this factory's own definition (factory/): what it calls done is its own claim")
     locked = (lock or {}).get("data", {}).get("definition") if lock else None
     if locked:
-        out["same_as_locked"] = locked.get("sha256") == out["sha256"]
+        out["same_as_locked"] = locked.get("sha256") == out["sha256"] and (locked.get("tools") or out["tools"]) == out["tools"]
+        if locked.get("tools") and locked["tools"] != out["tools"]:
+            out["remarks"].append(f"the tools are not the tools the lock recorded (the lock recorded tools/ with sha256 "
+                                  f"{locked['tools'].get('sha256')}, {locked['tools'].get('files')} files; here {out['tools']['sha256']}, {out['tools']['files']} files)")
         if not out["same_as_locked"]:
             out["remarks"].append(f"this is not the definition the lock recorded (the lock recorded version {locked.get('version')}, "
                                   f"sha256 {locked.get('sha256')})")
@@ -2389,7 +2408,12 @@ VERIFIED = "verified"            # the platform was asked and confirmed the pull
 STANDINGS = (PRACTICE, MERGE_FOUND, VERIFIED)  # the three standings of an act, shown wherever an act is shown
 REFUTED, NOT_CHECKED = "refuted", "not checked"  # the two other results of a verification; neither is a pass
 PLATFORM_CALL = None  # a stand-in for the harness's own call to the platform. Only a self-test sets it, inside its own process:
-#                       no option, file or environment variable does, because any of those would be local evidence again
+#                       no option, file or environment variable does, because any of those would be local evidence again.
+#                       An answer a stand-in gives is marked as a stand-in's wherever it goes, and counts as `verified`
+#                       only while STAND_INS_COUNT is true, which only the self-tests of these tools set.
+STAND_INS_COUNT = False
+LIVE = None  # within one command, each act is asked about once ({(study, event, act): answer}); None outside a command
+NO_BYTECODE = "/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(tempfile.gettempdir(), "sf-no-bytecode")
 UNVERIFIED_WORDS = ("ACTS NOT VERIFIED: when this was written, the lock of this study was a merge found with git on one machine, and "
                     "the people who approved it had not been verified with the platform. `sf.py status` says how it stands now.")
 PRACTICE_WORDS = ("PRACTICE LOCK: this study was locked from a command line, not by an approved pull request. It is a practice "
@@ -2440,42 +2464,111 @@ def is_act_by_people(e: dict) -> bool:
 
 
 def verifications_of(ev: list, e: dict) -> list:
-    """The verifications in the log that are about one lock or signature, oldest first."""
+    """The verifications in the log that are about one lock or signature, oldest first. Each is a note of what was asked
+    and when; none is evidence by itself, because anything on this machine can write a log entry."""
     return [v for v in ev if v["kind"] == "act.verification" and v["seq"] > e["seq"] and (v["data"].get("of") or {}).get("hash") == e["hash"]]
 
 
 def last_answer(ev: list, e: dict):
-    """The last verification of an act in which the platform gave an answer (verified or refuted). An attempt that
-    could not ask (no network, no token) changes nothing."""
+    """The last verification of an act recorded in the log in which the platform gave an answer (verified or refuted).
+    It is shown as what was said when last asked, and decides nothing."""
     decisive = [v for v in verifications_of(ev, e) if v["data"].get("result") in (VERIFIED, REFUTED)]
     return decisive[-1] if decisive else None
 
 
-def standing_of(ev: list, e: dict | None) -> str | None:
-    """The standing of a lock or a signature in the log: `practice` (typed at a command line), `merge found, people
-    not verified` (a merge of the request found with git, which says nothing about people) or `verified` (the last
-    answer the platform gave, when `sf.py verify-acts` or the opening asked it, confirms the act). Nothing in the
-    work tree moves an act past the second: not the file of names handed to `--record-merge`, not the log entry made
-    from it. A verification is itself an entry in a log on this machine; what it rests on is that anybody can ask
-    the platform again."""
+def counts(answer) -> bool:
+    """Does an answer given now make an act `verified`? Only the platform's own `verified`, from the program that asks it
+    in a process of its own; a stand-in's counts only inside the self-tests of these tools."""
+    return (isinstance(answer, dict) and answer.get("result") == VERIFIED
+            and (not answer.get("stand_in_for_the_platform") or STAND_INS_COUNT))
+
+
+def standing_of(ev: list, e: dict | None, live: dict | None = None) -> str | None:
+    """The standing of a lock or a signature: `practice` (typed at a command line), `merge found, people not verified` (a
+    merge of the request found with git, which says nothing about people) or `verified`, and that only when `live`, the
+    platform's answer asked now (`ask_now`), confirms the act. Nothing in the log moves an act past the second standing:
+    not the file of names handed to `--record-merge`, not the log entry made from it, and not a verification recorded
+    earlier, which is a note of what was asked and when."""
     if not e:
         return None
     if route_of(e) != PULL_REQUEST:
         return PRACTICE
-    v = last_answer(ev, e)
-    return VERIFIED if v is not None and v["data"]["result"] == VERIFIED else MERGE_FOUND
+    return VERIFIED if counts(live) else MERGE_FOUND
 
 
-def standings(ev: list) -> dict:
-    """{act: its standing, or None when the act is not made}, for the last lock and the last signature."""
+def last_checked(ev: list, e: dict | None) -> str | None:
+    """For a display that does not ask the platform now: what the log says the platform answered when last asked, in
+    words that say it was not asked again. Nothing that decides anything reads this."""
+    v = last_answer(ev, e) if e else None
+    if v is None or v["data"].get("result") != VERIFIED:
+        return None
+    return (f"verified when last checked at {v['at']}; not re-checked now (as the log records it, by {v['actor']}: a note of what was "
+            "asked, which anybody with the account could have written; the standing shown is what the platform says now)")
+
+
+def via_words(answer: dict | None) -> str:
+    """How the platform was asked, in a few words: the host, the proxy, the certificates."""
+    via = (answer or {}).get("via") or {}
+    if (answer or {}).get("stand_in_for_the_platform"):
+        return "by a stand-in for the platform in a self-test, not the platform"
+    if not via:
+        return "the platform was not asked"
+    certs = via.get("certificates") or {}
+    return (f"at {via.get('host')}, " + (f"through the proxy the definition names ({via['proxy']})" if via.get("proxy") else "directly, with no proxy")
+            + ", trusting " + (f"the certificates in {certs['path']} (sha256 {str(certs.get('sha256'))[:16]})" if certs.get("path")
+                               else str(certs.get("store") or "the system's certificates"))
+            + (f"; ignored from the environment: {', '.join(via['environment_ignored'])}" if via.get("environment_ignored") else ""))
+
+
+def ask_now(study: "Study", ev: list, e: dict | None, act: str, factory=None) -> dict | None:
+    """The platform, asked now about one lock or signature recorded from a merge (`verify_act`): the answer, or None for
+    an act that was typed (practice) or not made. Within one command each act is asked once."""
+    if not e or route_of(e) != PULL_REQUEST:
+        return None
+    key = (str(study.d), e["hash"], act)
+    if LIVE is not None and key in LIVE:
+        return LIVE[key]
+    try:
+        data = verify_act(study, ev, e, act, Path(factory or FACTORY))
+    except Refused as r:
+        data = {"act": act, "of": {"seq": e["seq"], "hash": e["hash"]}, "result": NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": [],
+                "stand_in_for_the_platform": PLATFORM_CALL is not None}
+    data["asked_now_at"] = now()
+    if LIVE is not None:
+        LIVE[key] = data
+    return data
+
+
+def live_acts(study: "Study", ev: list | None = None, factory=None) -> dict:
+    """{act: the platform's answer asked now, or None}, for the last lock and the last signature."""
+    ev = study.events() if ev is None else ev
     last = lambda kind: next((e for e in reversed(ev) if e["kind"] == kind), None)  # noqa: E731
-    return {"lock": standing_of(ev, last("lock.recorded")), "signature": standing_of(ev, last("signature.recorded"))}
+    return {"lock": ask_now(study, ev, last("lock.recorded"), "lock", factory),
+            "signature": ask_now(study, ev, last("signature.recorded"), "signature", factory)}
 
 
-def finding_line(ev: list, status: str | None = None) -> str:
-    """The first line of a finding wherever the tool shows one: how its two acts stand now, and so whether it is
-    signed. Given the log check's status, it never says signed of a study the log check does not call signed."""
-    st = standings(ev)
+def live_for(live: dict | None, e: dict | None) -> dict | None:
+    """The answer asked now that is about this very event, or None."""
+    for v in (live or {}).values():
+        if e and isinstance(v, dict) and (v.get("of") or {}).get("hash") == e["hash"]:
+            return v
+    return None
+
+
+def standings(ev: list, live: dict | None = None) -> dict:
+    """{act: its standing, or None when the act is not made}, for the last lock and the last signature, on the answers
+    asked now (`live_acts`); with none, an act recorded from a merge is at most `merge found, people not verified`."""
+    last = lambda kind: next((e for e in reversed(ev) if e["kind"] == kind), None)  # noqa: E731
+    live = live or {}
+    return {"lock": standing_of(ev, last("lock.recorded"), live.get("lock")),
+            "signature": standing_of(ev, last("signature.recorded"), live.get("signature"))}
+
+
+def finding_line(ev: list, status: str | None = None, live: dict | None = None) -> str:
+    """The first line of a finding wherever the tool shows one: how its two acts stand now, on the platform's answers
+    asked now, and so whether it is signed. Given the log check's status, it never says signed of a study the log check
+    does not call signed."""
+    st = standings(ev, live)
     sig = next((e for e in reversed(ev) if e["kind"] == "signature.recorded"), None)
     if PRACTICE in st.values():
         return PRACTICE_WORDS
@@ -2483,13 +2576,14 @@ def finding_line(ev: list, status: str | None = None) -> str:
     if sig and sig["data"].get("decision") == "signed" and st["lock"] == VERIFIED and st["signature"] == VERIFIED:
         if status is not None and not status.startswith(SIGNED):
             return f"NOT SIGNED: both acts are verified ({said}), and the log check says: {status}."
-        return f"SIGNED ({said}): the platform confirmed the people who approved the lock and the signature."
+        return (f"SIGNED ({said}): the platform, asked now, confirmed the people who approved the lock and the signature "
+                f"(the lock asked {via_words((live or {}).get('lock'))}; the signature asked {via_words((live or {}).get('signature'))}).")
     if sig and sig["data"].get("decision") == "declined":
         return f"NOT SIGNED: the steward declined ({said})."
     if sig is None:
         return f"NOT SIGNED: the steward has not decided ({said})."
-    return (f"NOT SIGNED, AWAITING VERIFICATION ({said}). An act that is not `verified` rests on git on one machine, which shows a "
-            "merge and nothing about people; `sf.py verify-acts` asks the platform.")
+    return (f"NOT SIGNED, AWAITING VERIFICATION ({said}). An act that the platform does not confirm when asked now rests on git on one "
+            "machine, which shows a merge and nothing about people; `sf.py verify-acts` asks the platform, with a token and a network.")
 
 
 def log_history_problems(study: Study) -> list:
@@ -2529,7 +2623,7 @@ def manifest_now(study: Study, plan: dict, ev: list, factory: Path, act: str) ->
     out = {"schema": "science-factory/act-request/v1", "act": act, "study": study.d.name,
            "plan_sha": study.plan_sha(), "code": study.code_hashes(plan),
            "request": {"file": request["file"], "sha": sha_file(study.d / request["file"])} if request else None,
-           "definition": {k: definition[k] for k in ("sha256", "files", "version", "models", "skills")},
+           "definition": {k: definition[k] for k in ("sha256", "files", "version", "models", "skills", "tools", "opening_without_verification")},
            "held_out": held_out_block(plan), "uv_environments": study.uv_environments() if uses_uv(plan) else {}}
     fresh = ((plan.get("data") or {}).get("held_out") or {}).get("fresh_data")
     if fresh is not None:  # the proposal and, for a random set aside, its seed: a change to either after the request shows
@@ -2751,10 +2845,25 @@ def conds_text(conds: list) -> str:
     return " and ".join(f"{c['field']} {c['op']} {c['value']}" for c in conds)
 
 
+def refuse_unbound(factory, what: str) -> None:
+    """Refuse `what` when anything under the definition or the tools is bound by nothing: bytecode (Python would load it in
+    place of the source the checksum binds), a file in tools/ that is not a tool, a symlink."""
+    planted = definition_tool().unbound_files(Path(factory or FACTORY), TOOL.parent)
+    if planted:
+        raise Refused(f"{what} is refused: " + "; ".join(planted[:5]) + (f"; and {len(planted) - 5} more" if len(planted) > 5 else "")
+                      + ". The tools and the definition are source, bound by checksum; remove what is listed (it is no part of the "
+                      "factory: Python made it, or somebody put it there) and run again. Nothing was recorded")
+
+
 def lock_evidence(study: Study, a) -> dict:
     """Everything the lock checks and everything it shows, without recording anything: the tests and rehearsals
     passed on exactly this plan and code, every rule met its criteria, and what the people locking are shown, as
     lines. The same for a lock typed at a command line and for a request that goes into a pull request."""
+    refuse_unbound(getattr(a, "factory", None), "the lock")
+    unrecorded = definition_tool().acts_change_problems(Path(getattr(a, "factory", None) or FACTORY))
+    if unrecorded:
+        raise Refused("the lock is refused: the definition's acts by people are not a recorded change: " + "; ".join(unrecorded)
+                      + ". Nothing was recorded")
     plan = checked_plan(study)
     ev = study.events()
     note_held_out(study, plan, ev)
@@ -2834,6 +2943,9 @@ def lock_evidence(study: Study, a) -> dict:
     else:
         say("the request: none was given when the study started, so none is bound")
     say(f"the factory's definition: {definition['path']}, version {definition['version']}, {definition['files']} files, sha256 {definition['sha256']}")
+    say(f"the tools it runs with: tools/, {definition['tools']['files']} files, sha256 {definition['tools']['sha256']}")
+    say("an opening on a lock the platform has not confirmed: " + ("ALLOWED by this definition, with a reason a person gives at the opening"
+                                                                   if definition.get("opening_without_verification") == UNVERIFIED_ALLOWED else "refused"))
     say("the models its agents declare (declared, not proven): "
           + "; ".join(f"{a} {m['model']} under {m['harness']}" for a, m in sorted(definition["models"].items())))
     say("the skills its agents use, each by sha256: " + "; ".join(f"{s} {h[:16]}" for s, h in sorted(definition["skills"].items())))
@@ -2903,7 +3015,7 @@ def lock_evidence(study: Study, a) -> dict:
         say(("  SAME SUBJECT  " if ln in same else "  ") + json.dumps(ln, sort_keys=True))
     data = {"plan_sha": psha, "code": code, "receipts": bound, "after_opening": after_opening, "request": request,
             "uv_environments": environments,
-            "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills")},
+            "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills", "tools", "opening_without_verification")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
             "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None,
             "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
@@ -2964,8 +3076,15 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
             "## The code this lock would bind", "", f"{len(d['code'])} files, each by sha256:", ""]
     out += [f"- `{k}` {v[:16] if v else 'MISSING'}" for k, v in sorted(d["code"].items())]
     out += ["", "## The factory that made this study", "",
-            f"Definition version {d['definition']['version']}, {d['definition']['files']} files, sha256 {d['definition']['sha256']}. "
-            "If the definition changes after the lock, the opening is refused until the study is locked again.", "",
+            f"Definition version {d['definition']['version']}, {d['definition']['files']} files, sha256 {d['definition']['sha256']}; "
+            f"the tools, {d['definition']['tools']['files']} files, sha256 {d['definition']['tools']['sha256']}. "
+            "If the definition or the tools change after the lock, the opening is refused until the study is locked again.", "",
+            ("**THIS DEFINITION ALLOWS AN OPENING WITHOUT VERIFICATION.** It says `opening_without_verification: allowed-with-a-reason` "
+             "under the lock: a person may open the held-out data on this lock while the platform cannot be asked who approved it, with a "
+             "reason that is logged, and the study then stays unsigned until the platform confirms the lock. If you did not mean to allow "
+             "that, do not approve this request." if d["definition"].get("opening_without_verification") == UNVERIFIED_ALLOWED else
+             "This definition refuses an opening on a lock the platform has not confirmed when asked at the opening "
+             "(`opening_without_verification: refused`)."), "",
             "Models its agents declare (declared, not proven): " + "; ".join(f"{k} {m['model']} under {m['harness']}" for k, m in sorted(d["definition"]["models"].items())) + ".",
             "Models the log records so far: " + ("; ".join(f"{k} {', '.join(m)}" for k, m in sorted(d["models_recorded"].items())) or "no agent has written to it") + ".", "",
             "## Open notes", ""] + ([f"- {n}" for n in notes] or ["None."])
@@ -3105,37 +3224,93 @@ def record_merged_act(study: Study, a, act: str, factory: Path) -> None:
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
 
 
-def act_harness(factory: Path, act: str) -> tuple:
-    """(the verifier of the harness that carries an act, the `platform` block of its harness.yaml). The verifier is
-    the file `verify_acts.py` in that harness's folder: it holds what is about one platform, and the one function
-    that calls it. It is loaded only from this factory's own definition, the one beside this tool."""
-    if Path(factory).resolve() != FACTORY.resolve():
-        raise Refused("an act is verified with the harness of this factory's own definition (factory/ beside the tools): the program "
-                      "that asks the platform is not taken from another folder")
-    name = str((acts_declared(factory).get(act) or {}).get("harness") or "")
+def harness_of(name: str) -> tuple:
+    """(the verifier of a harness of this factory's own definition, the `platform` block of its harness.yaml). The
+    verifier is the file `verify_acts.py` in that harness's folder: it holds what is about one platform, and the one
+    function that calls it. Its address is the one host the verifier itself names; a harness.yaml that names another
+    is refused, so nothing in the definition or the environment can send the question elsewhere."""
     folder = FACTORY.resolve() / "harnesses" / name
     try:
         block = (yaml.safe_load((folder / "harness.yaml").read_text()) or {}).get("platform") if re.fullmatch(r"[a-z][a-z0-9-]{0,40}", name) else None
     except (OSError, yaml.YAMLError):
         block = None
     if not isinstance(block, dict) or not str(block.get("api") or "").startswith("https://") or not (folder / "verify_acts.py").is_file():
-        raise Refused(f"the definition names no harness for the {act} that can ask a platform (a folder in harnesses/ with a "
+        raise Refused(f"the definition names no harness (`{name}`) that can ask a platform (a folder in harnesses/ with a "
                       "`platform.api` that begins with https:// and a verify_acts.py): the act stays at `" + MERGE_FOUND + "`")
     key = f"sf_verify_acts_{name.replace('-', '_')}"
     if key not in sys.modules:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(key, folder / "verify_acts.py")
+        spec = _source_spec(key, folder / "verify_acts.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules[key] = mod
         spec.loader.exec_module(mod)
-    return sys.modules[key], block
+    mod = sys.modules[key]
+    if block["api"].rstrip("/") != str(getattr(mod, "API", "")).rstrip("/"):
+        raise Refused(f"the harness `{name}` names {block['api']} as the platform's address, and its verifier asks {getattr(mod, 'API', None)} "
+                      "and nowhere else: the address is not something a definition, an option or the environment can change")
+    return mod, block
+
+
+def act_harness(factory: Path, act: str) -> tuple:
+    """(the verifier of the harness that carries an act, the `platform` block of its harness.yaml), loaded only from this
+    factory's own definition, the one beside this tool."""
+    if Path(factory).resolve() != FACTORY.resolve():
+        raise Refused("an act is verified with the harness of this factory's own definition (factory/ beside the tools): the program "
+                      "that asks the platform is not taken from another folder")
+    return harness_of(str((acts_declared(factory).get(act) or {}).get("harness") or ""))
+
+
+def platform_answer(what: str, expect: dict, mod, block: dict) -> dict:
+    """The platform's answer to one question (`act`: a lock or a signature; `comment`: a person's so what), from the one
+    function that asks it, `platform_call` in the harness's verify_acts.py, run in a process of its own: a Python that
+    reads no bytecode, no user site and no start-up file, with an environment the tool builds to hold the token and
+    nothing else, so no proxy or certificate setting of the caller's reaches it. Only the proxy the definition names
+    (`platform.proxy` in harness.yaml) is used. The answer says how it was asked (`via`). In a self-test a stand-in in this
+    process answers (PLATFORM_CALL), and its answer is marked as a stand-in's."""
+    ignored = mod.through(os.environ)
+    names = [n for n in mod.TOKEN_NAMES if str(os.environ.get(n) or "").strip()]
+    if PLATFORM_CALL is not None:
+        got = (mod.verify if what == "act" else mod.verify_comment)(PLATFORM_CALL, mod.API, "a-self-test", expect)
+        got.update(stand_in_for_the_platform=True, token_from=names[0] if names else None,
+                   via={"host": "a stand-in for the platform, in this process", "proxy": None, "certificates": None, "environment_ignored": ignored})
+        return got
+    out = {"result": NOT_CHECKED, "problems": [], "told": {}, "asked": [], "stand_in_for_the_platform": False, "token_from": names[0] if names else None,
+           "via": {"host": getattr(mod, "HOST", None), "proxy": block.get("proxy"), "certificates": None, "environment_ignored": ignored}}
+    if not names:
+        out["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES) + "), and none "
+                           "of those is set. Nothing was asked, so nothing is verified"]
+        return out
+    planted = definition_tool().unbound_files(FACTORY, TOOL.parent)
+    if planted:
+        out["problems"] = ["the platform was not asked: there is bytecode or a file bound by nothing under factory/ or tools/ ("
+                           + "; ".join(planted[:3]) + "), and the program that asks is one of those files' neighbours"]
+        return out
+    env = {names[0]: os.environ[names[0]]}
+    for k in ("SYSTEMROOT", "WINDIR"):  # what a Windows process needs to open a socket at all
+        if os.environ.get(k):
+            env[k] = os.environ[k]
+    try:
+        done = subprocess.run([sys.executable, "-I", "-S", "-B", "-X", f"pycache_prefix={NO_BYTECODE}", str(Path(mod.__file__).resolve()), "--ask"],
+                              input=json.dumps({"what": what, "expect": expect, "proxy": block.get("proxy")}), capture_output=True, text=True,
+                              env=env, cwd=tempfile.gettempdir(), timeout=900)
+        got = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        got = None
+        out["problems"] = [f"the program that asks the platform did not answer ({type(e).__name__})"]
+    if not isinstance(got, dict) or got.get("result") not in (VERIFIED, REFUTED, NOT_CHECKED):
+        out["problems"] = out["problems"] or ["the program that asks the platform gave no answer that can be read"]
+        return out
+    got.update(stand_in_for_the_platform=False, token_from=names[0])
+    got.setdefault("via", {})["environment_ignored"] = ignored
+    return got
 
 
 def verify_act(study: Study, ev: list, e: dict, act: str, factory: Path) -> dict:
     """Verify one lock or signature that was recorded from a merge: first what git shows here, then the platform,
     asked now. Returns the data of an `act.verification` event: the result (`verified`, `refuted` or `not checked`),
-    why, what the platform said, every endpoint that was asked and the name of the variable the token came from.
-    Nothing here reads a file of names: the people are what the platform answers, or they are not verified."""
+    why, what the platform said, every endpoint that was asked, the name of the variable the token came from, how the
+    platform was asked (`via`: the host, the proxy, the certificates), and whether a stand-in answered. Nothing here
+    reads a file of names, or an earlier verification: the people are what the platform answers now, or they are not
+    verified."""
     merge = e["data"].get("merge") or {}
     data = {"act": act, "of": {"seq": e["seq"], "hash": e["hash"], "merge_commit": merge.get("commit")}, "result": NOT_CHECKED,
             "problems": [], "told": {}, "asked": [], "stand_in_for_the_platform": PLATFORM_CALL is not None}
@@ -3155,19 +3330,18 @@ def verify_act(study: Study, ev: list, e: dict, act: str, factory: Path) -> dict
     mod, block = act_harness(factory, act)
     declared = acts_declared(factory).get(act) or {}
     repository = merge.get("repository") or found["manifest"].get("repository") or declared.get("repository")
-    name, token = mod.token_from(os.environ)
-    data.update(platform=block.get("name"), api=block["api"], repository=repository, token_from=name, through=mod.through(os.environ))
-    if PLATFORM_CALL is None and not token:
-        data["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES) + "), and "
-                            "none of those is set. Nothing was asked, so nothing is verified"]
-        return data
+    data.update(platform=block.get("name"), api=mod.API, repository=repository)
     if not repository:
         data["problems"] = ["neither the merged request nor the definition names the repository on the platform (`repository: owner/name`)"]
         return data
     expect = {"repository": repository, "branch": merge.get("branch"), "commit": merge.get("commit"), "parents": found["parents"],
               "approvals": int(merge.get("approvals_asked") or declared.get("approvals") or 1), "request": found["files"]}
-    got = mod.verify(PLATFORM_CALL or mod.platform_call, block["api"], token or "a-self-test", expect)
-    data.update(result=got["result"], problems=got["problems"], told=got["told"], asked=got["asked"], answers_sha256=got["answers_sha256"])
+    got = platform_answer("act", expect, mod, block)
+    data.update({k: got.get(k) for k in ("result", "problems", "told", "asked", "answers_sha256", "via", "token_from", "stand_in_for_the_platform")})
+    data["through"] = (got.get("via") or {}).get("environment_ignored") or []
+    data["told"] = data["told"] or {}
+    data["asked"] = data["asked"] or []
+    data["problems"] = data["problems"] or []
     return data
 
 
@@ -3178,7 +3352,7 @@ def cmd_verify_acts(study: Study, a) -> None:
     factory = Path(getattr(a, "factory", None) or FACTORY)
     if not getattr(a, "report_only", False):
         study.check_actor(a.by)
-    ev, out = study.events(), {}
+    ev, out, live = study.events(), {}, {}
     for act, kind in (("lock", "lock.recorded"), ("signature", "signature.recorded")):
         e = next((x for x in reversed(ev) if x["kind"] == kind), None)
         if e is None:
@@ -3186,20 +3360,24 @@ def cmd_verify_acts(study: Study, a) -> None:
         elif route_of(e) != PULL_REQUEST:
             out[act] = {"standing": PRACTICE, "said": "typed at a command line: there is nothing to verify, and it stays practice"}
         else:
-            data = verify_act(study, ev, e, act, factory)
+            data = ask_now(study, ev, e, act, factory)
             if not getattr(a, "report_only", False):
                 study.append(a.by, "act.verification", data)
                 ev = study.events()
-            st = VERIFIED if data["result"] == VERIFIED else (standing_of(ev, e) if data["result"] == NOT_CHECKED else MERGE_FOUND)
+            live[act] = data
+            st = standing_of(ev, e, data)
             out[act] = {"standing": st, "result_of_this_verification": data["result"], "problems": data["problems"],
                         "asked": [f"{q['status']} {q['endpoint']}" for q in data["asked"]], "token_from": data.get("token_from"),
+                        "how_it_was_asked": via_words(data),
+                        **({"A STAND-IN ANSWERED": "a stand-in for the platform in this process: its answer is no verification outside a self-test"}
+                           if data.get("stand_in_for_the_platform") else {}),
                         "approved_by": [p["login"] for p in (data["told"].get("approved_by") or [])],
                         "pull_request": (data["told"].get("pull_request") or {}).get("url"), "recorded": not getattr(a, "report_only", False)}
-    print(json.dumps({"study": study.d.name, "acts": out, "finding_first_line": finding_line(ev),
+    print(json.dumps({"study": study.d.name, "acts": out, "finding_first_line": finding_line(ev, live=live),
                       "what_verified_means": "the platform, asked now, said the commit is the merge of a pull request into the protected "
                                              "branch of the named repository, approved on the request as merged by enough accounts other "
                                              "than its author. Whether those accounts are the right people is for whoever reads the names"}, indent=1))
-    short = [act for act, v in out.items() if v.get("result_of_this_verification") not in (None, VERIFIED)]
+    short = [act for act, v in out.items() if v.get("result_of_this_verification") is not None and v.get("standing") != VERIFIED]
     if short:
         raise Refused("not verified: " + "; ".join(f"the {act} ({out[act]['result_of_this_verification']}): " + " | ".join(out[act]["problems"][:3]) for act in short))
 
@@ -3210,7 +3388,8 @@ def cmd_show_finding(study: Study, a) -> None:
     att = attached_finding(ev)
     if not att:
         raise Refused("no finding is attached")
-    print(check_log(study)["finding_first_line"])
+    rep = check_log(study)
+    print(rep["finding_first_line"])
     print()
     print((study.d / att["data"]["file"]).read_text(), end="")
 
@@ -3260,7 +3439,14 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     if study.plan_sha() != lock["data"]["plan_sha"]:
         raise Refused("the analysis plan changed after the lock")
     locked_definition = lock["data"].get("definition") or {}
+    refuse_unbound(factory, "the opening")
     here = definition_tool().tree_checksum(Path(factory or FACTORY).resolve())
+    tools_here = definition_tool().tools_checksum(TOOL.parent)
+    if locked_definition.get("tools") and locked_definition["tools"] != tools_here:
+        raise Refused("the tools changed after the lock (the lock binds tools/ with sha256 "
+                      f"{str(locked_definition['tools'].get('sha256'))[:16]}, {locked_definition['tools'].get('files')} files; here it is "
+                      f"{tools_here['sha256'][:16]}, {tools_here['files']} files): the tools a study is opened with are the tools it was "
+                      "locked with. Nothing was opened and the opening is not used up. Check out the locked tools, or lock again")
     links = definition_tool().links_in(Path(factory or FACTORY).resolve())
     if links:
         raise Refused("the factory's definition holds a symlink (" + ", ".join(links[:4]) + "): a definition is the files themselves, "
@@ -3346,20 +3532,25 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
         try:
             checked = verify_act(study, ev, lock, "lock", Path(factory or FACTORY))
         except Refused as r:
-            checked = {"act": "lock", "of": {"seq": lock["seq"], "hash": lock["hash"]}, "result": NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": []}
+            checked = {"act": "lock", "of": {"seq": lock["seq"], "hash": lock["hash"]}, "result": NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": [],
+                       "stand_in_for_the_platform": PLATFORM_CALL is not None}
         study._append(f, by, "act.verification", {**checked, "asked_at": "the opening"})
         ev = study.read_held(f)
+        if checked.get("stand_in_for_the_platform") and not STAND_INS_COUNT:
+            raise Refused("a stand-in for the platform answered in this process, and outside the self-tests of these tools a stand-in's "
+                          "answer is no verification: the held-out data is opened only on the platform's own answer, asked by the program "
+                          "that asks it in a process of its own. Nothing was opened and the opening is not used up")
         if checked["result"] == REFUTED:
             raise Refused("the lock is not verified, and the held-out data is opened only on a verified lock: the platform's answer does "
                           "not bear the lock out: " + " | ".join(checked["problems"][:4]) + ". This is not something "
                           "`--people-not-verified` waives. Nothing was opened and the opening is not used up")
         allowed = unverified_opening_allowed(Path(factory or FACTORY))
-        if checked["result"] != VERIFIED and str(unverified_reason or "").strip() and not allowed:
+        if not counts(checked) and str(unverified_reason or "").strip() and not allowed:
             raise Refused(f"the lock stands as `{MERGE_FOUND}`, and this factory's definition does not allow an opening on a lock nobody "
                           "verified: `--people-not-verified` is refused unless factory.yaml says `opening_without_verification: "
                           f"{UNVERIFIED_ALLOWED}` under the lock, a change people approve like any other. The platform could not be asked: "
                           + " | ".join(checked["problems"][:3]) + ". Nothing was opened and the opening is not used up")
-        if checked["result"] != VERIFIED and not str(unverified_reason or "").strip():
+        if not counts(checked) and not str(unverified_reason or "").strip():
             raise Refused(f"the lock stands as `{MERGE_FOUND}`, and the held-out data is opened only on a verified lock: opened data "
                           "cannot be un-opened, and a merge found with git is something a clone can make by itself. The platform could "
                           "not be asked: " + " | ".join(checked["problems"][:3]) + ". Give the opening a token that may read the "
@@ -3370,7 +3561,10 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
                               "This definition does not allow an opening without that (`--people-not-verified` is refused unless "
                               f"factory.yaml says `opening_without_verification: {UNVERIFIED_ALLOWED}`)") + ". Nothing was opened and the "
                           "opening is not used up")
-        if checked["result"] != VERIFIED:
+        if not counts(checked):
+            if not str(by).startswith("human:"):
+                raise Refused(f"`--people-not-verified` is a person's word, and {by} is not a person (human:<id>): an agent never opens "
+                              "held-out data on a lock nobody verified. Nothing was opened and the opening is not used up")
             waived = {"reason": str(unverified_reason).strip(), "by": by, "why_not_verified": checked["problems"][:3]}
             print("OPENING WITHOUT VERIFYING THE PEOPLE. The lock of this study is a merge found with git on this machine; nobody has "
                   f"confirmed with the platform that people approved it. Reason given: {waived['reason']}. This is in the study log. "
@@ -3380,7 +3574,8 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     before = study.listing()
     started_ev = study._append(f, by, "opening.started", {
         "test": test, "n": n, "plan_sha": study.plan_sha(), "code": code, "env": env_stamp(study, plan),
-        "lock_route": route_of(lock), "lock_standing": standing_of(study.read_held(f), lock),
+        "lock_route": route_of(lock), "lock_standing": standing_of(ev, lock, checked if route_of(lock) == PULL_REQUEST else None),
+        **({"lock_asked": {"how": via_words(checked), "stand_in": bool(checked.get("stand_in_for_the_platform"))}} if route_of(lock) == PULL_REQUEST else {}),
         **({"opened_without_verification": waived} if waived else {}), "definition_sha": here["sha256"],
         "lock_committed": bool(in_git), "earlier_openings_of_this_window": prior, "listing": sorted(before),
         "uv_environments": study.uv_environments() if uses_uv(plan) else {}})
@@ -3563,9 +3758,9 @@ def cmd_curation_list(study: Study, a) -> None:
             by_subject.setdefault(str(f.get("about")), []).append({**f, "route": route.get(f.get("kind"), "steward review")})
     out = {"study": study.d.name, "generated": now(), "open_notes": sum(len(v) for v in by_subject.values()),
            "by_subject": by_subject,
-           "acts": standings(study.events()),
+           "acts": standings(study.events(), live_acts(study)),
            "what_a_draft_says_of_this_study": ("a page drafted from this study says how its two acts stand, in these words: "
-                                               + finding_line(study.events())),
+                                               + finding_line(study.events(), live=live_acts(study))),
            "contract": "the curating agent drafts at status draft with its own generated event; "
                        "it never merges and never signs"}
     (study.d / "curation-list.json").write_text(json.dumps(out, indent=1))
@@ -3875,7 +4070,8 @@ def cmd_attach(study: Study, a) -> None:
     f = Path(a.file).resolve()
     if not f.is_file():
         raise Refused("the finding file does not exist")
-    lock_standing = standing_of(ev, study.last("lock.recorded"))
+    lock_e = study.last("lock.recorded")
+    lock_standing = standing_of(ev, lock_e, ask_now(study, ev, lock_e, "lock", getattr(a, "factory", None)))
     first = " ".join(next((ln for ln in f.read_text(errors="replace").splitlines() if ln.strip()), "").split())
     for standing, words, what in ((PRACTICE, PRACTICE_WORDS, "was typed at a command line (a practice lock)"),
                                   (MERGE_FOUND, UNVERIFIED_WORDS, "is a merge found with git whose people are not verified")):
@@ -3999,14 +4195,16 @@ def signature_summary(study: Study, plan: dict, ev: list, rep: dict, att, decisi
         if e["kind"] == "review.verdict" and att and e["seq"] > att["seq"]:
             with contextlib.suppress(OSError):
                 out += ["", f"The verdict file of {e['actor']} (`{e['data']['file']}`):", "", "```", *(study.d / e["data"]["file"]).read_text().rstrip().splitlines(), "```"]
+    now_ = ask_now(study, ev, lock, "lock")
     out += ["", "## The lock this rests on", "",
-            f"Standing of the lock: **{standing_of(ev, lock)}**.", "",
+            f"Standing of the lock: **{standing_of(ev, lock, now_)}**, asked now.", "",
             ((f"A merge on `{lock['data']['merge']['branch']}` (merge {lock['data']['merge']['commit'][:12]}). "
-              + ("The platform, asked on " + last_answer(ev, lock)["at"] + ", confirmed the pull request and its approval by "
-                 + ", ".join(p["login"] for p in last_answer(ev, lock)["data"]["told"].get("approved_by") or []) + "."
-                 if standing_of(ev, lock) == VERIFIED else
-                 "It was found with git, which shows nothing about people, and nobody has verified with the platform who approved it. "
-                 "A signature on this study leaves it awaiting verification, not signed, until `sf.py verify-acts` succeeds."))
+              + ("The platform, asked now (" + str(now_.get("asked_now_at")) + ", " + via_words(now_) + "), confirmed the pull request and its approval by "
+                 + ", ".join(p["login"] for p in (now_.get("told") or {}).get("approved_by") or []) + "."
+                 if standing_of(ev, lock, now_) == VERIFIED else
+                 "It was found with git, which shows nothing about people, and the platform, asked now, did not confirm who approved it"
+                 + (f" ({last_checked(ev, lock)})" if last_checked(ev, lock) else "") + ". A signature on this study leaves it awaiting "
+                 "verification, not signed, until the platform confirms both acts when asked."))
              if route_of(lock) == PULL_REQUEST
              else "A PRACTICE LOCK, typed at a command line. This study cannot close as a signed finding."), "",
             "## Problems and remarks from the log check", ""]
@@ -4065,7 +4263,8 @@ def cmd_close(study: Study, a) -> None:
                 problems, _found = merge_problems(study, e["data"].get("merge") or {}, folder)
                 if problems:
                     raise Refused(f"`{a.outcome}` is refused: the {what}'s merge does not check out: " + "; ".join(problems[:4]))
-            unverified = [what for what, e in (("lock", lock), ("signature", sig)) if standing_of(ev, e) != VERIFIED]
+            asked = live_acts(study, ev, getattr(a, "factory", None))
+            unverified = [what for what, e in (("lock", lock), ("signature", sig)) if standing_of(ev, e, live_for(asked, e)) != VERIFIED]
             if unverified:
                 raise Refused(f"`{a.outcome}` is refused: this study's {' and '.join(unverified)} stands as `{MERGE_FOUND}`. A merge found "
                               "with git on one machine says nothing about people, so the study is awaiting verification, not signed. "
@@ -4187,54 +4386,68 @@ def stage_of(study: Study, factory: Path) -> dict:
                 here["why"] = {n: why[n] for n in needs if n in why}
     if closed:
         here = {"stage": "closed", "outcome": closed["data"]["outcome"], "cite": closed["data"].get("cite")}
-    return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study),
-            "awaiting_verification": [act for act, st in standings(study.events()).items() if st == MERGE_FOUND],
+    live = live_acts(study, None, factory)
+    return {"study": study.d.name, "definition": stamp, "models": models_report(study.events(), stamp), "acts": acts_report(study, live),
+            "awaiting_verification": [act for act, st in standings(study.events(), live).items() if st == MERGE_FOUND],
             "done": done, **(here or {"stage": "complete"}), "fit": " ".join(fit_in_words(study.last("fit.noted"))[:2]),
             "open_notes": sorted({e["data"]["id"] for e in study.events() if e["kind"] == "note.raised"}
                                  - {e["data"]["id"] for e in study.events() if e["kind"] == "note.resolved"})}
 
 
-def acts_report(study: Study) -> dict:
+def acts_report(study: Study, live: dict | None = None) -> dict:
     """How this study's two acts by people stand, for `status`, the scorecard and anyone reading either. Each has
     one of three standings: `practice` (typed at a command line), `merge found, people not verified` (git here
-    shows a merge; nothing shows people) or `verified` (the platform, asked, confirmed the pull request and who
-    approved it)."""
+    shows a merge; nothing shows people) or `verified` (the platform, asked now, confirmed the pull request and who
+    approved it). What an earlier verification said is shown as that, with its time, and decides nothing."""
     out = {}
+    ev = study.events()
+    live = live_acts(study, ev) if live is None else live
     for name, kind in (("lock", "lock.recorded"), ("signature", "signature.recorded")):
         e = study.last(kind)
         if not e:
             asked = study.last(f"{name}.requested")
             out[name] = "requested, not made: the request waits for a pull request to be approved and merged" if asked else "not made"
         elif route_of(e) == PULL_REQUEST:
-            m, ev = e["data"]["merge"], study.events()
-            st, v, tries = standing_of(ev, e), last_answer(ev, e), verifications_of(ev, e)
+            m = e["data"]["merge"]
+            now_ = live_for(live, e)
+            st, tries = standing_of(ev, e, now_), verifications_of(ev, e)
             out[name] = {"route": PULL_REQUEST, "standing": st, "merge_commit": m["commit"], "branch": m["branch"], "merge_method": m.get("method"),
-                         "pull_request": m.get("url") or m.get("pull_request")}
+                         "pull_request": m.get("url") or m.get("pull_request"),
+                         "asked_now": ({"at": now_.get("asked_now_at"), "result": now_.get("result"), "how": via_words(now_),
+                                        "problems": (now_.get("problems") or [])[:3],
+                                        **({"BY A STAND-IN FOR THE PLATFORM": "a self-test's recorded answers, not the platform"}
+                                           if now_.get("stand_in_for_the_platform") else {})} if now_ else "not asked")}
             if st == VERIFIED:
-                told = v["data"].get("told") or {}
+                told = now_.get("told") or {}
                 out[name].update({"approved_by": [p["login"] for p in told.get("approved_by") or []],
                                   "author": (told.get("pull_request") or {}).get("author"), "merged_by": (told.get("pull_request") or {}).get("merged_by"),
                                   "pull_request": (told.get("pull_request") or {}).get("url") or out[name]["pull_request"],
-                                  "verified": {"at": v["at"], "run_by": v["actor"], "log_event": v["seq"], "platform_asked": v["data"].get("api"),
-                                               "repository": v["data"].get("repository"), "rules_not_shown": told.get("not_shown") or [],
+                                  "verified": {"asked_now_at": now_.get("asked_now_at"), "platform_asked": now_.get("api"),
+                                               "repository": now_.get("repository"), "rules_not_shown": told.get("not_shown") or [],
+                                               "how": via_words(now_), "host": (now_.get("via") or {}).get("host"),
+                                               "proxy": (now_.get("via") or {}).get("proxy"), "certificates": (now_.get("via") or {}).get("certificates"),
                                                **({"BY A STAND-IN FOR THE PLATFORM": "a self-test's recorded answers, not the platform"}
-                                                  if v["data"].get("stand_in_for_the_platform") else {})},
-                                  "note": "VERIFIED: the platform, asked, said this commit is the merge of a pull request into the protected "
+                                                  if now_.get("stand_in_for_the_platform") else {})},
+                                  "note": "VERIFIED: the platform, asked now, said this commit is the merge of a pull request into the protected "
                                           "branch, approved on the request as merged by the accounts named here. Whether they are the right "
-                                          "people is for whoever reads the names; `sf.py verify-acts` asks again"})
+                                          "people is for whoever reads the names"})
             else:
+                note = last_checked(ev, e)
                 out[name].update({"names_handed_to_the_tool": {"approved": m["people"]["approved"], "author": m["people"]["author"]},
                                   "last_verification": ({"at": tries[-1]["at"], "result": tries[-1]["data"].get("result"),
                                                          "problems": (tries[-1]["data"].get("problems") or [])[:3]} if tries else "never tried"),
+                                  **({"last_checked": note} if note else {}),
                                   "note": "MERGE FOUND, PEOPLE NOT VERIFIED: git here shows a merge of the request on a branch with the "
-                                          "protected branch's name, which a clone can make by itself. The names are from a file handed to the "
-                                          "tool and prove nothing. A study with such an act is not signed; `sf.py verify-acts` asks the platform"})
+                                          "protected branch's name, which a clone can make by itself, and the platform, asked now, did not "
+                                          "confirm it (no token, no network, or an answer that does not bear it out). The names are from a file "
+                                          "handed to the tool and prove nothing. A study with such an act is not signed; `sf.py verify-acts` asks the platform"})
         else:
             out[name] = {"route": PRACTICE, "standing": PRACTICE, "typed_by": e["actor"],
                          "note": "PRACTICE: typed at a command line, with no approval the platform recorded. This study cannot close as a signed finding"}
     if any(isinstance(v, dict) and v["route"] == PRACTICE for v in out.values()):
         out["practice"] = True
-    out["standings"] = "each act has one of three standings: " + "; ".join(STANDINGS)
+    out["standings"] = ("each act has one of three standings: " + "; ".join(STANDINGS) + ". `verified` is the platform's answer asked "
+                        "now; with no token or no network an act from a merge is at most `" + MERGE_FOUND + "`")
     return out
 
 
@@ -4275,11 +4488,12 @@ def change_log_problems(study: Study, ev: list, change_log: Path) -> list:
     return p
 
 
-def check_log(study: Study, posted: list | None = None, change_log=None) -> dict:
+def check_log(study: Study, posted: list | None = None, change_log=None, live: dict | None = None, factory=None) -> dict:
     """The log check: the chain, the files the log names, the locked plan
     and code, the record of what has been opened, the outcome the locked
-    rules give on the receipt, and the fingerprints posted outside the
-    workspace."""
+    rules give on the receipt, the fingerprints posted outside the
+    workspace, and how the two acts stand on the platform's answer asked
+    now (`live`, asked here when not given)."""
     problems, purity, remarks = [], [], []
     try:
         ev = study.events()
@@ -4290,6 +4504,7 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
                             "event an agent writes records the model that wrote it")
     except Refused as r:
         ev, problems = [], [str(r)]
+    asked = live_acts(study, ev, factory) if live is None else live
     locks = [e for e in ev if e["kind"] == "lock.recorded"]
     started = [e for e in ev if e["kind"] == "opening.started"]
     finished = [e for e in ev if e["kind"] == "opening.finished"]
@@ -4347,12 +4562,13 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
                     bad = [f"the merged request pins event {pinned['seq']} of the study log with a checksum this log does not have there: "
                            "the log was rewritten before the act"]
                 problems += [f"{e['kind']} at event {e['seq']}: {b}" for b in bad]
-                if standing_of(ev, e) != VERIFIED:
-                    tried = verifications_of(ev, e)
+                now_ = live_for(asked, e)
+                if standing_of(ev, e, now_) != VERIFIED:
+                    tried, note = verifications_of(ev, e), last_checked(ev, e)
                     remarks.append(f"{e['kind']} at event {e['seq']} stands as `{MERGE_FOUND}`: git shows the merge and nothing about "
-                                   "people" + (f" (the last verification, at event {tried[-1]['seq']}, said: {tried[-1]['data'].get('result')}"
-                                               + "".join("; " + p for p in (tried[-1]["data"].get("problems") or [])[:2]) + ")" if tried else
-                                               " (never verified: run `sf.py verify-acts`)"))
+                                   "people" + (f"; asked now, the platform's answer was `{now_['result']}`"
+                                               + ("".join("; " + p for p in (now_.get("problems") or [])[:2])) if now_ else "")
+                                   + (f" ({note})" if note else "" if tried else " (never verified: run `sf.py verify-acts`)"))
             elif e["kind"] != "opening.voided":
                 remarks.append(f"{e['kind']} at event {e['seq']} was typed at a command line by {e['actor']} (practice): this study "
                                "cannot close as a signed finding")
@@ -4477,7 +4693,7 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     elif purity:
         status = EXPLORATORY
     elif sig and sig["data"]["decision"] == "signed":
-        acts = (standing_of(ev, locks[-1]), standing_of(ev, sig))
+        acts = (standing_of(ev, locks[-1], live_for(asked, locks[-1])), standing_of(ev, sig, live_for(asked, sig)))
         status = (PRACTICE_SIGNED if PRACTICE in acts else SIGNED if acts == (VERIFIED, VERIFIED) else AWAITING) + ending
     elif sig:
         status = DECLINED + ending
@@ -4498,7 +4714,8 @@ def check_log(study: Study, posted: list | None = None, change_log=None) -> dict
     return {"study": study.d.name, "status": status, "problems": problems, "purity": purity,
             "remarks": remarks, "outcomes": outcomes, "reviews": verdicts,
             "finding": att["data"]["file"] if att else None,
-            "acts": standings(ev), "finding_first_line": finding_line(ev, status) if att else None,
+            "acts": standings(ev, asked), "finding_first_line": finding_line(ev, status, asked) if att else None,
+            "acts_asked_now": {k: {"result": v.get("result"), "how": via_words(v), "at": v.get("asked_now_at")} for k, v in asked.items() if v},
             "signature": sig["data"]["decision"] if sig else None,
             "closed": closed["data"]["outcome"] if closed else None,
             "openings_without_a_committed_lock": no_commit,
@@ -4645,6 +4862,7 @@ def cmd_log_change(study: Study, a) -> None:
         rec = {"at": now(), "by": a.by, "problem_class": a.problem, "change": a.change,
                "rationale": a.rationale, "predicted": a.predicted, "observed": a.observed,
                "context": {"model": a.model, "definition_sha": definition["sha256"], "definition_version": definition["version"],
+                           "acts_sha256": definition_tool().acts_sha256(definition_of(Path(a.factory))),
                            "evidence_study": study.d.name, "log_fingerprint": ev[-1]["hash"] if ev else None},
                "log_event": len(ev)}
         try:

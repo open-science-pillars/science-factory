@@ -52,6 +52,27 @@ the machine's own loopback address for its self-test.
 import sys
 
 sys.dont_write_bytecode = True
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
+    # A clean start, as in the tools: run again in a Python that reads no PYTHON variable, no user site, no start-up file
+    # and no cached bytecode (its cache prefix is a path that cannot exist). What ran before this line has already run.
+    import os
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
+    if os.name == "posix":
+        os.execv(sys.executable, _again)
+    import subprocess
+    sys.exit(subprocess.call(_again))
+if __name__ == "__main__":
+    import os
+    import sysconfig
+    _env = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    _lib = ([os.path.join(_env, "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages"),
+             os.path.join(_env, "Lib", "site-packages")] if os.path.isfile(os.path.join(_env, "pyvenv.cfg"))
+            else [sysconfig.get_paths()["purelib"], sysconfig.get_paths()["platlib"]])
+    sys.path += [p for p in dict.fromkeys(_lib) if os.path.isdir(p) and p not in sys.path]
+if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
+    _own = __file__.replace("\\", "/").rpartition("/")[0]
+    del sys.path[0]
+    sys.path[:] = [p for p in sys.path if p != _own]
 
 import copy  # noqa: E402
 import hashlib  # noqa: E402
@@ -60,15 +81,23 @@ import os  # noqa: E402
 import re  # noqa: E402
 import urllib.error  # noqa: E402
 import urllib.parse  # noqa: E402
+import ssl  # noqa: E402
 import urllib.request  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PLATFORM = "github"
 API = "https://api.github.com"
+HOST = "api.github.com"  # the one host a verification asks; harness.yaml must name it as `platform.api`, and nothing else can
+# Where the system's own certificate authorities are, tried in order when this program is asked to verify; the first file
+# that exists is used, and recorded with its checksum. A certificate setting of the caller's (SSL_CERT_FILE and the like)
+# is never read: the program that asks runs with an environment that holds the token and nothing else.
+SYSTEM_CERTIFICATES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/ca-bundle.pem",
+                       "/etc/ssl/cert.pem", "/usr/local/etc/openssl/cert.pem", "/opt/homebrew/etc/openssl@3/cert.pem")
 TOKEN_NAMES = ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")  # the first that is set; a token is never read from a file
 REQUIRED_CHECK = "request-check"  # the job of acts.workflow.yml that the branch protection makes a required status check
-DECIDES_THE_ROUTE = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR")
+DECIDES_THE_ROUTE = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
+                     "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")  # read by nothing that asks: recorded as ignored
 VERIFIED, REFUTED, NOT_CHECKED = "verified", "refuted", "not checked"
 NOT_REACHED = (0, 401, 403, 429)  # no answer, or an answer that says only that this token may not ask
 MAX_PAGES = 20
@@ -81,16 +110,45 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def certificates() -> dict:
+    """The certificate authorities a verification trusts: the system's own file, by path and checksum, or the system's
+    default store where no such file is found. Never what an environment variable names."""
+    defaults = ssl.get_default_verify_paths()
+    for f in (defaults.openssl_cafile, *SYSTEM_CERTIFICATES):
+        if f and os.path.isfile(f):
+            with open(f, "rb") as fh:
+                return {"path": f, "sha256": hashlib.sha256(fh.read()).hexdigest()}
+    return {"path": None, "sha256": None, "store": "the system's default store (no certificate file was found)"}
+
+
+def opener_for(proxy: str | None = None) -> tuple:
+    """(the opener a verification asks through, how it asks). Only the proxy the definition names (harness.yaml,
+    `platform.proxy`) is used, as a tunnel: no proxy setting of the environment is read, and the certificates are the
+    system's (`certificates`), whatever the environment says."""
+    certs = certificates()
+    ctx = ssl.create_default_context(cafile=certs["path"]) if certs["path"] else ssl.create_default_context()
+    if not certs["path"]:
+        ctx.load_default_certs()
+    proxies = {"https": str(proxy)} if proxy else {}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies), urllib.request.HTTPSHandler(context=ctx), _NoRedirect)
+    return opener, {"host": HOST, "proxy": str(proxy) if proxy else None, "certificates": certs}
+
+
 def platform_call(api: str, path: str, token: str, opener=None) -> dict:
     """The one function that talks to the platform: one GET, one answer, as {"status", "body"} or {"status": 0,
-    "error"}. Nothing is retried and no redirect is followed. Everything else in this file works on what this
+    "error"}. Nothing is retried and no redirect is followed. Without an opener it asks the one host this file names
+    (HOST), with no proxy and the system's certificates; an opener is given only by `ask` (the definition's proxy) and
+    by this file's self-test (a server on the loopback address). Everything else in this file works on what this
     returns, and the self-tests put recorded answers in its place."""
     if opener is None and not str(api).startswith("https://"):
         return {"status": 0, "error": "the platform is asked over https and nothing else"}
+    if opener is None and urllib.parse.urlsplit(str(api)).hostname != HOST:
+        return {"status": 0, "error": f"the platform is asked at {HOST} and nowhere else"}
+    if opener is None:
+        opener = opener_for(None)[0]
     req = urllib.request.Request(api.rstrip("/") + path, headers={
         "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
         "Authorization": f"Bearer {token}", "User-Agent": "science-factory-verify-acts"})
-    opener = opener or urllib.request.build_opener(_NoRedirect)
     try:
         with opener.open(req, timeout=30) as resp:
             return {"status": resp.status, "body": json.loads(resp.read().decode("utf-8"))}
@@ -114,8 +172,9 @@ def token_from(environ) -> tuple:
 
 
 def through(environ) -> list:
-    """The names of the caller's settings that decide how the request travels (a proxy, a certificate store). They
-    are recorded by name: a request sent through a proxy with its own certificates is answered by that proxy."""
+    """The names of the caller's settings that would decide how a request travels (a proxy, a certificate store). The
+    program that asks never sees them (`ask` runs with an environment that holds the token alone), so they are recorded
+    by name as ignored: a request sent through a proxy with its own certificates would be answered by that proxy."""
     return sorted(n for n in DECIDES_THE_ROUTE if environ.get(n))
 
 
@@ -601,9 +660,36 @@ def selftest() -> int:
     return 0 if good_n == len(results) else 1
 
 
+def ask(question: dict) -> dict:
+    """What the study tool runs in a process of its own (`verify_acts.py --ask`, the question on standard input), so that
+    nothing in the study tool's process can stand in for the call: {"what": "act" or "comment", "expect": as `verify` or
+    `verify_comment` takes it, "proxy": the definition's proxy or null}. The token is read from this process's
+    environment, which the study tool builds to hold the token and nothing else. Returns the verification with `via`:
+    the host asked, the proxy used if any, and the certificates trusted."""
+    opener, via = opener_for(question.get("proxy"))
+    name, token = token_from(os.environ)
+    if not token:
+        return {"result": NOT_CHECKED, "problems": ["no token in the environment of the program that asks: nothing was asked"], "told": {},
+                "asked": [], "answers_sha256": None, "via": via, "token_from": None}
+
+    def call(api: str, path: str, tok: str) -> dict:
+        return platform_call(API, path, tok, opener=opener)
+    fn = verify if question.get("what") == "act" else verify_comment
+    got = fn(call, API, token, question["expect"])
+    got.update(via=via, token_from=name)
+    return got
+
+
 def main() -> int:
     if sys.argv[1:] == ["--selftest"]:
         return selftest()
+    if sys.argv[1:] == ["--ask"]:
+        try:
+            question = json.loads(sys.stdin.read())
+            print(json.dumps(ask(question), sort_keys=True, default=str))
+        except (ValueError, KeyError, TypeError) as e:
+            print(json.dumps({"result": NOT_CHECKED, "problems": [f"the question could not be read ({type(e).__name__})"], "told": {}, "asked": []}))
+        return 0
     print(__doc__)
     print("This file is called by the study tool: `uv run tools/sf.py verify-acts --study studies/<study> --by <name>`.")
     return 0 if sys.argv[1:] in ([], ["--help"], ["-h"]) else 2

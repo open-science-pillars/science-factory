@@ -61,12 +61,12 @@ Usage: allow.py --role ROLE     (the tool call as JSON on standard input;
 import sys
 
 sys.dont_write_bytecode = True
-if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site):
+if __name__ == "__main__" and not (sys.flags.isolated and sys.flags.no_site and "sf-no-bytecode" in str(sys.pycache_prefix)):
     # A clean start. This tool runs itself again in a Python that reads no PYTHON variable, no user site, no start-up
     # file (.pth, sitecustomize) and not the folder this file is in, so that none of those can change what it does.
     # What a hostile environment ran before this line has already run: a stated limit (docs/WHAT-IS-ENFORCED.md).
     import os
-    _again = [sys.executable, "-I", "-S", "-B", os.path.abspath(__file__), *sys.argv[1:]]
+    _again = [sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=" + ("/dev/null/sf-no-bytecode" if os.name == "posix" else os.path.join(os.environ.get("TEMP", "."), f"sf-no-bytecode-{os.getpid()}")), os.path.abspath(__file__), *sys.argv[1:]]
     if os.name == "posix":
         os.execv(sys.executable, _again)
     import subprocess
@@ -92,6 +92,20 @@ import shutil  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import yaml  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+class _SourceOnly(importlib.machinery.SourceFileLoader):
+    """A module of this factory is loaded from its source text, compiled here, and never from cached bytecode beside it."""
+
+    def get_code(self, fullname):
+        return compile(self.get_data(self.path), self.path, "exec", dont_inherit=True)
+
+
+def _source_spec(name, path):
+    return importlib.util.spec_from_file_location(name, path, loader=_SourceOnly(name, str(path)))
+
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent  # the repository: this file is in factory/harnesses/<harness>/
 KEPT_BY_THE_TOOLS = ("*-log.jsonl", "openings.jsonl", "set-aside.json", "lead.json", "lead.md", "curation-list.json", "scorecard.json",
@@ -169,7 +183,7 @@ def options_of(tool: Path, command: str) -> tuple | None:
     option differently. None when the tool has no such command or its parser cannot be read."""
     if tool not in _TOOLS:
         try:
-            spec = importlib.util.spec_from_file_location("allowed_" + tool.stem, tool)
+            spec = _source_spec("allowed_" + tool.stem, tool)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             parser = mod.build_parser()
@@ -304,7 +318,7 @@ def matches_from_the_top(p: Path, pat: str, places: set) -> bool:
 def study_tool(root: Path = ROOT):
     """The study tool, loaded by its path, for the one reading of what a plan holds out."""
     if "sf" not in sys.modules:
-        spec = importlib.util.spec_from_file_location("sf", Path(root) / "tools" / "sf.py")
+        spec = _source_spec("sf", Path(root) / "tools" / "sf.py")
         mod = importlib.util.module_from_spec(spec)
         sys.modules["sf"] = mod
         spec.loader.exec_module(mod)
