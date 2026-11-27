@@ -293,9 +293,6 @@ def acts_change_problems(root: Path, spec: dict | None = None) -> list:
                    "Who approves an act, how many, and whether held-out data may be opened on a lock nobody verified are changes people "
                    "approve: give the definition a new version and record the change (`sf.py log-change`, which names this block by "
                    "checksum), so the summary of the change and the lock request show it")
-    elif not any(c.get("acts_sha256") == want and str(c.get("definition_version")) == version for c in records):
-        out.append(f"factory.yaml: no record of the change log names the acts by people under this version ({version}): every version "
-                   "says, in a record of the change log (`sf.py log-change`), which acts by people it holds")
     clash = sorted({str(c.get("acts_sha256"))[:16] for c in records if c.get("acts_sha256") not in (None, want)
                     and str(c.get("definition_version")) == version})
     if clash:

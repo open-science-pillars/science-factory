@@ -369,6 +369,26 @@ def assemble(scorer: dict, run: Run, transcripts: list | None = None) -> tuple:
     return material, left_out
 
 
+OUTSIDE = "<a place outside the packet>"
+LOGS = ("exploration-log", "pre-lock-log", "known-answer-tests", "transcript-before-opening")  # what a tool writes paths into; code is kept byte for byte
+ABSOLUTE = re.compile(r"(?<![\w.:/~$>-])/(?:[^/\s\"'\\<>|,;:)\]}]+/)*[^/\s\"'\\<>|,;:)\]}]+")  # a path of this machine, as a log writes one
+
+
+def without_outside_paths(data: bytes, run_dir: Path) -> tuple:
+    """(the bytes of a text file with every path of this machine replaced, how many were replaced): the run's own folder by
+    `<the run>`, any other absolute path by OUTSIDE (A4-12). A file that is not text is kept as it is."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data, 0
+    n = 0
+    for root in sorted({str(run_dir), str(Path(run_dir).resolve())}, key=len, reverse=True):
+        n += text.count(root)
+        text = text.replace(root, "<the run>")
+    text, more = ABSOLUTE.subn(OUTSIDE, text)
+    return text.encode("utf-8"), n + more
+
+
 def build_packet(factory: Path, name: str, run: Run, out: Path, transcripts: list | None = None, on_demand: bool = False) -> dict:
     scorer = judge_of(factory, name)
     applies = scorer.get("applies_to")
@@ -393,8 +413,10 @@ def build_packet(factory: Path, name: str, run: Run, out: Path, transcripts: lis
     for m in material:
         dest = out / "material" / m["kind"] / m["name"]
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(m["bytes"])
-        listed.append({"kind": m["kind"], "file": f"material/{m['kind']}/{m['name']}", "sha256": sha(m["bytes"]), "held_by": m["held_by"],
+        data, replaced = without_outside_paths(m["bytes"], run.d) if m["kind"] in LOGS else (m["bytes"], 0)
+        dest.write_bytes(data)
+        listed.append({"kind": m["kind"], "file": f"material/{m['kind']}/{m['name']}", "sha256": sha(data), "held_by": m["held_by"],
+                       **({"sha256_as_recorded": sha(m["bytes"]), "paths_replaced": replaced} if replaced else {}),
                        **({"lines": m["from"].split(", ", 1)[1]} if ", lines " in str(m["from"]) else {})})
     stamp = fd.tree_checksum(factory)
     # Nothing in the packet names a place outside it: no folder of the run, no path of the definition, no source of a file. Each
@@ -792,6 +814,8 @@ def selftest() -> int:
         x.append("human:tester", "look.run", {"id": "LOOK-001"})
         x.append("human:tester", "lead.recorded", {"md_sha": sha_of("lead.md"), "version": 1})
         x.append("human:reviewer", "review.verdict", {"file": "verdicts/REVIEW-001.md", "sha": sha_of("verdicts/REVIEW-001.md"), "verdict": "no-holes-found"})
+        x.append("human:tester", "choice.recorded", {"choice": "which file", "paths": [str(x.d / "looks" / "tail.py"), str(tmp / "elsewhere" / "monthly.csv"),
+                                                                                  "/home/someone/data/monthly.csv"]})
         x.append("human:tester", "exploration.ended", {"outcome": "lead"})
         x.append("human:coordinator", "handed.over", {"study_id": "STUDY-X"})
         x.append("human:curator", "note.resolved", {"id": "NOTE-001", "comment": "SECRET-OUTCOME: the study that followed refuted this"})
@@ -801,6 +825,10 @@ def selftest() -> int:
         ok("an exploration's packet holds its log up to the hand-over, its lead and the review of it, and nothing written after the hand-over",
            {m["kind"] for m in xp["material"]} == {"exploration-log", "lead", "review-before-opening"} and b"SECRET-OUTCOME" not in xtext
            and b"handed.over" in xtext and any("after the hand-over" in q["why"] for q in xp["left_out"]))
+        ok("A4-12: the log in a packet names no path outside the packet: the run's folder and every other path of the machine are replaced, "
+           "and the packet says how many and keeps the checksum as recorded",
+           str(tmp).encode() not in xtext and b"/home/someone" not in xtext and b"<the run>/looks/tail.py" in xtext and b"<a place outside the packet>" in xtext
+           and any(m.get("paths_replaced", 0) >= 3 and m.get("sha256_as_recorded") for m in xp["material"] if m["kind"] == "exploration-log"))
         cp = build_packet(FACTORY, "exploration-owns-its-count", xr, tmp / "packet-count")
         counted = (tmp / "packet-count" / "material" / "lead" / "lead.md").read_text()
         ok("the count judge is given the lead with the tool's own count lines left in, and its rubric says its task is the prose against them",
