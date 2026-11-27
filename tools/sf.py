@@ -2073,10 +2073,8 @@ def fresh_data_of(study: Study, plan: dict) -> dict | None:
     if problems:
         raise Refused(f"the fresh-data proposal the plan names ({rel}) does not check out: " + "; ".join(problems)
                       + ". A changed choice is a new proposal (`tools/fresh_data.py propose`) and a recorded change to what is held out")
-    seed = tool.seed_path(f)
-    revealed = seed.read_text().strip() if prop["kind"] == "random" else None
-    return {"file": rel, "sha256": sha_file(f), "kind": prop["kind"], "proposal": prop, "revealed_seed": revealed,
-            "seed_sha256": (prop.get("draw") or {}).get("seed_sha256"), "record": tool.on_record(f, study.d.parent)}
+    return {"file": rel, "sha256": sha_file(f), "kind": prop["kind"], "proposal": prop, "revealed_seed": None,
+            "seed_sha256": None, "record": tool.on_record(f, study.d.parent), "to_be_drawn_at_the_lock": prop["kind"] == "random"}
 
 
 def explore_tool():
@@ -2993,7 +2991,9 @@ def lock_evidence(study: Study, a) -> dict:
     if fresh:
         say(f"the fresh data: proposed in {fresh['file']} (sha256 {fresh['sha256'][:16]}), {fresh['proposal']['kind_in_words']}, by "
             f"{fresh['proposal']['proposed']['by']}; on the record beside the studies, {fresh['record']['for_this_subject']} proposal(s) for this subject"
-            + (f"; the seed of the random draw, revealed now: {fresh['revealed_seed']}, which draws the same members" if fresh["revealed_seed"] else ""))
+            + (f"; the members of the random set aside are to be drawn at the opening, {fresh['proposal']['rule'].get('k')} of "
+               f"{len((fresh['proposal'].get('draw') or {}).get('drawn_from') or [])}, from the merge commit GitHub creates for this lock "
+               "request and the proposal's checksum: nobody can choose them" if fresh.get("to_be_drawn_at_the_lock") else ""))
     else:
         say("the fresh data: the plan names no proposal (`data.held_out.fresh_data`), so nothing records who chose it or why")
     say("what is held out, and every change to it this study's log knows:")
@@ -3017,7 +3017,7 @@ def lock_evidence(study: Study, a) -> dict:
             "uv_environments": environments,
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills", "tools", "opening_without_verification")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
-            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed")} if fresh else None,
+            "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed", "to_be_drawn_at_the_lock")} if fresh else None,
             "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
     return {"plan": plan, "ev": ev, "lines": lines, "data": data, "shown": shown, "fresh": fresh, "figures": figures}
 
@@ -3053,7 +3053,7 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
                 "since the lock, and until the release can be out it says it is waiting.", ""]
     fresh = got.get("fresh")
     if fresh:
-        out += fresh_tool().in_words(fresh["proposal"], revealed=fresh["revealed_seed"], record=fresh["record"]) + [""]
+        out += fresh_tool().in_words(fresh["proposal"], record=fresh["record"]) + [""]
         out += [f"The proposal is `{fresh['file']}` (sha256 {fresh['sha256']}); approving this lock approves that choice.", ""]
     elif is_system_trial(plan):
         out += ["This is a system trial: its fresh data is a blind test case that the tool makes and seals at the opening, so nobody "
@@ -3431,6 +3431,37 @@ def judge(plan: dict, receipt_path: Path, data_path: Path, exit_code) -> tuple:
     return outcomes, (str(declined)[:300] if declined else None)
 
 
+MEMBERS_FILE = "held-out-members.json"  # the members of a random set aside, written by the opening that drew them, for its fetch to read
+
+
+def random_draw_at_the_opening(study: Study, plan: dict, lock: dict, checked: dict | None, waived) -> dict | None:
+    """The members of a random set aside, drawn now, once, at the opening: from the merge commit GitHub created when the lock
+    request was merged, as the platform says in its answer asked at this opening, and the proposal's checksum. Nobody
+    working on the question knew that commit before the merge, so nobody could choose the members. A practice lock is typed:
+    its draw comes from its own log entry, which whoever typed it could have made again, and is marked as one that could be
+    chosen. A lock the platform did not confirm draws nothing. None when the plan holds out no random set aside."""
+    rel = ((plan.get("data") or {}).get("held_out") or {}).get("fresh_data")
+    if rel is None or fresh_tool().load(study.path(rel)).get("kind") != "random":
+        return None
+    fresh = fresh_data_of(study, plan)  # refuses a proposal changed, off the record, or drawn when it was proposed
+    if (study.d / MEMBERS_FILE).exists():
+        raise Refused(f"{MEMBERS_FILE} is already in the study: the members of a random set aside are drawn by the opening, once, and a "
+                      "file of members put here beforehand is somebody's choice. Remove it; nothing was opened and the opening is not used up")
+    if route_of(lock) == PULL_REQUEST:
+        told = ((checked or {}).get("told") or {}).get("pull_request") or {}
+        merge = str((lock["data"].get("merge") or {}).get("commit") or "")
+        if waived or not counts(checked) or told.get("merge_commit") != merge:
+            raise Refused("a random set aside is drawn from the merge commit GitHub created for the lock request, as the platform says when "
+                          "asked at the opening, and the platform did not confirm the lock now: nothing is drawn on a lock it did not confirm, "
+                          "and `--people-not-verified` does not change that. Nothing was opened and the opening is not used up")
+        got = fresh_tool().draw_at_the_lock(fresh["proposal"], merge, fresh["sha256"])
+        return {**got, "from": "the merge commit of the lock request, as the platform said when asked at this opening", "could_be_chosen": False,
+                "how_asked": via_words(checked), "stand_in": bool((checked or {}).get("stand_in_for_the_platform"))}
+    got = fresh_tool().draw_at_the_lock(fresh["proposal"], lock["hash"], fresh["sha256"])
+    return {**got, "from": "the practice lock's own log entry (its checksum stands in for a merge commit)", "could_be_chosen": True,
+            "practice": "PRACTICE: whoever typed the lock could have typed it again until the members suited them; this draw could be chosen"}
+
+
 def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None, practice_ok: bool = False, unverified_reason=None) -> tuple:
     """Everything that decides whether an opening may start, and the start itself, done while the study log is
     held: two openings asked for at the same moment cannot both pass the allowance."""
@@ -3574,14 +3605,17 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
             print("OPENING WITHOUT VERIFYING THE PEOPLE. The lock of this study is a merge found with git on this machine; nobody has "
                   f"confirmed with the platform that people approved it. Reason given: {waived['reason']}. This is in the study log. "
                   "The study stays at people not verified, and is not signed, until `sf.py verify-acts` succeeds", file=sys.stderr)
+    drawn = random_draw_at_the_opening(study, plan, lock, checked if route_of(lock) == PULL_REQUEST else None, waived)
     n = len(started) + 1
     prior = earlier_openings(study, plan, spec, ev)
+    if drawn:
+        (study.d / MEMBERS_FILE).write_text(json.dumps(drawn, indent=1, sort_keys=True) + "\n")
     before = study.listing()
     started_ev = study._append(f, by, "opening.started", {
         "test": test, "n": n, "plan_sha": study.plan_sha(), "code": code, "env": env_stamp(study, plan),
         "lock_route": route_of(lock), "lock_standing": standing_of(ev, lock, checked if route_of(lock) == PULL_REQUEST else None),
         **({"lock_asked": {"how": via_words(checked), "stand_in": bool(checked.get("stand_in_for_the_platform"))}} if route_of(lock) == PULL_REQUEST else {}),
-        **({"opened_without_verification": waived} if waived else {}), "definition_sha": here["sha256"],
+        **({"opened_without_verification": waived} if waived else {}), **({"random_draw": drawn} if drawn else {}), "definition_sha": here["sha256"],
         "lock_committed": bool(in_git), "earlier_openings_of_this_window": prior, "listing": sorted(before),
         "uv_environments": study.uv_environments() if uses_uv(plan) else {}})
     key = subject_key(plan, spec)
@@ -4641,6 +4675,10 @@ def check_log(study: Study, posted: list | None = None, change_log=None, live: d
                        "the plan's is the one that is locked")
     no_commit = 0
     for op in started:
+        drawn = op["data"].get("random_draw") or {}
+        if drawn:
+            remarks.append(f"the {op['data']['test']} opening drew the random set aside ({', '.join(map(str, drawn.get('members') or []))}) from "
+                           f"{drawn.get('from')}" + (f": {drawn.get('practice')}" if drawn.get("could_be_chosen") else ""))
         if op["data"].get("earlier_openings_of_this_window"):
             purity.append("this pair and window were already opened by "
                           + ", ".join(sorted({str(x.get("dir")) for x in op["data"]["earlier_openings_of_this_window"]})))
@@ -5256,6 +5294,7 @@ def copy_of(obj):
 def _selftest_fresh_data(tmp: Path, check) -> None:
     """A plan that names the agent's proposal of the fresh data: checked at the lock, and shown in words to the people
     who approve it. The proposal itself is tested by tools/fresh_data.py's own self-test."""
+    global PLATFORM_CALL
     fd = fresh_tool()
     studies, proposals = tmp / "studies", tmp / "proposals"
     meta = tmp / "metadata.json"
@@ -5303,19 +5342,79 @@ def _selftest_fresh_data(tmp: Path, check) -> None:
     rnd = propose("random", kind="random", fraction=0.3)
     f3 = study_with("F3", rnd)
     cmd_request_lock(f3, A(by="agent:coordinating"))
-    seed = fd.seed_path(rnd).read_text().strip()
     words = section(f3)
-    check("a random set aside is shown as drawn by the tool, and the lock request reveals its seed and says that drawing again "
-          "from it gives the same members", "Nobody chose the members." in words and seed in words
-          and "Drawing again from it gives the same members: yes" in words and seed not in rnd.read_text())
-    fd.seed_path(rnd).write_text(secrets_hex() + "\n")
-    check("a seed changed after the lock request shows in the required check of the pull request (the manifest binds the seed file)",
-          any("fresh_data" in q for q in request_problems(f3, "lock", FACTORY)))
-    check("and a lock request is then refused: the seed is not the one whose checksum the proposal recorded",
-          "not the one whose sha256 the proposal recorded" in _refusal(cmd_request_lock, f3, A(by="agent:coordinating")))
-    fd.seed_path(rnd).unlink()
-    check("a random set aside whose seed is missing is refused at the lock: nobody could show the members were drawn and not chosen",
-          "missing" in _refusal(cmd_request_lock, f3, A(by="agent:coordinating")))
+    manifest = json.loads((f3.d / "lock-request" / "manifest.json").read_text())
+    check("A4-06: a random set aside is shown at the lock as to be drawn at the opening, from the merge commit GitHub creates for this "
+          "request, with no seed and no members: nobody can choose them", "Nobody can choose the members" in words
+          and "to be drawn at the lock" in words and "Nobody chose the members" not in words and manifest["fresh_data"]["seed_sha256"] is None
+          and "seed, revealed" not in words)
+    early = proposals / "drawn-early.yaml"
+    early.write_text(yaml.safe_dump({**fd.load(rnd), "members": ["S01", "S02", "S03"]}))
+    fd.seed_path(early).write_text(secrets_hex() + "\n")
+    f6 = study_with("F6", early)
+    check("A4-06: a random set aside drawn when it was proposed (members listed and a seed beside it, as the tool once wrote one, or "
+          "as the fourth attack chose one) is refused at the lock", "drawn when its proposal was written" in _refusal(cmd_request_lock, f6, A(by="agent:coordinating")))
+    cmd_lock(f3, A(by="human:throwaway-placeholder", evidence=URL, local_practice=True))
+    (f3.d / MEMBERS_FILE).write_text(json.dumps({"members": ["S01", "S02", "S03"]}))
+    presented = _refusal(cmd_open_held_out, f3, A(test="held-out", by="agent:coordinating", local_practice=True))
+    (f3.d / MEMBERS_FILE).unlink()
+    check("A4-06: a file of members put in the study before the opening is refused, and nothing is opened or used up",
+          "is already in the study" in presented and not f3.last("opening.started"))
+    cmd_open_held_out(f3, A(test="held-out", by="agent:coordinating", local_practice=True))
+    drawn = f3.last("opening.started")["data"].get("random_draw") or {}
+    again = fd.draw_at_the_lock(fd.load(rnd), f3.last("lock.recorded")["hash"], sha_file(rnd))
+    check("in practice the opening draws the members once, from the practice lock's own log entry, writes them for the fetch, and marks "
+          "the draw as one that could be chosen; the log check says so",
+          drawn.get("members") == again["members"] and len(again["members"]) == 3 and drawn.get("could_be_chosen") is True
+          and json.loads((f3.d / MEMBERS_FILE).read_text())["members"] == again["members"]
+          and any("this draw could be chosen" in r for r in check_log(f3)["remarks"]))
+    if shutil.which("git"):
+        repo = tmp / "random-repo"
+        (repo / "studies").mkdir(parents=True)
+        g = lambda *w: git("-C", str(repo), "-c", "user.name=selftest", "-c", "user.email=s@example.invalid", "-c", "commit.gpgsign=false", *w)  # noqa: E731
+        sha = lambda ref="HEAD": g("rev-parse", ref).stdout.strip()  # noqa: E731
+        g("init", "-q", "-b", "main")
+        (repo / "README.md").write_text("throwaway\n")
+        g("add", "-A"), g("commit", "-q", "-m", "start")
+        g("checkout", "-q", "-b", "lock/RR")
+        rp = repo / "studies" / "random.yaml"
+        fd.cmd_propose(fd.A(metadata=str(meta), what="three sites drawn at the lock", why="many similar sites", unfair="neighbouring sites share weather",
+                            studies=str(repo / "studies"), out=str(rp), kind="random", fraction=0.3))
+        plan = json.loads(json.dumps(PLAN))
+        plan["data"]["held_out"]["fresh_data"] = "../random.yaml"
+        rr = _fresh(repo / "studies", "RR", plan=plan, start=A(id="STUDY-TEST", question=PLAN["question"], by="agent:coordinating"))
+        cmd_test(rr, A(what="known-answers", by="agent:analysis"))
+        cmd_test(rr, A(what="working-data", by="agent:analysis"))
+        cmd_request_lock(rr, A(by="agent:coordinating"))
+        g("add", "-A"), g("commit", "-q", "-m", "lock request")
+        head = sha()
+        g("checkout", "-q", "main")
+        g("merge", "-q", "--no-ff", "-m", "Merge the lock request", "lock/RR")
+        merge = sha()
+        rec = tmp / "random-record.json"
+        rec.write_text(json.dumps({"platform": "github", "pull_request": 7, "url": "https://github.example/o/r/pull/7", "author": "octo-author",
+                                   "merged": True, "merge_commit": merge, "base": "main", "merged_by": "octo-steward",
+                                   "approved": [{"login": "octo-steward", "commit_id": head}]}))
+        route = Study.default_route
+        Study.default_route = None
+        try:
+            cmd_lock(rr, A(by="platform:github", record_merge=merge, platform_record=str(rec), evidence=None))
+            g("add", "-A"), g("commit", "-q", "-m", "Record the act merged in " + merge)
+            unconfirmed = _refusal(cmd_open_held_out, rr, A(test="held-out", by="agent:coordinating"))
+            check("A4-06: on a lock the platform does not confirm, nothing is drawn: the opening is refused and no members are written",
+                  "opened only on a verified lock" in unconfirmed and not (rr.d / MEMBERS_FILE).exists() and not rr.last("opening.started"))
+            PLATFORM_CALL = _stand_in_platform(rr, "lock", merge, head)
+            cmd_open_held_out(rr, A(test="held-out", by="agent:coordinating"))
+        finally:
+            PLATFORM_CALL = _dead_platform
+            Study.default_route = route
+        drawn = rr.last("opening.started")["data"].get("random_draw") or {}
+        check("A4-06: on a lock the platform confirms when the opening asks, the members are drawn once, from the merge commit GitHub created "
+              "for the lock request and the proposal, which nobody knew before the merge; the opening records the commit and the members, "
+              "and anybody can draw them again (`fresh_data.py reveal --merge-commit`)",
+              drawn.get("merge_commit") == merge and drawn.get("could_be_chosen") is False
+              and drawn.get("members") == fd.draw_at_the_lock(fd.load(rp), merge, sha_file(rp))["members"]
+              and rr.last("opening.finished") is not None)
     edited = proposals / "edited.yaml"
     edited.write_text(later.read_text().replace("the year 2031 at every site", "the year 2031 at the sites I like"))
     f4 = study_with("F4", edited)

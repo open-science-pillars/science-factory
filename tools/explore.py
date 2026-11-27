@@ -1240,7 +1240,11 @@ def fresh_data_problems(path: Path, studies: Path, how: str, window, sites: list
     elif kind == "later-period" and (not window or window["start"] != rule.get("from")
                                      or (rule.get("until") and window.get("end") != rule["until"]) or (not rule.get("until") and not window.get("open_ended"))):
         found.append(f"the window set aside is not the later period the proposal names ({rule.get('from')} to {rule.get('until') or 'onward'})")
-    elif kind in ("another-site", "random") and sorted(sites) != sorted(prop["members"]):
+    elif kind == "random":
+        found.append("a random set aside is drawn only at the lock of a confirming study, from the merge commit GitHub creates for the lock "
+                     "request, so nobody can choose its members; an exploration cannot set aside members not yet drawn. Name the proposal in "
+                     "a confirming study's plan (`data.held_out.fresh_data`), or set aside another kind here")
+    elif kind == "another-site" and sorted(sites) != sorted(prop["members"]):
         found.append("the sites set aside are not the members the proposal names" + (": a random set aside is drawn by the tool, and "
                      "nobody adds a site to it or takes one out" if kind == "random" else ""))
     elif kind == "next-release" and rule.get("release") not in releases:
@@ -3217,18 +3221,13 @@ def selftest() -> int:
                                                               set_aside_sites="USGS-01000001", subject="reach_id=R9,gauge=G9"))
            and not xr.log.exists())
         rp = proposal("random", kind="random", fraction=0.3)
-        drawn = fdt.load(rp)["members"]
-        others = [m for m in fdt.load(rp)["draw"]["drawn_from"] if m not in drawn]
-        ok("a random set aside with one site swapped for a site of one's own choosing is refused: nobody adds a site or takes one out",
-           "nobody adds a site" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9",
-                                                          set_aside_sites=",".join(drawn[1:] + others[:1]), fresh_data=str(rp)))
+        pool = fdt.load(rp)["draw"]["drawn_from"]
+        ok("A4-06: a random set aside is drawn at the lock of a confirming study, so an exploration cannot start on one: whatever sites it "
+           "names, the members are not drawn yet, and nothing is started",
+           all("drawn only at the lock" in said(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None,
+                                                                   subject="reach_id=R9,gauge=G9", set_aside_sites=sites, fresh_data=str(rp)))
+               for sites in (",".join(pool[:3]), ",".join(pool[1:4]), ",".join(pool)))
            and not xr.log.exists())
-        quiet(cmd_start, xr, A(request=str(req), how="a random set aside", set_aside_window=None, subject="reach_id=R9,gauge=G9", working_window=None,
-                               set_aside_sites=",".join(drawn), fresh_data=str(rp), working_data=[str(data)]))
-        got_sa = xr.set_aside()
-        ok("with the proposal and exactly its members the random set aside starts, and the start records the proposal by checksum",
-           got_sa["how"] == "a random set aside" and sorted(got_sa["sites"]) == drawn and got_sa["fresh_data"]["sha256"] == sf.sha_file(rp)
-           and got_sa["fresh_data"]["seed_sha256"] == fdt.load(rp)["draw"]["seed_sha256"])
         lp = proposal("later", kind="later-period", from_="2026-01-01")
         xl = Exploration(fwork / "explorations" / "E-LATER")
         ok("a proposal is set aside as it was proposed: a later period with another window than the proposal's is refused",
