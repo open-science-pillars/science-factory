@@ -142,6 +142,10 @@ whom why will with would you your much many good bad""".split())
 RELATIONS = ("extends", "narrows", "corrects", "contradicts", "beside", "duplicates")
 MD_PATH = re.compile(r"[\w./-]+\.md")
 GENERIC_SHARE = 0.25   # a tag carried by more than this share of a bundle says nothing about a subject
+# Words that name no subject on their own: a page that shares only these with a question (a record, a year) is not about
+# it. Found by the first real run, where a question about a temperature record found the example's sensor record.
+PLAIN = set("record records data dataset datasets year years month months day days time times series value values number "
+            "numbers file files show shows".split())
 KEEP_SHARE = 0.3       # a page is listed when it scores at least this share of the best match
 SHARED_TAGS = 3        # this many specific tags in common is the same subject
 
@@ -262,7 +266,8 @@ def about(question: str, bundles: list, drafts: list | None = None, tags: list |
         for q, f in fields.items():
             why = [(label, sorted(got & asked), weight * sum(rare[w] for w in got & asked)) for label, got, weight in f if got & asked]
             distinct = set().union(*[set(got) for _, got, _ in why]) if why else set()
-            if len(distinct) >= min(2, len(asked)):  # one shared word is a coincidence; two is a subject
+            if len(distinct) >= min(2, len(asked)) and (distinct - PLAIN or not asked - PLAIN):  # one shared word is a coincidence;
+                # two is a subject, unless every word shared is one that names no subject
                 hits[q] = (round(sum(w for _, _, w in why), 2), "; ".join(f"{label}: {', '.join(got)}" for label, got, _ in why))
         best = max((v[0] for v in hits.values()), default=0)
         hits = {q: v for q, v in hits.items() if v[0] >= KEEP_SHARE * best}
@@ -302,7 +307,9 @@ def trust(c: dict) -> str:
 
 def render(found: list) -> str:
     if not found:
-        return "nothing in the knowledge bears on this question by tags, name, title, description or text. That is a result: say so, and raise a note if something should be there."
+        return ("nothing in the knowledge bears on this question by tags, name, title, description or text. That is a result: say so, "
+                "raise a note if something should be there, and go on without a page for the boundary of the fresh data: it comes "
+                "from the metadata, and the start says why")
     out = [f"{len(found)} page(s) bear on the question. Read each before looking at data.", ""]
     for i, c in enumerate(found, 1):
         out += [f"{i}. {c['path']}  [{c['type']}" + (f", severity {c['severity']}" if c["severity"] else "") + "]",
@@ -760,6 +767,14 @@ def selftest(checker: Path | None) -> int:
         plain = about("Does the harbour tide gauge drift in warm months?", [wiki])
         names = {c["path"].rsplit("/", 1)[1]: c for c in plain}
         ok("about reads a wiki of plain Markdown pages with no front matter", "tide-gauge-drift.md" in names and "cooking.md" not in names)
+        (wiki / "the-two-sensor-record.md").write_text("# The two-sensor record\n\nA year of readings from two sensors on one river.\n")
+        warm = "Does the global surface temperature record show that warming since 2010 is faster, by more than year-to-year variation?"
+        ok("a page that shares only words naming no subject (record, year) with the question is not listed, and about says nothing bears "
+           "(found by the first real run)", "the-two-sensor-record.md" not in {c["path"].rsplit("/", 1)[1] for c in about(warm, [wiki])}
+           and "nothing in the knowledge bears" in render(about(warm, [wiki])))
+        ok("a page that shares a word naming its subject is still listed",
+           "the-two-sensor-record.md" in {c["path"].rsplit("/", 1)[1] for c in about("How do the two sensors on the river record a year?", [wiki])})
+        (wiki / "the-two-sensor-record.md").unlink()
         ok("a plain page takes its title from its first heading and is working memory, not signed",
            names["tide-gauge-drift.md"]["title"] == "The harbour tide gauge drifts in summer" and not names["tide-gauge-drift.md"]["signed"]
            and "working memory" in trust(names["tide-gauge-drift.md"]))

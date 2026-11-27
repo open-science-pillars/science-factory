@@ -82,6 +82,8 @@ jobs:
           uv run factory/harnesses/github/verify_acts.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/describe_record.py --selftest
           uv run factory/agents/analysis/skills/explore-a-record/scripts/plot_xy.py --selftest
+      # The self-tests above include each fault the first real run found (F1 to F19 of definition 0.14.0): a release set aside
+      # binding the data as it stands, a long series described from its date column, and the rest.
       # The example also shows, in practice mode, a fit note, the overclaiming check, a person's so what, figures at the lock, a
       # look promoted to a method in a scratch copy of the definition, and a contribution statement.
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
@@ -94,3 +96,9 @@ jobs:
         env:
           UV_NATIVE_TLS: "true"
         run: uv run examples/stand-alone/run.py
+      - name: The stand-alone example again, with that setting set and empty, started by a Python that uv made
+        # uv refuses a setting of its own that is set and empty before it runs anything, so `uv run` cannot start the
+        # example here; the example and the tools give uv an environment without such a setting (found by the first real run).
+        run: |
+          uv venv "$RUNNER_TEMP/py" && uv pip install --python "$RUNNER_TEMP/py/bin/python" pyyaml
+          UV_NATIVE_TLS= "$RUNNER_TEMP/py/bin/python" examples/stand-alone/run.py --remove

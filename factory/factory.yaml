@@ -27,7 +27,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: science-factory
-version: 0.13.0                           # the content of this definition; every change to it is in the change log
+version: 0.14.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before the fresh data that checks it is opened, once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding, or a recorded negative result
@@ -71,7 +71,7 @@ procedure:
              data I have not looked at, what I will do with each answer, by when, how I expect it to be fooled, what I can bring that an agent cannot, who is on it, what I want back,
              anyone else's product involved]
     questions_back: "four, asked by the analysis agent, then stop (templates/kinds-of-question.yaml)"
-    fit_note: "before any work starts the coordinating agent writes a fit note (skill note-the-fit; explore.py fit, sf.py fit): how well the question suits agents, a verdict and what it needs from a person. Advice that blocks nothing; status, the hand-over and the lock request show it"
+    fit_note: "before the exploration or study starts the coordinating agent writes a fit note (skill note-the-fit), and records it right after the start and before the first look or test (explore.py fit, sf.py fit): how well the question suits agents, a verdict and what it needs from a person. Advice that blocks nothing; status, the hand-over and the lock request show it"
     # where fresh data for an independent check can come from; the analysis agent proposes one from metadata only
     # (tools/fresh_data.py, the skill propose-fresh-data) and people approve it at the lock
     ways_to_hold_data_out: [the next data release, a later period, another site or region, a random set aside, a product never opened, forecasts scored later]

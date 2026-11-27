@@ -21,6 +21,7 @@ Every review and attack made of this factory, in one place: who made it, whether
 | R1 | First independent attack on the tools | 2026-11-26 | yes | 12: 2 blockers, 5 serious, 5 minor | below; detail in AGENTS-AND-EXPLORING.md, section 4 | R2 |
 | R2 | Second independent attack on the tools | 2026-11-26 | yes | 14: 2 blockers, 4 serious, 8 minor | below; section 5 | R3 |
 | R3 | Third independent attack, the pull request route included | 2026-11-26 | yes | 5: 1 serious, 4 minor | below; section 7 | the author only |
+| WR | The first real run, on a public monthly global temperature record, by separate agents from the role files (F1 to F19) | 2026-11-26 | separate agents, two models | 19: the most serious, a release set aside that protected nothing in the file | dispositions in [the change log](../../factory/change-log.jsonl), definition 0.14.0, parts 1 to 5 | the author only |
 
 The review round of the documents themselves (a fresh reader's audit of every page, 159 findings) was made on 2026-11-26 and its findings were applied to the documents as they now stand; it found no fault in the tools beyond the ones R1 to R3 and the audit's own list of false statements, which are corrected.
 

@@ -1439,8 +1439,39 @@ def without_warnings(text: str) -> str:
     return "\n".join(ln for ln in text.splitlines() if not ln.startswith("warning: "))
 
 
+def run_variant(x: Exploration, sa: dict, d: dict, receipt: dict, variant: str) -> None:
+    """A reviewer's variant of a logged look: its own script in the look's place, in the same scratch folder with the same
+    files by checksum and the same fence, logged nowhere. The reviewer lists each one in the review with what it showed."""
+    how_run = d.get("ran_in")
+    if not how_run:
+        raise Refused(f"{d['id']} was logged before looks ran in a scratch folder: a variant runs only in a look's scratch folder")
+    f = Path(os.path.normpath(x.d / variant))
+    if not (f.is_file() and not f.is_symlink() and f.suffix == ".py" and f.parent == x.d / "review"):
+        raise Refused("`--variant` is a Python script the reviewer wrote in the exploration's review/ folder")
+    problems = text_problems(f.read_text(errors="replace"), sa, f"the variant `{variant}`")
+    problems += cut_off_problems(x, sa, {variant: f})
+    for g in how_run["placed"]:
+        if g["role"] != "script" and sf.sha_file(Path(os.path.normpath(x.d / g["from"]))) != g["sha256"]:
+            problems.append(f"`{g['from']}` is not the file {d['id']} was given")
+    if problems:
+        raise Refused("the variant is not run: " + "; ".join(problems[:4]))
+    placed = [dict(g, **{"from": os.path.relpath(f, x.d), "sha256": sf.sha_file(f)}) if g["role"] == "script" else g for g in how_run["placed"]]
+    at_script = d["argv"].index(receipt["script"]["word"], 1)
+    ran = run_in_scratch(x, sa, how_run["argv_as_run"], d["argv"][:at_script], placed)
+    shutil.rmtree(ran["scratch"], ignore_errors=True)
+    if ran["log_changed"] or ran["meddled"]:
+        raise Refused("the variant changed the exploration while it ran: a script writes only into its own scratch folder")
+    crossing = text_problems(ran["out"], sa, "what the variant printed") + text_problems(ran["err"], sa, "what the variant wrote to standard error")
+    if crossing:
+        raise Refused("what the variant printed crosses the fence, so it is not shown: " + crossing[0])
+    print(ran["out"], end="" if ran["out"].endswith("\n") else "\n")
+    print(f"[a variant of {d['id']} ({WAY}), run by the reviewer in the look's scratch folder with the same {len(placed) - 1} file(s) by "
+          f"checksum: exit {ran['code']}. It is not logged and changes nothing in the exploration: list it in your review, with what it showed]")
+
+
 def cmd_recheck(x: Exploration, a) -> None:
-    """Run a logged look again and compare what comes out, without adding a look: for the review agent."""
+    """Run a logged look again and compare what comes out, without adding a look: for the review agent. With
+    `--variant`, run the reviewer's own script in the look's place instead, unlogged."""
     ev = x.events()
     sa = x.started()["data"]["set_aside"]
     e = next((e for e in ev if e["kind"] == "look.run" and e["data"]["id"] == a.look), None)
@@ -1448,6 +1479,10 @@ def cmd_recheck(x: Exploration, a) -> None:
         raise Refused(f"there is no {a.look} in the log")
     d = e["data"]
     receipt = json.loads((x.d / f"receipts/{d['id']}.json").read_text())
+    if getattr(a, "variant", None):
+        if set_aside_present(sa):
+            raise Refused("set-aside data is in the workspace; nothing is run")
+        return run_variant(x, sa, d, receipt, a.variant)
     script = x.d / receipt["script"]["word"]
     if sf.sha_file(script) != d["script_sha"]:
         raise Refused(f"the script of {d['id']} is not the script that was logged; nothing is run")
@@ -2975,7 +3010,7 @@ class A:
                         asked_by=None, question="How well does A follow B?", id="EXPLORATION-T", request=None, anchor=None,
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
-                        also_reads=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
+                        also_reads=None, variant=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
                         reason=None, expertise=None, local_practice=None, record_comment=None, report_only=None)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
@@ -3559,6 +3594,17 @@ def selftest() -> int:
            and e["data"]["figures"][0]["sha256"] == sf.sha_file(w.d / "figures/photo.png")
            and json.loads((w.d / "receipts/LOOK-001.json").read_text())["figures"] == e["data"]["figures"] and not breached(w.events()))
         ok("a look with a figure and a warning reproduces", said(cmd_recheck, w, A(look="LOOK-001")) == "")
+        (w.d / "review" / "check.py").write_text("print('a variant: the gain again, by another route')\n")
+        n_before = len(w.events())
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            got = _refusal(cmd_recheck, w, A(look="LOOK-001", variant="review/check.py"))
+        ok("a reviewer's variant of a look runs in its scratch folder on the same files, and nothing is logged (found by the first real run)",
+           got == "" and "by another route" in shown.getvalue() and "not logged" in shown.getvalue() and len(w.events()) == n_before)
+        (w.d / "review" / "reach.py").write_text("START = '2025-05-01'\nprint(START)\n")
+        (w.d / "looks" / "variant.py").write_text("print('x')\n")
+        ok("a variant that names a date inside the set-aside window is refused, and so is one outside the review folder",
+           "date inside" in said(cmd_recheck, w, A(look="LOOK-001", variant="review/reach.py"))
+           and "review/ folder" in said(cmd_recheck, w, A(look="LOOK-001", variant="looks/variant.py")) and len(w.events()) == n_before)
         ok("a look says how many comparisons it held", e["data"]["comparisons_declared"] == 9)
         quiet(cmd_choice, w, A(choice="keep every row", alternative=["drop the first"], rests_on="LOOK-001", look="LOOK-001"))
         ok("a choice is logged with the looks that had run when it was written down",
@@ -4409,7 +4455,9 @@ def build_parser() -> argparse.ArgumentParser:
                                            "settings file); repeatable. It is read by the fence, put in the look's scratch "
                                            "folder and pinned by checksum like a named file"}))
     look.add_argument("argv", nargs=argparse.REMAINDER, help="-- LAUNCHER SCRIPT [arguments]")
-    add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}))
+    add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}),
+        (["--variant"], {"default": None, "help": "a script of the reviewer's own in review/, run in the look's place on the same files, "
+                                                  "in its scratch folder; logged nowhere, and listed in the review"}))
     add("choice", cmd_choice, by, (["--choice"], {"required": True}), (["--alternative"], {"action": "append", "default": None}),
         (["--rests-on"], {"required": True, "dest": "rests_on"}), (["--look"], {"default": None}))
     add("note", cmd_note, by, (["--kind"], {"required": True}), (["--about"], {"required": True}), (["--text"], {"required": True}),

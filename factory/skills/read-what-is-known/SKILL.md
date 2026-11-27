@@ -46,6 +46,8 @@ Before an exploration is started, use `knowledge.py about` (step 1): it reads pa
 
 5. **Say what is missing.** If the question needs something the knowledge does not have, that is a note (`explore.py note --kind missing`, or `sf.py note`), not something to fill in from memory.
 
+6. **When nothing known applies.** The list may be empty, or hold only pages that came in on a stray word (an example's record, when the question is about another). Record that and go on: `known` logs the list, empty or not; record each page it listed as read, skimmed, with what it changes here (`--takes "bears on nothing here"`); raise a `missing` note for the page that should exist. No page can then give the boundary of the fresh data: take it from the metadata, start without `--boundary-from`, and say in `--why` that no page gave it.
+
 ## What comes out
 
 A short list, page by page: the path, signed by whom or not signed, and what it rules in, rules out or warns about for this question. Then what is missing. Cite each page by its path whenever you use it later.

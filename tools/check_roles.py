@@ -363,7 +363,7 @@ def problems(root: Path, definition: Path | None = None) -> list:
             p.append(f"{where}: may_call does not hold `tools/explore.py reviewer`: a lead is refused until the coordinating "
                      "agent has named the reviewer, so no exploration could reach one")
         writes = [str(w) for w in fm["writes"]]
-        if writes and f"record/{name}/*.md" not in writes:  # a role that writes nothing (the coordinating role) has its tasks kept by the launcher
+        if writes and f"record/{name}/*.md" not in writes:  # a role that writes nothing has its tasks kept by the launcher
             p.append(f"{where}: `writes` does not give the role its own place for its account (record/{name}/*.md)")
         for other in sorted(set(roles) - {name}):
             if any(w.startswith(f"record/{other}/") or w in ("record/*", "record/*.md", "record/*/*.md") for w in writes):
