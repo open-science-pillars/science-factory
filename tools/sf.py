@@ -2356,8 +2356,8 @@ def release_dates(f: Path, rel: dict, window: dict) -> dict:
         problems.append(f"{len(unreadable)} row(s) carry no date the tool can read (row {', '.join(map(str, unreadable[:3]))}): a row it cannot "
                         "date may be a row from before the cut-off")
     if early:
-        problems.append(f"it holds dates on or before the cut-off {rel['cut_off']}: " + ", ".join(early[:3])
-                        + (f", and {len(early) - 3} more" if len(early) > 3 else "") + ". The fetch keeps only the release's own rows")
+        problems.append(f"it holds dates on or before the cut-off {rel['cut_off']}: " + ", ".join(early[:6])
+                        + (f", and {len(early) - 6} more" if len(early) > 6 else "") + ". The fetch keeps only the release's own rows")
     if lasts and max(lasts).isoformat() < window["end"]:
         problems.append(f"it reaches only to {out['last']}, and the plan needs data to {window['end']}: the release is not out in full")
     if problems:
@@ -5621,6 +5621,7 @@ def _selftest_release(tmp: Path, check) -> None:
     1850 to a cut-off at the end of July 2026, and the provider's next months appended to the same file later. Every
     number is made up."""
     global TODAY
+    import time
     fd, person = fresh_tool(), "human:throwaway-placeholder"
     studies, source = tmp / "studies", tmp / "source"
     source.mkdir(parents=True)
@@ -5728,6 +5729,77 @@ def _selftest_release(tmp: Path, check) -> None:
         short = locked("R6", rows=("2026-08", "2026-09"))
         check("a release that reaches only part of the plan's window is refused as not out in full",
               "not out in full" in opening(short) and short.last("opening.finished")["data"]["exit"] is None)
+        # A4-08: fresh data with rows from before the cut-off, written in forms the opening did not read before
+        def locked_with(name: str, rows: list) -> Study:
+            study = locked(name)
+            (study.d / "release-rows.json").write_text(json.dumps(rows))
+            return study
+        epoch = int(dt.datetime(2026, 5, 30, tzinfo=dt.timezone.utc).timestamp())
+        release_months = [{"time": mo, "Mean": 0.5} for mo in ("2026-08", "2026-09", "2026-10")]
+        mixed = locked_with("R7", release_months + [{"year": 2026, "month": 6, "Mean": 0.4}, {"epoch_s": epoch, "Mean": 0.3},
+                                                     {"time": "Jul 2026", "Mean": 0.2}, {"time": "2026-200", "Mean": 0.1}])
+        said7 = opening(mixed)
+        check("A4-08: fresh data that brings back rows from before the cut-off as a year and a month in two keys, as seconds since 1970, "
+              "as a month by its name or as a day of the year is refused, and the locked analysis is not run",
+              "on or before the cut-off 2026-07-31" in said7 and all(w in said7 for w in ("2026-06", "2026-05-30", "2026-07", "2026-07-19"))
+              and mixed.last("opening.finished")["data"]["exit"] is None)
+        undated = locked_with("R8", release_months + [{"Mean": 0.4}])
+        check("A4-08: fresh data with a row the tool cannot date is refused: a row it cannot date may be from before the cut-off",
+              "carry no date the tool can read" in opening(undated) and undated.last("opening.finished")["data"]["exit"] is None)
+        late_west = locked_with("R9", release_months + [{"time": "2026-07-31T23:30:00-05:00", "Mean": 0.4}])
+        early_east = locked_with("R10", release_months + [{"time": "2026-08-01T01:00:00+02:00", "Mean": 0.4}])
+        clean_utc = locked_with("R11", [{"time": "2026-08-01T00:00:00Z", "Mean": 0.5}, {"time": "2026-09-15", "Mean": 0.5},
+                                        {"time": "2026-10-31T23:59:59+00:00", "Mean": 0.5}])
+        check("A4-08: a timestamp at the cut-off is taken at whichever of its own day and its day in UTC counts against it: the evening of "
+              "the cut-off in the west (after it in UTC) and the first hour after it in the east (before it in UTC) are refused, and the "
+              "release's own timestamps in UTC open",
+              "2026-07-31 to 2026-08-01" in opening(late_west) and "2026-07-31 to 2026-08-01" in opening(early_east)
+              and opening(clean_utc) == "" and clean_utc.last("opening.finished")["data"]["outcomes"] == {"r": "supported"})
+        # A4-13: whether a period has ended is decided in UTC, not in the caller's time zone
+        kept_tz = os.environ.get("TZ")
+        TODAY = None
+        try:
+            today_utc = dt.datetime.now(dt.timezone.utc).date()
+            os.environ["TZ"] = "Etc/GMT-14"
+            if hasattr(time, "tzset"):
+                time.tzset()
+            east = _today()
+            waits = release_waiting({"name": "next-update", "cut_off": "2026-07-31"}, {"start": "2026-08-01", "end": today_utc.isoformat()})
+            os.environ["TZ"] = "Etc/GMT+12"
+            if hasattr(time, "tzset"):
+                time.tzset()
+            west = _today()
+        finally:
+            os.environ.pop("TZ", None) if kept_tz is None else os.environ.__setitem__("TZ", kept_tz)
+            if hasattr(time, "tzset"):
+                time.tzset()
+            TODAY = "2026-11-27"
+        check("A4-13: whether the last period the plan needs has ended is decided by the date in UTC: a time zone fourteen hours ahead "
+              "or twelve behind changes nothing, and a window that ends today is still waited for",
+              east == west == today_utc and str(waits).startswith("waiting"))
+        # A4-10: a confirming study's own steps are given no file past the cut-off
+        peek = start("R12", fresh_data=str(prop), working_data=[str(csv)])
+        peek_plan = json.loads(json.dumps(PLAN))
+        peek_plan["data"]["held_out"].update(window={"start": "2026-08-01", "end": "2026-10-31"}, pair={"record": "toy-monthly", "case": "R12"},
+                                             fresh_data=os.path.relpath(prop, peek.d))
+        peek_plan["code"] = list(peek_plan["code"]) + ["{study}/data/monthly-2026.csv"]  # a file the study's steps are given, bound with the code
+        (peek.d / "toy.py").write_text(TOY.replace("POWER", "0.9").replace("TESTED", "None"))
+        (peek.d / "data").mkdir(exist_ok=True)
+        (peek.d / "data" / "monthly-2026.csv").write_text("Source,Year,Mean\nA,2026-08,0.9\nA,2026-09,0.9\n")
+        peek.plan_path.write_text(yaml.safe_dump(peek_plan, sort_keys=False))
+        stepped = _refusal(cmd_test, peek, A(what="working-data", by="agent:analysis"))
+        (peek.d / "data" / "monthly-2026.csv").write_text("Source,Year,Mean\nA,2026-05,0.9\nA,2026-06,0.9\n")
+        before_cut = _refusal(cmd_test, peek, A(what="working-data", by="agent:analysis"))
+        (peek.d / "data" / "monthly-2026.csv").write_text("Source,when,Mean\nA,1790000000,0.9\n")
+        as_seconds = _refusal(cmd_test, peek, A(what="working-data", by="agent:analysis"))
+        csv.write_text(appended)
+        (peek.d / "data" / "monthly-2026.csv").write_text("Source,Year,Mean\nA,2026-05,0.9\n")
+        in_place = _refusal(cmd_test, peek, A(what="working-data", by="agent:analysis"))
+        csv.write_text(as_stood)
+        check("A4-10: a confirming study's own step is refused when a file it is given holds months past the cut-off, or seconds since "
+              "1970 past it, or when the working data took the release in place; a file of months before the cut-off is given",
+              "holds dates past the cut-off 2026-07-31" in stepped and "2026-08" in stepped and "holds dates past the cut-off" in as_seconds
+              and "working data has changed since the study started" in in_place and "past the cut-off" not in before_cut)
         due = release_waiting({"name": "next-update", "cut_off": "2026-07-31", "cadence": "monthly", "expected_on": "2026-12-15"},
                               {"start": "2026-08-01", "end": "2026-10-31"})
         check("a release the metadata expects on a later day is waited for until that day, though the periods have ended",

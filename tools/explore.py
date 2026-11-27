@@ -3702,6 +3702,42 @@ def selftest() -> int:
         (xc.d / "looks" / "copy.csv").write_text((monthly / "monthly.csv").read_text())
         ok("a copy of the refreshed file put in the exploration is refused too: it holds months past the cut-off",
            "holds a date past the cut-off" in look(xc, ["{python}", sc, "looks/copy.csv"]))
+        # A4-07: copies of the release in the forms the fourth attack used, and in more: each is read row by row and refused
+        e25 = int(dt.datetime(2025, 1, 15, tzinfo=dt.timezone.utc).timestamp())
+        forms = {"split.csv": "year,month,value\n2024,12,0.1\n2025,1,0.9\n", "decimal.csv": "time,value\n2024.9583,0.1\n2025.0417,0.9\n",
+                 "named.csv": "when,value\nDec 2024,0.1\nJan 2025,0.9\n", "doy.csv": "date,value\n2024-366,0.1\n2025-015,0.9\n",
+                 "epoch.csv": f"epoch,value\n{e25 - 40 * 86400},0.1\n{e25},0.9\n", "rows.json": json.dumps([{"epoch": e25 - 40 * 86400, "v": 0.1}, {"epoch": e25, "v": 0.9}]),
+                 "week.csv": "period,value\n2024-W51,0.1\n2025-W03,0.9\n", "compact.csv": "day,value\n20241215,0.1\n20250115,0.9\n",
+                 "dmy.csv": "date,value\n15/12/2024,0.1\n15/01/2025,0.9\n", "mdy.csv": "date,value\n12/15/2024,0.1\n01/15/2025,0.9\n",
+                 "yyyymm.csv": "yyyymm,value\n202412,0.1\n202501,0.9\n", "named-day.csv": "date,value\n15 December 2024,0.1\nJanuary 15 2025,0.9\n",
+                 "zone.csv": "timestamp,value\n2024-12-31T12:00:00Z,0.1\n2024-12-31T23:30:00-05:00,0.9\n",
+                 "doy-columns.csv": "year,doy,value\n2024,300,0.1\n2025,15,0.9\n", "nested.json": json.dumps({"series": {"rows": [{"date": "2024-12"}, {"date": "2025-01"}]}}),
+                 "keyed.json": json.dumps({"2024-12": {"v": 0.1}, "2025-01": {"v": 0.9}}), "lists.json": json.dumps([["2024-12", 0.1], ["Jan 2025", 0.9]])}
+        let_through = []
+        for name, body in forms.items():
+            (xc.d / "looks" / name).write_text(body)
+            if "holds a date past the cut-off" not in look(xc, ["{python}", sc, f"looks/{name}"]):
+                let_through.append(name)
+        ok("A4-07: a copy of the release given to a look is refused in every form the fourth attack used (year and month in two columns, a "
+           "decimal year, a month by its name, a day of the year, seconds since 1970 in a CSV and in JSON under a key not listed as a time) "
+           "and in more (an ISO week, eight digits, day first and month first, six digits, a named day, a timestamp after the cut-off in "
+           "UTC, a year and a day-of-year column, rows nested in JSON, rows kept under their dates, rows as lists)"
+           + (f" (let through: {let_through})" if let_through else ""), not let_through)
+        (xc.d / "looks" / "undated.csv").write_text("date,value\n2024-11,0.1\nsometime,0.2\n")
+        ok("A4-07: under a release set aside, dated data with a row the tool cannot date is refused: that row may be a row of the release",
+           "whose date the tool cannot read" in look(xc, ["{python}", sc, "looks/undated.csv"]))
+        before_forms = {"split.csv": "year,month,value\n2024,11,0.1\n2024,12,0.9\n", "zone.csv": "timestamp,value\n2024-12-31T23:30:00Z,0.9\n",
+                        "named.csv": "when,value\nNov 2024,0.1\nDec 2024,0.9\n", "plain.csv": "site,lat,lon\nG70,30.1,-91.2\n"}
+        ran_before = []
+        for name, body in before_forms.items():
+            (xc.d / "looks" / f"ok-{name}").write_text(body)
+            ran_before.append(look(xc, ["{python}", sc, f"looks/ok-{name}"]) == "")
+        ok("the same forms holding only dates on or before the cut-off are given to a look, and so is a table with no dates at all",
+           all(ran_before))
+        placed = [{"role": "script", "from": "looks/tail.py", "at": "tail.py", "sha256": "0"}, {"role": "input", "from": "looks/split.csv", "at": "split.csv"}]
+        ok("A4-07: a promoted method leaves out every run whose inputs were not the working data as it stood (here, a copy of the release's "
+           "months), so its cases never hold set-aside data", "dates past the cut-off" in str(not_working_data(xc, xc.set_aside(), placed))
+           and not_working_data(xc, xc.set_aside(), [placed[0], {"role": "input", "from": "looks/ok-split.csv", "at": "s.csv"}]) is None)
         (monthly / "monthly.csv").write_text(rows)
         (monthly / "extra.csv").write_text("Source,Year,Mean\nA,2024-12,1.0\n")
         ok("a file that was not in the working data at the start is refused, whatever its dates",
@@ -3711,6 +3747,25 @@ def selftest() -> int:
            "another does not explore" in said(cmd_start, Exploration(work / "explorations" / "E-CUT-2"), A(
                request=str(req), id="E-CUT-2", **{**rel, "set_aside_release": ["a-later-update"], "working_window": "2024-01-01:2025-06-30"},
                release_cut_off="2025-06-30", working_data=[str(monthly)])))
+        (monthly / "monthly.csv").write_text(rows + "A,2025-01,9.9\n")  # the release arrives in place
+        no_window = said(cmd_start, Exploration(work / "explorations" / "E-CUT-3"), A(
+            request=str(req), id="E-CUT-3", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window=None,
+            subject="reach_id=R70,gauge=G70", why="a site nobody uses", working_data=[str(monthly)]))
+        other_name = said(cmd_start, Exploration(work / "explorations" / "E-CUT-4"), A(
+            request=str(req), id="E-CUT-4", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window=None,
+            subject="record=the-same-file-by-another-name", why="a site nobody uses", working_data=[str(monthly)]))
+        elsewhere = said(cmd_start, Exploration(work / "explorations" / "E-CUT-5"), A(
+            request=str(req), id="E-CUT-5", how="sites never opened", set_aside_window=None, set_aside_sites="NOWHERE-1", working_window="2020-01-01:2025-12-31",
+            subject="reach_id=R70,gauge=G70", why="a site nobody uses", working_data=[str(monthly)], studies=str(tmp / "other-studies")))
+        (monthly / "monthly.csv").write_text(rows)
+        ok("A4-09: another exploration of the data whose release is set aside cannot explore past the cut-off: with no working window, under "
+           "another name for the subject, and with a record of its own choosing, each start is refused and nothing is started",
+           "another does not explore, with or without a working window" in no_window and "another does not explore, with or without a working window" in other_name
+           and "names a record other than the workspace's own" in elsewhere
+           and not any((work / "explorations" / n).exists() for n in ("E-CUT-3", "E-CUT-4", "E-CUT-5")) and not (tmp / "other-studies").exists())
+        explored = [ln for ln in record_lines(work / "studies" / "openings.jsonl") if ln.get("kind") == "explored" and ln.get("study") == "E-CUT"]
+        ok("A4-14: an exploration that set a release aside, with no working window, is on the record as having explored the data up to the "
+           "cut-off, and not the release after it", explored and explored[-1]["window"] == {"start": "0001-01-01", "end": "2024-12-31"})
         rmeta = tmp / "fd-release.json"
         rmeta.write_text(json.dumps({"subject": {"reach_id": "R71", "gauge": "G71"}, "files": [{"name": "monthly.csv", "sha256": sf.sha_file(monthly / "monthly.csv")}],
                                      "items": [{"id": "A-2024", "series": "A", "start": "2024-01-01", "end": "2024-12-31", "count": 12}],
@@ -3934,6 +3989,24 @@ def selftest() -> int:
            and f"fresh data is the release after 2024-12-31; the data seen while exploring was monthly.csv with checksum "
                f"{sf.sha_file(monthly_ho / 'monthly.csv')}" in sf.release_in_words(rel)
            and not any("did not start with that cut-off" in q for q in study_problems(xh, srel.d)))
+        rel_plan = json.loads(json.dumps(sf.PLAN))
+        rel_plan["data"]["held_out"].update(window={"start": "2025-01-01", "end": "2025-06-30"}, pair={"reach_id": "R72", "gauge": "G72"})
+        mark_h = f"{xh.started()['seq']}:{xh.started()['hash']}"
+        rec_h = work / "studies" / "openings.jsonl"
+        kept_rec = rec_h.read_text()
+        with rec_h.open("a") as fh:  # the line an exploration of 0.15.0 wrote: no window at all
+            fh.write(json.dumps({"kind": "explored", "study": "E-REL-HO", "dir": "E-REL-HO", "key": subject_key({"reach_id": "R72", "gauge": "G72"}),
+                                 "started": mark_h, "test": WAY}) + "\n")
+        mine = sf.earlier_openings(srel, rel_plan, rel_plan["tests"]["held-out"], srel.events())
+        with rec_h.open("a") as fh:  # another exploration of the subject, with no release and no window: it explored everything
+            fh.write(json.dumps({"kind": "explored", "study": "E-OTHER", "dir": "E-OTHER", "key": subject_key({"reach_id": "R72", "gauge": "G72"}),
+                                 "started": "0:" + "0" * 64, "test": WAY}) + "\n")
+        theirs = sf.earlier_openings(srel, rel_plan, rel_plan["tests"]["held-out"], srel.events())
+        rec_h.write_text(kept_rec)
+        ok("A4-14: a study handed over from an exploration that set a release aside is not made exploratory by that exploration, which "
+           "explored the data up to the cut-off (also as an exploration of 0.15.0 wrote its line, with no window); another exploration "
+           "that explored the subject with no window still makes it exploratory",
+           mine == [] and [x["study"] for x in theirs] == ["E-OTHER"])
         ok("a cut-off or working data an agent gives at the start of a study from a hand-over is refused: they come from the exploration",
            "not given with a hand-over" in _refusal(lambda: study_from("STUDY-REL-1", hreq, fresh_data=str(rp_), working_data=None))
            and not (work / "studies" / "STUDY-REL-1").exists())
