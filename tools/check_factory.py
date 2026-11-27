@@ -293,6 +293,9 @@ def acts_change_problems(root: Path, spec: dict | None = None) -> list:
                    "Who approves an act, how many, and whether held-out data may be opened on a lock nobody verified are changes people "
                    "approve: give the definition a new version and record the change (`sf.py log-change`, which names this block by "
                    "checksum), so the summary of the change and the lock request show it")
+    elif not any(c.get("acts_sha256") == want and str(c.get("definition_version")) == version for c in records):
+        out.append(f"factory.yaml: no record of the change log names the acts by people under this version ({version}): every version "
+                   "says, in a record of the change log (`sf.py log-change`), which acts by people it holds")
     clash = sorted({str(c.get("acts_sha256"))[:16] for c in records if c.get("acts_sha256") not in (None, want)
                     and str(c.get("definition_version")) == version})
     if clash:
@@ -1304,6 +1307,15 @@ def selftest() -> int:
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
             (d / rel).write_text(text)
 
+        def recorded_change(d: Path, version: str = "99.0.0-selftest") -> None:
+            """What a person does when they change the acts by people: a new version, and a record of the change log naming them."""
+            text = (d / "factory.yaml").read_text()
+            (d / "factory.yaml").write_text(re.sub(r"(?m)^version: (\S+)", f"version: {version}", text, count=1))
+            spec = load_yaml((d / "factory.yaml").read_text())
+            with (d / "change-log.jsonl").open("a") as f:
+                f.write(json.dumps({"problem_class": "a selftest", "change": "the acts by people changed", "predicted": "as said",
+                                    "context": {"definition_version": version, "acts_sha256": acts_sha256(spec)}}) + "\n")
+
         def case(name: str, change, expect: str, word: str = "invalid") -> None:
             d = copy(f"case-{len(results)}")
             change(d)
@@ -1428,8 +1440,12 @@ def selftest() -> int:
                                                        if not ln.startswith(("      repository: ", "      merge_methods: ", "      opening_needs: ",
                                                                              "      opening_without_verification: "))))
         edit(practice, "factory.yaml", "      route: pull-request\n      harness: github\n      protected_branch: main\n      approvals: 1\n", "      route: practice\n")
-        results.append(("a factory whose two acts are both declared as practice is valid, and the summary of that change says what practice means",
-                        result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
+        unrecorded = result(practice)
+        recorded_change(practice)
+        results.append(("a factory whose two acts are both declared as practice is valid once the change is recorded under a new version, and "
+                        "the summary of that change says what practice means",
+                        unrecorded[0] == "invalid" and any("is not the block any record of the change log names" in q for q in unrecorded[2])
+                        and result(practice)[0] == "valid" and "A practice act is typed at a command line and proves nothing about who acted"
                         in "\n".join(summary(clean, practice))))
         case("an act that is a pull request and names no repository on the platform",
              lambda d: edit(d, "factory.yaml", "      repository: example-org/example-studies", "      repository: somewhere", 2),
@@ -1502,9 +1518,47 @@ def selftest() -> int:
              "which belongs to the lock")
         allows = copy("allows-an-unverified-opening")
         edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
-        results.append(("a definition that allows an opening on an unverified lock is valid, and the summary of that change says so in words",
+        one_word = result(allows)
+        recorded_change(allows, "99.0.0-the-acts-as-shipped")
+        edit(allows, "factory.yaml", "      opening_without_verification: allowed-with-a-reason", "      opening_without_verification: refused")
+        recorded_change(allows, "99.0.0-the-acts-as-shipped")
+        edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
+        results.append(("A4-11: the exception allowed by a one-word edit, with the version unchanged and no record in the change log, is invalid, "
+                        "and says that a change to the acts by people is recorded under a new version",
+                        one_word[0] == "invalid" and any("not the block any record of the change log names" in q and "new version" in q for q in one_word[2])))
+        with (allows / "change-log.jsonl").open("a") as f:
+            f.write(json.dumps({"problem_class": "x", "change": "allow it", "predicted": "x", "context": {
+                "definition_version": load_yaml((allows / "factory.yaml").read_text())["version"],
+                "acts_sha256": acts_sha256(load_yaml((allows / "factory.yaml").read_text()))}}) + "\n")
+        same_version = result(allows)
+        results.append(("A4-11: a record of the change made under the version the earlier acts were recorded under is not enough: a change to "
+                        "the acts by people changes the version",
+                        same_version[0] == "invalid" and any("a change to the acts by people changes the version" in q for q in same_version[2])))
+        allows = copy("allows-an-unverified-opening-recorded")
+        edit(allows, "factory.yaml", "      opening_without_verification: refused", "      opening_without_verification: allowed-with-a-reason")
+        recorded_change(allows)
+        results.append(("a definition that allows an opening on an unverified lock, under a new version with a record of the change, is valid, "
+                        "and the summary of that change says so in words",
                         result(allows)[0] == "valid" and "From now on a person may open the held-out data on a lock nobody verified"
                         in "\n".join(summary(clean, allows))))
+        # A4-02: bytecode is part of what the checksum binds, the validator refuses it, and the lock refuses what nothing binds
+        planted = copy("bytecode-planted")
+        before_sum, before_tools = tree_checksum(planted)["sha256"], tools_checksum(planted.parent / "tools")["sha256"]
+        (planted / "harnesses/github/__pycache__").mkdir()
+        (planted / "harnesses/github/__pycache__/verify_acts.cpython-313.pyc").write_bytes(b"\x00 ATTACK MARKER")
+        (planted.parent / "tools/__pycache__").mkdir()
+        (planted.parent / "tools/__pycache__/check_factory.cpython-313.pyc").write_bytes(b"\x00 ATTACK MARKER")
+        (planted.parent / "tools/json.py").write_text("raise SystemExit('a module named like one the tools import')\n")
+        got = result(planted)
+        found = unbound_files(planted, planted.parent / "tools")
+        results.append(("A4-02: bytecode beside the verifier changes the definition's checksum, and the definition is invalid: a definition is source",
+                        tree_checksum(planted)["sha256"] != before_sum and got[0] == "invalid"
+                        and any("harnesses/github/__pycache__/verify_acts.cpython-313.pyc is bytecode" in q for q in got[2])))
+        results.append(("A4-02: bytecode and a stray file in tools/ change the tools' checksum, and both are listed as bound by nothing",
+                        tools_checksum(planted.parent / "tools")["sha256"] != before_tools
+                        and any(q.startswith("tools/__pycache__") for q in found) and any(q.startswith("tools/json.py") for q in found)
+                        and any(q.startswith("factory/harnesses/github/__pycache__") for q in found)))
+        results.append(("a clean copy of the definition and the tools holds nothing bound by nothing", unbound_files(clean, clean.parent / "tools") == []))
         case("a harness that carries the acts and does not say where its platform answers",
              lambda d: edit(d, "harnesses/github/harness.yaml", "  api: https://api.github.com", "  api: http://localhost:8080"),
              "names no `platform.api` that begins with https://")

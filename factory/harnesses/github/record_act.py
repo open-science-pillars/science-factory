@@ -193,6 +193,7 @@ def selftest(only: str | None = None) -> int:
         base = sha()
         sf.Study.default_model, sf.Study.default_route = "selftest-model", None  # the real route: nothing here is typed as a person's act
         sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; recorded answers are put here where a check needs them
+        sf.STAND_INS_COUNT = True  # inside this self-test a stand-in's `verified` counts; each answer is still marked as a stand-in's
         try:
             g("checkout", "-q", "-b", "lock/S1")
             study = sf._fresh(repo / "studies", "S1", start=A(id="STUDY-TEST", question=sf.PLAN["question"], by="agent:coordinating"))
@@ -320,7 +321,6 @@ def selftest(only: str | None = None) -> int:
                and sf.acts_report(study)["lock"]["approved_by"] == ["example-scientist"], R)
             g("add", "-A"), g("commit", "-q", "-m", "Record the verification of " + merge)
             sf.cmd_open_held_out(study, A(test="held-out", by="agent:coordinating"))
-            sf.PLATFORM_CALL = sf._dead_platform
             ok("with the lock recorded from the merge, committed, and confirmed by the platform when the opening asks, the held-out data is "
                "opened, with no practice flag anywhere",
                study.last("opening.finished") is not None and study.last("opening.started")["data"]["lock_route"] == "pull-request"
@@ -330,7 +330,8 @@ def selftest(only: str | None = None) -> int:
             g("checkout", "-q", "-b", "sign/S1")
             (tmp / "finding.md").write_text("a finding drafted from receipts\n")
             (tmp / "verdict.md").write_text("APPROVE\n")
-            sf.cmd_attach(study, A(by="agent:analysis", file=str(tmp / "finding.md")))
+            sf.cmd_attach(study, A(by="agent:analysis", file=str(tmp / "finding.md")))  # the lock is confirmed when attach asks the platform now
+            sf.PLATFORM_CALL = sf._dead_platform
             sf.cmd_review(study, A(by="agent:review", verdict="approve", file=str(tmp / "verdict.md")))
             posted = sf._posted(study)
             sf.cmd_request_signature(study, A(by="agent:coordinating", decision="signed", anchor=posted, evidence=None, comment=None))

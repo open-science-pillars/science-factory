@@ -74,6 +74,7 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     del sys.path[0]
     sys.path[:] = [p for p in sys.path if p != _own]
 
+import contextlib  # noqa: E402
 import copy  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
@@ -535,6 +536,88 @@ EXPECT = {"repository": FILL["REPOSITORY"], "branch": "main", "commit": FILL["ME
                       "evidence": {"path": FILL["EVIDENCE_PATH"], "blob": FILL["EVIDENCE_BLOB"]}}}
 
 
+def _throwaway_tls(folder: Path) -> dict | None:
+    """For the self-tests: a certificate authority made up here and a certificate it signed for the platform's host, as the
+    fourth attack made, by `openssl`; None when openssl is not on this machine. Nothing made here is kept."""
+    import shutil
+    import subprocess
+    openssl = shutil.which("openssl")
+    if not openssl:
+        return None
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "ext.cnf").write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n"
+                                    f"extendedKeyUsage=serverAuth\nsubjectAltName=DNS:{HOST}\nauthorityKeyIdentifier=keyid\nsubjectKeyIdentifier=hash\n")
+    steps = [[openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "2",
+              "-subj", "/CN=a throwaway authority of a self-test", "-addext", "basicConstraints=critical,CA:TRUE",
+              "-addext", "keyUsage=critical,keyCertSign,cRLSign"],
+             [openssl, "req", "-newkey", "rsa:2048", "-nodes", "-keyout", "srv.key", "-out", "srv.csr", "-subj", f"/CN={HOST}"],
+             [openssl, "x509", "-req", "-in", "srv.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "srv.pem",
+              "-days", "2", "-extfile", "ext.cnf"]]
+    for argv in steps:
+        if subprocess.run(argv, cwd=folder, capture_output=True, stdin=subprocess.DEVNULL).returncode != 0:
+            return None
+    return {"ca": str(folder / "ca.pem"), "cert": str(folder / "srv.pem"), "key": str(folder / "srv.key")}
+
+
+def _loopback_tls_proxy(tls: dict) -> tuple:
+    """For the self-tests: a stand-in for the platform on the loopback address, as the fourth attack built one. It answers
+    `CONNECT api.github.com:443` with 200, then speaks TLS with the throwaway certificate and answers any request with a
+    repository. It forwards nothing anywhere. Returns (its address as a proxy, what it saw, a function that stops it)."""
+    import socket
+    import threading
+    seen = {"connects": [], "handshakes": 0, "requests": []}
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(tls["cert"], tls["key"])
+    lsock = socket.socket()
+    lsock.bind(("127.0.0.1", 0))
+    lsock.listen(8)
+    lsock.settimeout(0.5)
+    stop = threading.Event()
+
+    def one(c):
+        try:
+            c.settimeout(10)
+            head = b""
+            while b"\r\n\r\n" not in head and len(head) < 8192:
+                got = c.recv(1024)
+                if not got:
+                    return
+                head += got
+            line = head.split(b"\r\n", 1)[0].decode("latin-1")
+            seen["connects"].append(line)
+            if not line.startswith(f"CONNECT {HOST}:443 "):
+                c.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                return
+            c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            t = ctx.wrap_socket(c, server_side=True)
+            seen["handshakes"] += 1
+            req = t.recv(65536).decode("latin-1")
+            seen["requests"].append(req.split("\r\n", 1)[0])
+            body = json.dumps({"full_name": "example-org/example-studies"}).encode()
+            t.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+            t.close()
+        except (OSError, ssl.SSLError):
+            pass
+        finally:
+            with contextlib.suppress(OSError):
+                c.close()
+
+    def serve():
+        while not stop.is_set():
+            try:
+                c, _ = lsock.accept()
+            except (socket.timeout, OSError):
+                continue
+            threading.Thread(target=one, args=(c,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+    def halt():
+        stop.set()
+        with contextlib.suppress(OSError):
+            lsock.close()
+    return f"http://127.0.0.1:{lsock.getsockname()[1]}", seen, halt
+
+
 def selftest() -> int:
     import http.server
     import threading
@@ -631,6 +714,57 @@ def selftest() -> int:
     renamed = verify(lambda api, path, token: {"status": 301, "body": None}, API, "a-token", EXPECT)
     ok("a repository that answers with a redirect is `not checked`, and the answer says to name it as it is called now",
        renamed["result"] == NOT_CHECKED and "has moved or been renamed" in renamed["problems"][0])
+    # ---- the route the question takes: a fixed host, no proxy or certificate of the environment's, and the answer says how it went
+    kept_env = {k: os.environ.get(k) for k in ("SSL_CERT_FILE", "HTTPS_PROXY", "https_proxy")}
+    os.environ.update(SSL_CERT_FILE="/nonexistent/a-certificate-of-the-callers.pem", HTTPS_PROXY="http://127.0.0.1:9", https_proxy="http://127.0.0.1:9")
+    try:
+        opener, via = opener_for(None)
+        proxies = [h.proxies for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
+        ok("A4-03: the opener a verification asks through uses no proxy of the environment's and trusts the system's certificates, not "
+           "a file an environment variable names, and says so",
+           proxies == [] and via["host"] == HOST and via["proxy"] is None and via["certificates"]["path"] != os.environ["SSL_CERT_FILE"])
+        ok("A4-03: a proxy is used only where the definition names one, as a tunnel",
+           [h.proxies for h in opener_for("http://proxy.invalid:3128")[0].handlers if isinstance(h, urllib.request.ProxyHandler)] == [{"https": "http://proxy.invalid:3128"}])
+    finally:
+        for k, v in kept_env.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    ok("A4-03: the call asks the one host this file names and refuses any other address without sending anything",
+       platform_call("https://127.0.0.1:18443", "/repos/a/b", "a-token") == {"status": 0, "error": f"the platform is asked at {HOST} and nowhere else"}
+       and platform_call("https://api.github.com.example.invalid", "/repos/a/b", "a-token")["status"] == 0)
+    ok("asked in a process of its own with no token in its environment, nothing is asked and the result is `not checked`",
+       (lambda got: got["result"] == NOT_CHECKED and got["asked"] == [] and got["via"]["host"] == HOST)(globals()["ask"]({"what": "act", "expect": EXPECT, "proxy": None})))
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        tls = _throwaway_tls(Path(tmp) / "tls")
+        ok("openssl is on this machine, so the loopback stand-in of the fourth attack can be built", tls is not None)
+        if tls:
+            proxy, seen, halt = _loopback_tls_proxy(tls)
+            try:
+                env = {"SF_PLATFORM_TOKEN": "a-fake-token-sent-only-to-the-loopback-address", "SSL_CERT_FILE": tls["ca"],
+                       "HTTPS_PROXY": proxy, "https_proxy": proxy}
+                ctl = ssl.create_default_context(cafile=tls["ca"])
+                import socket
+                raw = socket.create_connection(("127.0.0.1", int(proxy.rsplit(":", 1)[1])), timeout=10)
+                raw.sendall(f"CONNECT {HOST}:443 HTTP/1.1\r\nHost: {HOST}:443\r\n\r\n".encode())
+                raw.recv(1024)
+                with ctl.wrap_socket(raw, server_hostname=HOST) as s:
+                    s.sendall(b"GET /control HTTP/1.1\r\nHost: api.github.com\r\n\r\n")
+                    control = s.recv(4096)
+                ok("the stand-in's certificate is good for the platform's host to anybody who trusts the throwaway authority (the control)",
+                   control.startswith(b"HTTP/1.1 200"))
+                question = json.dumps({"what": "act", "expect": EXPECT, "proxy": proxy})
+                done = subprocess.run([sys.executable, "-I", "-S", "-B", "-X", "pycache_prefix=/dev/null/sf-no-bytecode", str(Path(__file__).resolve()), "--ask"],
+                                      input=question, capture_output=True, text=True, env=env, timeout=120)
+                got = json.loads(done.stdout.strip().splitlines()[-1])
+                ok("A4-03: behind a proxy the definition names, the stand-in of the fourth attack (a throwaway authority named by "
+                   "SSL_CERT_FILE) is not trusted: the certificate fails, the answer is `not checked`, the request never reached it, and "
+                   "the answer records the host, the proxy and the certificate file it trusted",
+                   got["result"] == NOT_CHECKED and "CERTIFICATE_VERIFY_FAILED" in json.dumps(got["asked"]) and seen["requests"] == ["GET /control HTTP/1.1"]
+                   and seen["connects"][-1].startswith(f"CONNECT {HOST}:443") and got["via"]["proxy"] == proxy and got["via"]["host"] == HOST
+                   and got["via"]["certificates"]["path"] != tls["ca"])
+            finally:
+                halt()
     comment = {"id": 41, "html_url": "https://github.com/example-org/example-studies/issues/3#issuecomment-41",
                "user": {"login": "a-scientist", "type": "User"}, "author_association": "MEMBER", "created_at": "2026-11-26T10:00:00Z",
                "body": "so-what: worth-confirming\nexploration: EXPLORATION-1\nlead: 0123456789ab\n"}

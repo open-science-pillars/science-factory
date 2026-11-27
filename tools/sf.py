@@ -3439,7 +3439,6 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
     if study.plan_sha() != lock["data"]["plan_sha"]:
         raise Refused("the analysis plan changed after the lock")
     locked_definition = lock["data"].get("definition") or {}
-    refuse_unbound(factory, "the opening")
     here = definition_tool().tree_checksum(Path(factory or FACTORY).resolve())
     tools_here = definition_tool().tools_checksum(TOOL.parent)
     if locked_definition.get("tools") and locked_definition["tools"] != tools_here:
@@ -3452,6 +3451,7 @@ def start_opening(study: Study, plan: dict, test: str, by: str, f, factory=None,
         raise Refused("the factory's definition holds a symlink (" + ", ".join(links[:4]) + "): a definition is the files themselves, "
                       "and a link can be pointed elsewhere without a byte of the tree changing. Nothing was opened and the opening is "
                       "not used up")
+    refuse_unbound(factory, "the opening")
     if locked_definition.get("sha256") and locked_definition["sha256"] != here["sha256"]:
         raise Refused("the factory's definition changed after the lock (the lock binds the tree's checksum "
                       f"{locked_definition['sha256'][:16]}, version {locked_definition.get('version')}; the tree here is {here['sha256'][:16]}). "
@@ -3962,18 +3962,29 @@ WORK = (  # (the kind of work, in words; the kinds of event that are that work)
 LOG_CANNOT_SHOW = ("What the logs cannot show. They record who wrote each event and nothing else: the thinking that left no event (choosing "
                    "the problem, the conversations, what was read outside the tools, a person steering an agent in its chat) is not in them. "
                    "An agent's model is the name its caller declared, and nothing checks it. A person's name typed at a command line (practice) "
-                   "shows nothing about who acted; an act on the platform names the accounts the platform recorded, and is shown with its standing.")
+                   "shows nothing about who acted; an act on the platform names the accounts the platform confirmed when asked now, and names a "
+                   "tool was handed are shown as handed, with their standing.")
 
 
-def who_in_words(e: dict, roles: tuple) -> str:
-    """An event's actor as a reader of a paper would want it: a person by the name the platform recorded, or an agent by its
-    role and the model it declared."""
+def who_in_words(e: dict, roles: tuple, live: dict | None = None) -> str:
+    """An event's actor as a reader of a paper would want it: a person by the account the platform confirmed when asked now,
+    names a tool was handed as handed (with the standing they have), or an agent by its role and the model it declared."""
     actor, d = str(e["actor"]), e.get("data") or {}
+    answer = (live or {}).get(e.get("hash")) if e.get("hash") else None
+    if e.get("kind") in ("act.verification", "so-what.verification"):
+        base = (f"{actor} (an AI agent, model {e.get('model') or 'not recorded'} as declared)" if actor.startswith("agent:") else
+                f"{actor} (a person, by the name typed)" if actor.startswith("human:") else f"{actor} (the name the job runs under)")
+        return base + ", asking the platform: a note of what was asked and when, which proves nothing by itself"
     if actor.startswith("platform:"):
         if d.get("comment"):
-            return f"{d['comment']['author']} (an account on {actor[9:]}, by a comment)"
+            return (f"{d['comment']['author']} (an account on {actor[9:]}, by a comment, " + ("confirmed by the platform asked now)" if counts(answer) else
+                    "as the job that recorded it was handed it, not confirmed by the platform; standing: comment recorded, person not verified)"))
+        if counts(answer):
+            people = [p.get("login") for p in (answer.get("told") or {}).get("approved_by") or []]
+            return (", ".join(people) or "nobody named") + f" (accounts on {actor[9:]}, by approving a pull request, confirmed by the platform asked now)"
         people = ((d.get("merge") or {}).get("people") or {}).get("approved") or []
-        return (", ".join(people) or "nobody named") + f" (accounts on {actor[9:]}, by approving a pull request)"
+        return ("names handed to the tool with the merge: " + (", ".join(people) or "none") + f" (said to be accounts on {actor[9:]} that approved "
+                f"a pull request; not confirmed by the platform; standing: {MERGE_FOUND})")
     if actor.startswith("agent:"):
         name = actor[6:]
         role = next((r for r in roles if name == r or name.startswith((r + "-", r + "_"))), None)
@@ -3981,16 +3992,17 @@ def who_in_words(e: dict, roles: tuple) -> str:
     return f"{actor} (a person, by the name typed)"
 
 
-def contribution(logs: list, roles: tuple, extra: list | None = None) -> dict:
+def contribution(logs: list, roles: tuple, extra: list | None = None, live: dict | None = None) -> dict:
     """{"rows": [{work, who, events}], "paragraph": words, "cannot_show": words} from one or more logs, each (what, events).
-    `extra` are events that are not in a log but name who did a step (the proposal of the fresh data)."""
+    `extra` are events that are not in a log but name who did a step (the proposal of the fresh data). `live` maps an
+    event's hash to the platform's answer about it asked now: only such an answer names a person as confirmed."""
     events = [e for _what, ev in logs for e in ev] + list(extra or [])
     rows = []
     for work, kinds in WORK:
         count_by = {}
         for e in events:
             if e["kind"] in kinds and not (e["kind"] == "note.resolved" and work != "raising notes and drafting knowledge"):
-                who = who_in_words(e, roles)
+                who = who_in_words(e, roles, live)
                 count_by[who] = count_by.get(who, 0) + 1
         rows.append({"work": work, "who": [{"actor": w, "events": n} for w, n in count_by.items()]})
     started = next((e for e in events if e["kind"] in ("study.started", "exploration.started")), None)
@@ -4037,16 +4049,26 @@ def fresh_data_event(proposal: dict | None) -> list:
 def study_contribution(study: Study, factory: Path) -> dict:
     ev = study.events()
     logs = [(f"the study {study.d.name}", ev)]
+    live = {e["hash"]: v for e, v in ((e, ask_now(study, ev, e, "lock" if e["kind"] == "lock.recorded" else "signature", factory))
+                                      for e in ev if e["kind"] in ACTS_BY_PEOPLE) if v}
     x = exploration_log_of(study, ev)
     if x:
         logs.insert(0, x)
+        start = next((e for e in ev if e["kind"] == "study.started"), None)
+        xdir = Path(os.path.normpath(study.d / start["data"]["from_exploration"]["path_from_study"]))
+        ex = explore_tool()
+        for e in x[1]:
+            if e["kind"] == "so-what.recorded" and e["data"].get("route") == "comment":
+                v = ex.so_what_ask_now(ex.Exploration(xdir), e)
+                if v:
+                    live[e["hash"]] = v
     extra = []
     try:
         fresh = fresh_data_of(study, study.plan())
         extra = fresh_data_event(fresh["proposal"]) if fresh else []
     except Refused:
         pass
-    return contribution(logs, roles_of(factory), extra)
+    return contribution(logs, roles_of(factory), extra, live)
 
 
 def cmd_contribution(study: Study, a) -> None:
@@ -5821,6 +5843,18 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
             shutil.copytree(FACTORY, loosened)
             (loosened / "factory.yaml").write_text((loosened / "factory.yaml").read_text().replace(
                 "      opening_without_verification: refused", f"      opening_without_verification: {UNVERIFIED_ALLOWED}", 1))
+            unrecorded = definition_tool().acts_change_problems(loosened)
+            check("A4-11: the exception allowed by one word, with the version unchanged and nothing in the change log, is not a recorded "
+                  "change: the validator calls the definition invalid and the lock is refused",
+                  bool(unrecorded) and "not the block any record of the change log names" in unrecorded[0]
+                  and "not a recorded change" in _refusal(cmd_request_lock, study, A(by="agent:coordinating", factory=str(loosened))))
+            (loosened / "factory.yaml").write_text(re.sub(r"(?m)^version: (\S+)", "version: 99.0.0-selftest", (loosened / "factory.yaml").read_text(), count=1))
+            scratch_log = _fresh(tmp, "a-loosening-recorded")
+            cmd_log_change(scratch_log, A(by="agent:coordinating", model="selftest-model", log=str(loosened / "change-log.jsonl"), factory=str(loosened),
+                                          problem="a place with no network", change="allow the exception", rationale="a field station",
+                                          predicted="opened on the merge alone, loudly", observed=None))
+            check("A4-11: with a new version and a record of the change log that names the acts by people, the definition that allows the "
+                  "exception is a recorded change", not definition_tool().acts_change_problems(loosened))
             check("a definition changed after the lock to allow the exception does not open the data: the lock binds the definition, "
                   "so allowing it is a change people approve with a new lock, never something typed at the opening",
                   unverified_opening_allowed(loosened) and "definition changed after the lock" in _refusal(
@@ -5875,13 +5909,17 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
             dead = _refusal(cmd_open_held_out, r3, A(test="held-out", by="agent:coordinating"))
             check("with no network the opening is refused, says the platform could not be asked, and names the one way on",
                   "The platform could not be asked" in dead and "--people-not-verified" in dead and not r3.last("opening.started"))
-            cmd_open_held_out(r3, A(test="held-out", by="agent:coordinating", people_not_verified="a field station with no network"))
+            by_agent = _refusal(cmd_open_held_out, r3, A(test="held-out", by="agent:coordinating", people_not_verified="a field station with no network"))
+            check("A4-11: an agent's `--people-not-verified` is refused by the tool itself, also where the definition allows the exception, "
+                  "and nothing is opened or used up", "an agent never opens held-out data on a lock nobody verified" in by_agent
+                  and not r3.last("opening.started"))
+            cmd_open_held_out(r3, A(test="held-out", by=person, people_not_verified="a field station with no network"))
             began = r3.last("opening.started")["data"]
             check("with `--people-not-verified` and a reason the opening goes ahead on the merge alone: the reason, who gave it and why the "
                   "platform could not be asked are in the opening's own event, and the lock stays at people not verified",
                   r3.last("opening.finished") is not None and began["lock_standing"] == MERGE_FOUND
                   and began["opened_without_verification"]["reason"] == "a field station with no network"
-                  and began["opened_without_verification"]["by"] == "agent:coordinating" and standing_of(r3.events(), r3.last("lock.recorded")) == MERGE_FOUND)
+                  and began["opened_without_verification"]["by"] == person and standing_of(r3.events(), r3.last("lock.recorded")) == MERGE_FOUND)
             (tmp / "r3-bare.md").write_text("SUPPORTED, from the receipts\n")
             (tmp / "r3-buried.md").write_text("SUPPORTED, from the receipts\n\n" + UNVERIFIED_WORDS + "\n")
             (tmp / "r3-finding.md").write_text(UNVERIFIED_WORDS + "\n\nSUPPORTED, from the receipts\n")
@@ -5927,9 +5965,15 @@ subprocess.Popen([sys.executable, "-c", job], env=env, start_new_session=True, s
             PLATFORM_CALL = _dead_platform
             _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY), report_only=True))
             lost = _refusal(cmd_verify_acts, r3, A(by="agent:coordinating", factory=str(FACTORY)))
-            check("a verification that cannot reach the platform is `not checked`: it is no pass, and it takes nothing away from an act the "
-                  "platform confirmed before; with --report-only nothing is written",
-                  "not checked" in lost and len(r3.events()) == before + 2 and check_log(r3, posted3)["acts"] == {"lock": VERIFIED, "signature": MERGE_FOUND})
+            shown_now = stage_of(r3, FACTORY)["acts"]["lock"]
+            check("A4-01: a verification that cannot reach the platform is `not checked`, no pass; and a lock the platform confirmed "
+                  "earlier stands, now, as merge found: status says it was verified when last checked and is not re-checked now, and "
+                  "the log check, the finding's first line and the standings all go by the answer asked now; with --report-only "
+                  "nothing is written",
+                  "not checked" in lost and len(r3.events()) == before + 2 and check_log(r3, posted3)["acts"] == {"lock": MERGE_FOUND, "signature": MERGE_FOUND}
+                  and shown_now["standing"] == MERGE_FOUND and shown_now["last_checked"].startswith("verified when last checked at")
+                  and "not re-checked now" in shown_now["last_checked"] and "approved_by" not in shown_now
+                  and check_log(r3, posted3)["finding_first_line"].startswith("NOT SIGNED, AWAITING VERIFICATION"))
             PLATFORM_CALL = _either(_stand_in_platform(r3, "lock", merge3, head3), _stand_in_platform(r3, "signature", smerge3, shead3, number=8))
             cmd_verify_acts(r3, A(by="platform:github", factory=str(FACTORY)))
             rep3, shown = check_log(r3, posted3), stage_of(r3, FACTORY)["acts"]
@@ -6026,8 +6070,9 @@ def selftest() -> int:
     results = []
     Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
     Study.default_route = PRACTICE  # the self-test types its locks and signatures: practice, in throwaway folders; the pull request route is tested by name
-    global PLATFORM_CALL
+    global PLATFORM_CALL, STAND_INS_COUNT
     PLATFORM_CALL = _dead_platform  # no self-test asks a platform; the checks of the verification put recorded answers here
+    STAND_INS_COUNT = True  # inside this self-test, and nowhere else, a stand-in's `verified` counts (each answer is still marked)
 
     def check(name: str, ok: bool) -> None:
         results.append((name, bool(ok)))
@@ -7475,6 +7520,8 @@ def main() -> int:
         refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
+        global LIVE
+        LIVE = {}  # this command asks the platform about each act once, at the first point that needs it
         study = Study(a.study)
         study.model = getattr(a, "model", None)
         if str(getattr(a, "by", "")).startswith("agent:") and not study.model:

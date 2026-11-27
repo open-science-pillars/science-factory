@@ -2093,14 +2093,37 @@ def so_what_declared(factory=None) -> dict:
     return block if isinstance(block, dict) else {}
 
 
-def so_what_standing(ev: list, e: dict | None) -> str | None:
-    """One of the three standings of a so what: typed (practice), a comment the job recorded, or a comment the platform confirmed."""
+def so_what_standing(ev: list, e: dict | None, live: dict | None = None) -> str | None:
+    """One of the three standings of a so what: typed (practice), a comment the job recorded, or a comment the platform
+    confirmed, and that last only on the platform's answer asked now (`so_what_ask_now`): a verification in the log is a
+    note of what was asked and when, and decides nothing."""
     if not e:
         return None
     if e["data"].get("route") != COMMENT:
         return sf.PRACTICE
-    checks = [v for v in ev if v["kind"] == "so-what.verification" and (v["data"].get("of") or {}).get("seq") == e["seq"]]
-    return sf.VERIFIED if checks and checks[-1]["data"].get("result") == sf.VERIFIED else COMMENT_FOUND
+    return sf.VERIFIED if sf.counts(live) else COMMENT_FOUND
+
+
+def so_what_ask_now(x: "Exploration", e: dict | None, factory=None) -> dict | None:
+    """The platform, asked now about the comment a so what was recorded from: the answer, or None for a typed so what."""
+    if not e or e["data"].get("route") != COMMENT:
+        return None
+    key = (str(x.d), e["hash"], "so-what")
+    if sf.LIVE is not None and key in sf.LIVE:
+        return sf.LIVE[key]
+    c = e["data"].get("comment") or {}
+    declared = so_what_declared(factory)
+    try:
+        mod, block = so_what_harness(declared)
+        got = sf.platform_answer("comment", {"repository": declared.get("repository"), "id": c.get("id"), "author": c.get("author"),
+                                             "body_sha256": c.get("body_sha256")}, mod, block)
+    except (Refused, KeyError, TypeError, ValueError) as r:
+        got = {"result": sf.NOT_CHECKED, "problems": [str(r)], "told": {}, "asked": [], "stand_in_for_the_platform": sf.PLATFORM_CALL is not None}
+    got = {"of": {"seq": e["seq"], "hash": e["hash"], "comment": c.get("id")}, "repository": declared.get("repository"), **got,
+           "asked_now_at": sf.now()}
+    if sf.LIVE is not None:
+        sf.LIVE[key] = got
+    return got
 
 
 def so_what_now(ev: list):
@@ -2114,14 +2137,29 @@ def so_what_now(ev: list):
     return given[-1] if given else None
 
 
-def so_what_in_words(ev: list, e: dict | None) -> str:
+def so_what_last_checked(ev: list, e: dict | None) -> str | None:
+    """What the log says the platform answered about a so what when last asked: shown, never decisive."""
+    if not e:
+        return None
+    checks = [v for v in ev if v["kind"] == "so-what.verification" and (v["data"].get("of") or {}).get("hash", e["hash"]) == e["hash"]
+              and (v["data"].get("of") or {}).get("seq") == e["seq"] and v["data"].get("result") in (sf.VERIFIED, sf.REFUTED)]
+    if not checks or checks[-1]["data"].get("result") != sf.VERIFIED:
+        return None
+    return f"verified when last checked at {checks[-1]['at']}; not re-checked now (as the log records it: a note, which decides nothing)"
+
+
+def so_what_in_words(ev: list, e: dict | None, live: dict | None = None) -> str:
     if not e:
         return "no person has said whether the lead as it stands is worth confirming"
     d = e["data"]
     words = d.get(SO_WHAT_NEEDS.get(d["answer"], ""), "")
+    st = so_what_standing(ev, e, live)
+    note = so_what_last_checked(ev, e) if st != sf.VERIFIED else None
     return (f"{d['answer']}" + (f" ({SO_WHAT_NEEDS[d['answer']]}: {words})" if words else "") + f", by {e['actor']}"
-            + (f" (the comment's author on the platform: {d['comment']['author']})" if d.get("comment") else "")
-            + f", on lead version {d['of_lead_version']}; standing: {so_what_standing(ev, e)}")
+            + (f" (the comment's author as the job recorded it: {d['comment']['author']}"
+               + (", confirmed by the platform asked now" if st == sf.VERIFIED else ", not confirmed by the platform") + ")" if d.get("comment") else "")
+            + f", on lead version {d['of_lead_version']}; standing: {st}" + (", asked now" if d.get("comment") else "")
+            + (f" ({note})" if note else ""))
 
 
 def so_what_problems(ev: list) -> list:
@@ -2301,43 +2339,27 @@ def cmd_so_what(x: Exploration, a) -> None:
 
 def so_what_harness(declared: dict):
     """The verifier of the harness the definition names for the so what, from this factory's own definition."""
-    name = str(declared.get("harness") or "")
-    folder = sf.FACTORY.resolve() / "harnesses" / name
     try:
-        block = (yaml.safe_load((folder / "harness.yaml").read_text()) or {}).get("platform") if re.fullmatch(r"[a-z][a-z0-9-]{0,40}", name) else None
-    except (OSError, yaml.YAMLError):
-        block = None
-    if not isinstance(block, dict) or not str(block.get("api") or "").startswith("https://") or not (folder / "verify_acts.py").is_file():
+        return sf.harness_of(str(declared.get("harness") or ""))
+    except Refused:
         raise Refused("the definition names no harness for the so what that can ask a platform (`procedure.so_what.harness`)")
-    return _load(f"sf_verify_so_what_{name.replace('-', '_')}", folder / "verify_acts.py"), block
 
 
 def cmd_verify_so_what(x: Exploration, a) -> None:
-    """Ask the platform about each so what that was a comment, and record what it said. Anybody may run it, at any time."""
+    """Ask the platform about each so what that was a comment, and record what it said, as a note of what was asked and
+    when. Anybody may run it, at any time. What decides anything is the platform asked again where it is used."""
     ev = x.events()
     x.started()
     targets = [e for e in ev if e["kind"] == "so-what.recorded" and e["data"].get("route") == COMMENT]
     if not targets:
         print("verify-so-what: nothing to ask the platform about: every so what here was typed (practice), or there is none")
         return
-    declared = so_what_declared(getattr(a, "factory", None))
-    mod, block = so_what_harness(declared)
-    name, token = mod.token_from(os.environ)
     for e in targets:
-        c = e["data"]["comment"]
-        data = {"of": {"seq": e["seq"], "hash": e["hash"], "comment": c["id"]}, "result": sf.NOT_CHECKED, "problems": [], "told": {}, "asked": [],
-                "platform": block.get("name"), "api": block["api"], "repository": declared.get("repository"), "token_from": name,
-                "through": mod.through(os.environ), "stand_in_for_the_platform": sf.PLATFORM_CALL is not None}
-        if sf.PLATFORM_CALL is None and not token:
-            data["problems"] = ["no token: the platform is asked with a token from the environment (" + ", ".join(mod.TOKEN_NAMES)
-                                + "), and none of those is set. Nothing was asked, so nothing is verified"]
-        else:
-            got = mod.verify_comment(sf.PLATFORM_CALL or mod.platform_call, block["api"], token or "a-self-test",
-                                     {"repository": declared.get("repository"), "id": c["id"], "author": c["author"], "body_sha256": c["body_sha256"]})
-            data.update({k: got[k] for k in ("result", "problems", "told", "asked", "answers_sha256")})
+        data = so_what_ask_now(x, e, getattr(a, "factory", None))
         if not getattr(a, "report_only", False):
             x.add(a.by, "so-what.verification", data)
-        print(f"so what at event {e['seq']} ({e['data']['answer']}): {data['result']}" + (": " + "; ".join(data["problems"]) if data["problems"] else ""))
+        print(f"so what at event {e['seq']} ({e['data']['answer']}): {data['result']}" + (", from a stand-in for the platform" if data.get("stand_in_for_the_platform") else "")
+              + f"; standing {so_what_standing(ev, e, data)} ({sf.via_words(data)})" + (": " + "; ".join(data["problems"]) if data["problems"] else ""))
 
 
 def cmd_end(x: Exploration, a) -> None:
@@ -2419,10 +2441,17 @@ def cmd_hand_over(x: Exploration, a) -> None:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", a.study_id or "") or a.study_id == x.d.name:
         raise Refused("`--study-id` names the confirming study (for example STUDY-0002); it is not the exploration's name")
     said = so_what_now(ev)
-    if so_what_standing(ev, said) == sf.PRACTICE and not practice_so_what(a):
+    asked = so_what_ask_now(x, said, getattr(a, "factory", None))
+    standing = so_what_standing(ev, said, asked)
+    if standing == sf.PRACTICE and not practice_so_what(a):
         raise Refused("the person's so what on this lead was typed at a command line (practice), and on this factory a so what is a "
                       "person's comment on the tracking issue. A hand-over from a practice so what says so: add `--local-practice`, and the "
                       "lock request will show it")
+    if standing == COMMENT_FOUND and not practice_so_what(a):
+        raise Refused("the person's so what on this lead is a comment the platform did not confirm when asked now ("
+                      + "; ".join((asked or {}).get("problems") or ["no answer"])[:300] + "): a comment recorded from a file is a file anybody "
+                      "with the account can write. Hand over when the platform can be asked (a token and a network), or, to try the tools "
+                      "out, with `--local-practice`, which the hand-over and the lock request show")
     lead = json.loads((x.d / "lead.json").read_text())
     sa, stub = start["data"]["set_aside"], lead["proposed_plan"]
     verdict = [e for e in ev if e["kind"] == "review.verdict"][-1]
@@ -2454,7 +2483,8 @@ def cmd_hand_over(x: Exploration, a) -> None:
         + (f". The lead's wording was corrected {len(lead['corrections'])} time(s) before that review, and not since" if lead.get("corrections") else "")
         + f"; the exploring was done under {', '.join(sorted({e['actor'] for e in ev if e['kind'] in ('look.run', 'lead.recorded')}))}. "
         "Names are typed, not proven: whether the reviewer was a separate agent with a fresh context is in the run's record, not in this line.", "",
-        f"**The so what.** {so_what_in_words(ev, said)}.", "",
+        f"**The so what.** {so_what_in_words(ev, said, asked)}" + (" (handed over in practice: the so what was not confirmed by the platform)"
+                                                                  if standing != sf.VERIFIED else "") + ".", "",
         f"**The fit note.** {' '.join(sf.fit_in_words(last(ev, 'fit.noted'))[:2])}", "",
         f"Lead checksum (lead.json): {sf.sha_file(x.d / 'lead.json')}. Exploration log fingerprint: {ev[-1]['seq']}:{ev[-1]['hash']}.", ""])
     (out / "request.md").write_text(request)
@@ -2508,7 +2538,9 @@ def cmd_hand_over(x: Exploration, a) -> None:
         "plan_stub": {"file": "hand-over/analysis-plan.stub.yaml", "sha256": sf.sha_file(out / "analysis-plan.stub.yaml")},
         "lead": {"version": lead["version"], "sha256": sf.sha_file(x.d / "lead.json"), "status": LEAD_STATUS},
         "review": verdict["data"], "so_what": {"seq": said["seq"], "hash": said["hash"], "answer": said["data"]["answer"], "by": said["actor"],
-                                              "standing": so_what_standing(ev, said)},
+                                              "standing_at_the_hand_over": standing, "asked_at_the_hand_over": (asked or {}).get("asked_now_at"),
+                                              "practice": standing != sf.VERIFIED,
+                                              "note": "a standing shown here is what it was at the hand-over; the study asks the platform again"},
         "set_aside": sa, "record": start["data"]["record"], "start_command": command,
         "then": "after the plan is written: explore.py check-study --exploration <this> --study <the study>"})
     x.add(a.by, "handed.over", {"study_id": a.study_id, "hand_over_sha": sha,
@@ -2698,7 +2730,7 @@ def stage_of(x: Exploration) -> dict:
                             "the tracking issue). The coordinating agent asks them, and may have the question drafted (explore.py ask-so-what)",
                     "not_yet": "no agent ends the exploration as a lead, or hands it over, before a person says it is worth confirming"}
         if said:
-            here["so_what"] = so_what_in_words(ev, said)
+            here["so_what"] = so_what_in_words(ev, said, so_what_ask_now(x, said))
     if lead:
         counts["lead_json_sha256"] = lead_on_file(ev)["data"]["json_sha"]
     if lead:
@@ -2706,7 +2738,8 @@ def stage_of(x: Exploration) -> dict:
     given = [e for e in ev if e["kind"] == "so-what.recorded"]
     if given:
         counts["so_whats"] = [{"seq": e["seq"], "answer": e["data"]["answer"], "by": e["actor"], "of_lead_version": e["data"]["of_lead_version"],
-                               "standing": so_what_standing(ev, e)} for e in given]
+                               "standing": so_what_standing(ev, e, so_what_ask_now(x, e)),
+                               **({"last_checked": so_what_last_checked(ev, e)} if so_what_last_checked(ev, e) else {})} for e in given]
     counts["looks_by_fence"] = fence_counts(ev)
     counts["working_data_declared"] = (start["set_aside"].get("working") or {}).get("places") or []
     counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
@@ -3012,7 +3045,8 @@ def cmd_contribution(x: Exploration, a) -> None:
     with contextlib.suppress(OSError, ValueError, KeyError, TypeError, AttributeError, yaml.YAMLError):
         model = yaml.safe_load(Path(fresh["file"]).read_text())["proposed"]["model"]
     extra = [{"kind": "fresh-data.proposed", "actor": fresh["proposed_by"], "model": model, "data": {}}] if fresh.get("proposed_by") else []
-    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra)
+    live = {e["hash"]: v for e in ev if e["kind"] == "so-what.recorded" for v in [so_what_ask_now(x, e)] if v}
+    c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra, live)
     lines = sf.contribution_lines(c, f"{start['data']['id']} ({WAY}; a lead, not a finding)")
     (x.d / "contribution.md").write_text("\n".join(lines))
     write_json(x.d / "contribution.json", c)
@@ -3053,6 +3087,8 @@ def selftest() -> int:
     import io
     results = []
     sf.Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
+    sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; a check that needs an answer puts a stand-in here
+    sf.STAND_INS_COUNT = True  # inside this self-test a stand-in's `verified` counts; each answer is still marked as a stand-in's
 
     def ok(name: str, cond) -> None:
         results.append((name, bool(cond)))
@@ -4088,7 +4124,7 @@ def selftest() -> int:
            and json.loads((sw.d / "contribution.json").read_text())["rows"][0]["work"] == "asking the question")
         ok("the hand-over carries the so what, who gave it and its standing, and the fit note, and the log checks out",
            "**The so what.** worth-confirming, by human:throwaway-placeholder" in swho and "**The fit note.** **fit-with-a-person-steering**" in swho and "standing: practice" in swho
-           and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing"] == sf.PRACTICE and check_log(sw) == [])
+           and json.loads((sw.d / "hand-over/hand-over.json").read_text())["so_what"]["standing_at_the_hand_over"] == sf.PRACTICE and check_log(sw) == [])
         # ---- a look that proved useful becomes a method, and a study may use it once its own tests pass there
         methods = tmp / "repo" / "methods"
         rd = tmp / "method-readme.md"
@@ -4182,22 +4218,45 @@ def selftest() -> int:
         ok("a person's comment is recorded under the platform's name, with its author as handed, standing `comment recorded, person not verified`",
            got_sw["actor"] == "platform:github" and got_sw["data"]["comment"]["author"] == "a-scientist" and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
         quiet(cmd_end, pc, A(outcome="lead", summary="worth a test, a person said on the platform"))
-        ok("a hand-over on a comment needs no word of practice", said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")) == "")
+        unconfirmed = said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR"))
+        ok("A4-04: a so what recorded from a comment the platform does not confirm when asked now is not handed over without a word of "
+           "practice: a comment recorded from a file is a file anybody can write", "did not confirm when asked now" in unconfirmed
+           and "--local-practice" in unconfirmed and not last(pc.events(), "handed.over"))
+        pc.add("platform:github", "so-what.verification", {"of": {"seq": got_sw["seq"], "hash": got_sw["hash"], "comment": 77}, "result": sf.VERIFIED,
+                                                          "problems": [], "told": {}, "asked": [], "stand_in_for_the_platform": False,
+                                                          "note": "written by hand, as the fourth attack did; no platform was asked"})
+        forged = stage_of(pc)
+        ok("A4-04: a verification appended to the log by hand moves nothing: the so what stays `comment recorded, person not verified` "
+           "in status (which says it was verified when last checked, and not re-checked now), and the hand-over is still refused",
+           so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND
+           and forged["so_whats"][-1]["standing"] == COMMENT_FOUND and "not re-checked now" in forged["so_whats"][-1]["last_checked"]
+           and "did not confirm when asked now" in said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")))
         vmod = so_what_harness(so_what_declared())[0]
         sf.PLATFORM_CALL = lambda api, path, token: ({"status": 200, "body": cm} if path == f"/repos/{repo}/issues/comments/77" else {"status": 404, "body": None})
         try:
             quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
+            ok("asked, the platform confirms the comment, and the so what stands as verified on that answer, marked as a stand-in's here",
+               so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == sf.VERIFIED
+               and last(pc.events(), "so-what.verification")["data"]["asked"][0]["endpoint"].endswith("/comments/77") and vmod.PEOPLE
+               and last(pc.events(), "so-what.verification")["data"]["stand_in_for_the_platform"] is True)
+            ok("a hand-over on a comment the platform confirms when asked now needs no word of practice, and says the standing it had then",
+               said(cmd_hand_over, pc, A(by="agent:tester-coordinating", study_id="STUDY-PR")) == ""
+               and json.loads((pc.d / "hand-over" / "hand-over.json").read_text())["so_what"]["standing_at_the_hand_over"] == sf.VERIFIED)
+            sf.STAND_INS_COUNT = False
+            ok("outside a self-test a stand-in's answer is no verification: the so what stays `comment recorded, person not verified`",
+               so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND)
         finally:
+            sf.STAND_INS_COUNT = True
             sf.PLATFORM_CALL = None
-        ok("asked, the platform confirms the comment, and the so what stands as verified", so_what_standing(pc.events(), got_sw) == sf.VERIFIED
-           and last(pc.events(), "so-what.verification")["data"]["asked"][0]["endpoint"].endswith("/comments/77") and vmod.PEOPLE)
         saved_tokens = {k: os.environ.pop(k) for k in ("SF_PLATFORM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if k in os.environ}
         try:
             quiet(cmd_verify_so_what, pc, A(by="agent:tester-coordinating"))
         finally:
             os.environ.update(saved_tokens)
         ok("with no token nothing is asked, the result is `not checked`, and the standing falls back to what the job was handed",
-           last(pc.events(), "so-what.verification")["data"]["result"] == sf.NOT_CHECKED and so_what_standing(pc.events(), got_sw) == COMMENT_FOUND)
+           last(pc.events(), "so-what.verification")["data"]["result"] == sf.NOT_CHECKED
+           and so_what_standing(pc.events(), got_sw, so_what_ask_now(pc, got_sw)) == COMMENT_FOUND)
+        sf.PLATFORM_CALL = sf._dead_platform
 
         # M1: a number is a number however it is written, and a page the explorer wrote backs nothing
         m1 = fresh("E-13", subject="reach_id=R17,gauge=G17")
@@ -4577,6 +4636,7 @@ def main() -> int:
         sf.refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
+        sf.LIVE = {}  # this command asks the platform about each so what once
         x = Exploration(a.exploration)
         x.model = getattr(a, "model", None)
         if str(getattr(a, "by", "")).startswith("agent:") and not x.model:

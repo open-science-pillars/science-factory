@@ -207,6 +207,8 @@ def started_under(environ=None) -> str | None:
             return None
         if words and base(words[0]).lower().startswith(("python", "pypy")):
             for i, w in enumerate(words[1:], 1):
+                if i > 1 and words[i - 1] in ("-X", "-W", "--check-hash-based-pycs"):
+                    continue  # the value of an interpreter option (`-X pycache_prefix=/a/path`), never the program
                 if base(w) in STARTERS:
                     if i + 1 < len(words) and words[i + 1] in STARTERS[base(w)]:
                         return f"process {pid} above this one is `{base(w)} {words[i + 1]}`"
