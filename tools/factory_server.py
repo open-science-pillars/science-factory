@@ -689,7 +689,7 @@ class Server:
                     raise Refusal(f"the template has a field this server does not know ({label}); nothing is written")
                 seen.add(labels[label])
                 answer = " ".join(str(a.get(labels[label]) or "").split()) if labels[label] != "what_i_will_do" else ""
-                out.append(f"**{m.group(1)}**" + (f" {answer}" if answer else ""))
+                out.append(f"**{label if label.endswith('?') else label + '.'}**" + (f" {answer}" if answer else ""))
             elif li and li.group(1) in items:
                 answer = " ".join(str(a.get(items[li.group(1)]) or "").split())
                 out.append(f"- {li.group(1)}" + (f" {answer}" if answer else ""))
@@ -1249,7 +1249,8 @@ def selftest() -> int:
         r1 = alpha / "requests" / "R1.md"
         check("submit_request writes the request from the template, in the person's words, saying who typed it",
               r1.is_file() and "**What I want to know.** Does y follow x in 2025, as in 2024?" in r1.read_text()
-              and "- If it holds: use x for y" in r1.read_text() and "agent:coordinating-s" in r1.read_text() and not err(60))
+              and "- If it holds: use x for y" in r1.read_text() and "**What I have already looked at.** 2024, every month" in r1.read_text()
+              and "agent:coordinating-s" in r1.read_text() and not err(60))
         check("submit_request refuses to write over a request, a name with a path in it, and a requests folder that is a link",
               err(61) and "already exists" in text(61) and err(62) and err(64) and not list(tmp.glob("R4*")))
         check("an intake tool refuses a person's name, the platform's, a name with an option in it and a model on two lines",
