@@ -2186,7 +2186,8 @@ def release_at_start(study: Study, a, src: Path | None) -> dict | None:
         return {"name": (sa.get("releases") or [rule.get("release")])[0], "cut_off": sa["cut_off"],
                 "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"), "expected_on": rule.get("expected_on"),
                 "from": f"the start of the exploration {start['data'].get('id')} ({start['seq']}:{start['hash']})", "exploration": True,
-                "working": working, "proposal": {"sha256": fd["sha256"]} if fd else None}
+                "working": working, "proposal": {"sha256": fd["sha256"]} if fd else None,
+                **({"stac": stac_of_release(prop, Path(fd["file"]))} if prop.get("stac") else {})}
     if not fresh:
         if given:
             raise Refused("`--working-data` goes with `--fresh-data`, the proposal of the next release whose cut-off it is bound against")
@@ -2225,7 +2226,27 @@ def release_at_start(study: Study, a, src: Path | None) -> dict | None:
                       "named here. Nothing was started")
     return {"name": rule["release"], "cut_off": rule["cut_off"], "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"),
             "expected_on": rule.get("expected_on"), "from": f"the proposal {f.name}, written by tools/fresh_data.py from metadata",
-            "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)}}
+            "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)},
+            **({"stac": stac_of_release(prop, f)} if prop.get("stac") else {})}
+
+
+def stac_of_release(prop: dict, proposal_file: Path) -> dict:
+    """What a release proposed from a STAC description carries into the study: the query that is the fresh data, and the
+    catalog to ask whether its Items are published (a path from the proposal's folder, or a STAC API's address)."""
+    return {"collection": prop["stac"].get("collection"), "query": prop["stac"].get("query"),
+            "catalog": fresh_tool().catalog_of(prop, proposal_file)}
+
+
+def ask_the_catalog(rel: dict) -> dict:
+    """The Items the release's catalog lists for its query, asked now: {"items", "first", "last", "asked", "how"}, or
+    {"problem"} when it cannot be asked. A static catalog is a path; a STAC API is an address (tools/stac.py)."""
+    stx = rel.get("stac") or {}
+    st = explore_tool().stac_tool()
+    try:
+        got = st.search(str(stx.get("catalog")), stx.get("query") or {})
+    except Exception as e:  # noqa: BLE001  tools/stac.py's refusal, or a catalog that cannot be read
+        return {"problem": str(e)}
+    return {**st.coverage(got["items"]), "asked": got["asked"], "how": got["how"]}
 
 
 def release_fences(study: Study, plan: dict | None, ev: list) -> list:
@@ -2342,7 +2363,18 @@ def release_waiting(rel: dict, window: dict) -> str | None:
     today = _today()
     due = dt.date.fromisoformat(rel["expected_on"]) if rel.get("expected_on") else None
     if today > last and not (due and today < due):
-        return None
+        if not rel.get("stac"):
+            return None
+        said = ask_the_catalog(rel)  # the dates say it can be out: the catalog says whether it is
+        if said.get("problem"):
+            return (f"waiting: the fresh data is the release after {rel['cut_off']}, and its catalog ({rel['stac'].get('catalog')}) could "
+                    f"not be asked ({said['problem']}): nothing is known to be published. Nothing was opened and the opening is not used up")
+        if said["items"] and said["last"] and said["last"] >= window["end"]:
+            return None
+        return (f"waiting: the fresh data is the release after {rel['cut_off']}, and its catalog ({rel['stac'].get('catalog')}, {said['how']}) "
+                + (f"lists {said['items']} Item(s) of the collection `{rel['stac'].get('collection')}` after it, reaching to {said['last']}"
+                   if said["items"] else f"lists no Item of the collection `{rel['stac'].get('collection')}` after it")
+                + f"; the plan needs data to {window['end']}. Nothing was opened and the opening is not used up; open it once the release is out")
     need = (f"the plan needs {n} {rel['cadence']} period(s), {first} to {last}" if n else
             f"the plan needs data from {first} to {last} (the release declares no cadence, so its periods are not counted)")
     return (f"waiting: the fresh data is the release after {rel['cut_off']}, and it is not published yet. {need[0].upper() + need[1:]}"
@@ -5840,6 +5872,96 @@ def _selftest_release(tmp: Path, check) -> None:
         TODAY = None
 
 
+def _selftest_stac_release(tmp: Path, check) -> None:
+    """A release proposed from a STAC description: the query is bound at the start and the lock, and the opening and `waiting`
+    ask the catalog whether its Items are out: a static catalog by its files, a STAC API by a stand-in on this machine's
+    loopback address (no real STAC API has been asked). Every number is made up."""
+    global TODAY
+    import http.server
+    import threading
+    fd, person = fresh_tool(), "human:throwaway-placeholder"
+    st = explore_tool().stac_tool()
+    studies, source, cat = tmp / "studies", tmp / "source", tmp / "catalog"
+    source.mkdir(parents=True)
+    csv = source / "monthly.csv"
+    csv.write_text("time,Mean\n" + "".join(f"2026-{m:02d},{m / 10:.2f}\n" for m in range(1, 8)))
+    col = {"type": "Collection", "stac_version": st.STAC_VERSION, "stac_extensions": [], "id": "toy-monthly", "description": "a made-up series",
+           "license": "other", "extent": {"spatial": {"bbox": [list(st.GLOBAL)]}, "temporal": {"interval": [["2026-01-01T00:00:00Z", None]]}},
+           "sf:subject": {"record": "toy-monthly"},
+           "sf:releases": [{"name": "next-update", "cadence": "monthly", "after": "2026-07-31"}]}
+    items = [st.make_item("toy-2026-h1", "toy-monthly", dt.date(2026, 1, 1), dt.date(2026, 7, 31), csv, cat / "items", None, "global", {"sf:count": 7})]
+    st.write_description(cat, col, items, validate=False)  # validated where it is written for real (fresh_data.py describe)
+    prop = tmp / "proposals" / "stac-release.yaml"
+    fd.cmd_propose(fd.A(metadata=str(cat / "collection.json"), kind="next-release", release="next-update", periods=3, what="the next three months",
+                        why="they come after every month explored", unfair="a reprocessing of the old months", studies=str(studies), out=str(prop)))
+    study = Study(studies / "S-STAC")
+    cmd_start(study, A(id="S-STAC", question=PLAN["question"], by="agent:coordinating", fresh_data=str(prop), working_data=[str(csv)]))
+    rel = study.events()[0]["data"]["release"]
+    check("a release proposed from a STAC description carries its query and its catalog into the study, bound at the start",
+          rel["stac"]["query"]["datetime"] == "2026-08-01T00:00:00Z/2026-10-31T23:59:59Z" and rel["stac"]["collection"] == "toy-monthly"
+          and Path(rel["stac"]["catalog"]) == cat / "collection.json" and rel["cut_off"] == "2026-07-31")
+    plan = json.loads(json.dumps(PLAN))
+    plan["data"]["held_out"].update(window={"start": "2026-08-01", "end": "2026-10-31"}, pair={"record": "toy-monthly", "case": "S-STAC"},
+                                    fresh_data=os.path.relpath(prop, study.d))
+    (study.d / "toy.py").write_text(TOY.replace("POWER", "0.9").replace("TESTED", "None"))
+    study.plan_path.write_text(yaml.safe_dump(plan, sort_keys=False))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    words = (study.d / "lock-request" / "EVIDENCE.md").read_text()
+    check("the lock request says in words that the lock binds the STAC query itself, no Item of the release being published",
+          "As a STAC query" in words and "the lock binds the query itself" in words and "2026-08-01T00:00:00Z/2026-10-31T23:59:59Z" in words)
+    window = {"start": "2026-08-01", "end": "2026-10-31"}
+    TODAY = "2026-11-27"
+    try:
+        said = release_waiting(rel, window)
+        check("once the dates say the release can be out, the static catalog is asked, and a catalog with no Item after the cut-off is waiting",
+              said is not None and "lists no Item of the collection `toy-monthly` after it" in said and "not used up" in said)
+        later = source / "update.csv"
+        later.write_text("time,Mean\n2026-08,0.8\n2026-09,0.9\n2026-10,1.0\n")
+        new = st.make_item("toy-2026-q3", "toy-monthly", dt.date(2026, 8, 1), dt.date(2026, 10, 31), later, cat / "items", None, "global", {"sf:count": 3})
+        (cat / "items" / "toy-2026-q3.json").write_text(json.dumps(new))
+        c = json.loads((cat / "collection.json").read_text())
+        c["links"].append({"rel": "item", "href": "./items/toy-2026-q3.json", "type": "application/geo+json"})
+        (cat / "collection.json").write_text(json.dumps(c))
+        check("when the catalog lists Items that reach the end of the window, the study is no longer waiting", release_waiting(rel, window) is None)
+        TODAY = "2026-10-15"
+        check("before the last period has ended the study waits on the dates alone, whatever the catalog says",
+              "has not ended" in str(release_waiting(rel, window)))
+        TODAY = "2026-11-27"
+        served = {"features": [], "asked": []}
+
+        class Stand(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                served["asked"].append((self.path, body))
+                out = json.dumps({"type": "FeatureCollection", "features": served["features"], "links": []}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/geo+json")
+                self.end_headers()
+                self.wfile.write(out)
+
+            def log_message(self, *a):
+                pass
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Stand)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            api = {**rel, "stac": {**rel["stac"], "catalog": f"http://127.0.0.1:{srv.server_address[1]}"}}
+            empty = release_waiting(api, window)
+            served["features"] = [new]
+            full = release_waiting(api, window)
+            check("a STAC API, here a stand-in on the loopback address, is asked by its item search with the bound query: waiting while it "
+                  "lists nothing, not waiting once it lists the release (no real STAC API has been asked)",
+                  "lists no Item" in str(empty) and full is None and served["asked"][0][0] == "/search"
+                  and served["asked"][0][1]["collections"] == ["toy-monthly"] and served["asked"][0][1]["datetime"] == rel["stac"]["query"]["datetime"])
+        finally:
+            srv.shutdown()
+        gone = {**rel, "stac": {**rel["stac"], "catalog": "http://127.0.0.1:9/"}}
+        check("a catalog that cannot be asked is waiting, never an opening", "could not be asked" in str(release_waiting(gone, window)))
+    finally:
+        TODAY = None
+
+
 def secrets_hex() -> str:
     import secrets
     return secrets.token_hex(32)
@@ -7926,6 +8048,8 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_release(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_stac_release(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_bytecode(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
@@ -7953,6 +8077,11 @@ def tool_help() -> str:
     """What `sf.py --help` prints, run as a person runs it."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON") or k in KEPT_PYTHON}
     return subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL).stdout
+
+
+USE_ITS_CODE = "--use-workspace-code"  # as tools/check_factory.py names it; said here so the parser loads nothing
+USE_ITS_CODE_HELP = ("run the code of a definition that is not this package's own (refused without it): for a workspace you trust; "
+                     "the output then says so in capitals")
 
 
 def refuse_foreign_definition(factory, allowed: bool, tool: str = "sf.py") -> None:
@@ -8035,7 +8164,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
     proc = (["--factory"], {"default": str(FACTORY), "help": "the factory's definition, a folder rooted at factory.yaml (default: factory/, this factory's own)"})
-    its_code = ([definition_tool().USE_ITS_CODE], {"action": "store_true", "dest": "use_workspace_code", "help": definition_tool().USE_ITS_CODE_HELP})
+    its_code = ([USE_ITS_CODE], {"action": "store_true", "dest": "use_workspace_code", "help": USE_ITS_CODE_HELP})
     comment = (["--comment"], {"default": None, "help": "free text kept with the event"})
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,
