@@ -37,9 +37,10 @@ What a script started here is given.
   descendant is a failed run. Every tool of this package refuses to run
   when a keeper, a look or a plan's step is anywhere above it.
 
-The kernel fence. On Linux 5.13 or later with Landlock the keeper confines
-itself, before it starts the script, to exactly the lists above; nothing it
-or the script does afterwards can widen that. Then it tries: it must fail to
+The kernel fence. On Linux 5.13 or later with Landlock the process the
+keeper makes for the script confines itself, before any of the script runs,
+to exactly the lists above and its own entry in /proc; nothing it or the
+script does afterwards can widen that. Then it tries: it must fail to
 read a file the tool put outside for the purpose and every path the caller
 names as never to be read, and must fail to write beside the scratch folder,
 into the tool's own environment and into the tools' folder. Only then is the
@@ -86,7 +87,7 @@ SCRATCH_ONLY = "scratch-only"  # no kernel fence on this machine: a scratch fold
 MARKS = ("SF_INSIDE_A_LOOK", "SF_INSIDE_A_STEP")  # what the tools put in the environment of a script they run
 # a process above this one that is one of these is a script's keeper or the tool that runs one
 STARTERS = {"explore.py": ("look", "recheck"), "sf.py": ("test", "rehearse", "open-held-out"), "fence.py": ("--inside",)}
-SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/nix", "/sys/devices/system/cpu",
+SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/nix", "/sys/devices/system/cpu", "/sys/fs/cgroup",
                   "/proc/cpuinfo", "/proc/meminfo", "/proc/stat", "/proc/filesystems", "/proc/sys/kernel", "/proc/sys/vm",
                   "/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/run/systemd/resolve")
 WRITABLE_DEVICES = ("/dev/null", "/dev/zero", "/dev/tty")
@@ -219,6 +220,82 @@ def started_under(environ=None) -> str | None:
     return None
 
 
+# ---- DuckDB inside a look or a plan's step ----------------------------------------------
+# A script the tools run may use DuckDB. Started by the interpreter the tools prepare (or `{python}`), it finds this file
+# first on its path, as `sitecustomize`, before any of its own code runs: every DuckDB connection it makes, and the
+# default one, gets extension autoloading and autoinstalling off, community and unsigned extensions off, no file outside
+# its scratch folder (so no remote file: `enable_external_access` off, the scratch folder allowed by name), and a locked
+# configuration that nothing it runs afterwards can change. What this cannot stop: a script that starts another Python with
+# `-I` or `-S`, or brings its own build of DuckDB, or reaches the network some other way (docs/WHAT-IS-ENFORCED.md).
+GUARD_FOLDER = "sf-guard"
+DUCKDB_GUARD = '''"""Put here by the science factory's fence (tools/fence.py): DuckDB in a look or a plan's step runs locked down."""
+import importlib.abc
+import importlib.machinery
+import os
+import sys
+
+_ALLOWED = [p for p in os.environ.get("SF_DUCKDB_ALLOWED", "").split(os.pathsep) if p]
+_OFF = ("autoload_known_extensions", "autoinstall_known_extensions", "allow_community_extensions", "allow_unsigned_extensions")
+
+
+def _text(s):
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def _lock(con):
+    for k in _OFF:
+        con.execute(f"SET {k} = false")
+    if _ALLOWED:
+        con.execute("SET allowed_directories = [" + ", ".join(_text(p.rstrip("/") + "/") for p in _ALLOWED) + "]")
+    con.execute("SET enable_external_access = false")
+    con.execute("SET lock_configuration = true")
+    return con
+
+
+def _guard(*mods):
+    real = mods[0].connect
+
+    def connect(*args, **kwargs):
+        config = dict(kwargs.pop("config", None) or {})
+        for k in ("enable_external_access", "lock_configuration", "allowed_directories", "allowed_paths"):
+            config.pop(k, None)
+        config.update({k: False for k in _OFF})
+        return _lock(real(*args, config=config, **kwargs))
+    for m in mods:
+        m.connect = connect
+    _lock(mods[0].default_connection())
+
+
+class _Loader(importlib.abc.Loader):
+    def __init__(self, inner):
+        self.inner = inner
+
+    def create_module(self, spec):
+        return self.inner.create_module(spec)
+
+    def exec_module(self, module):
+        self.inner.exec_module(module)
+        _guard(*[m for m in (sys.modules.get("_duckdb"), module) if m is not None and hasattr(m, "connect")])
+
+
+class _Finder(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name != "duckdb":
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is not None and spec.loader is not None:
+            spec.loader = _Loader(spec.loader)
+        return spec
+
+
+sys.meta_path.insert(0, _Finder())
+'''
+
+
+def guard_folder(scratch: Path) -> Path:
+    return Path(scratch) / "private" / GUARD_FOLDER
+
+
 # ---- the environment a script is given --------------------------------------------
 def minimal_environment(scratch: Path, python: str, passes: dict | None = None, mark: tuple = ("SF_INSIDE_A_STEP", "1")) -> dict:
     """The whole environment of a script the tools run. Built here, never the caller's: a PATH of the interpreter's
@@ -226,7 +303,9 @@ def minimal_environment(scratch: Path, python: str, passes: dict | None = None, 
     caller's language and time zone when they are plain names, and the variables a plan step lists by name."""
     env = {"PATH": os.pathsep.join(dict.fromkeys([str(Path(python).parent), "/usr/local/bin", "/usr/bin", "/bin"])),
            "HOME": str(scratch / "home"), "TMPDIR": str(scratch / "tmp"), "LANG": "C.UTF-8",
-           "PYTHONPYCACHEPREFIX": str(scratch / "cache"), "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+           "PYTHONPYCACHEPREFIX": str(scratch / "cache"), "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
+           "PYTHONPATH": str(guard_folder(scratch)),  # the DuckDB guard (sitecustomize.py), written by make_scratch
+           "SF_DUCKDB_ALLOWED": os.pathsep.join(str(scratch / sub) for sub in ("work", "tmp"))}
     for name in ("LANG", "LC_ALL", "LC_CTYPE"):
         if LOCALE.match(os.environ.get(name, "")):
             env[name] = os.environ[name]
@@ -400,13 +479,15 @@ def _own_children() -> list:
 
 
 def inside(spec_path: str, fd: int) -> int:
-    """The keeper: run as `fence.py --inside SPEC FD` by `run_fenced`, and by nothing else. Confines itself, tries
-    the fence, reports on FD, starts the script as its child, adopts and ends what the script leaves, and exits
-    with the script's exit code."""
+    """The keeper: run as `fence.py --inside SPEC FD` by `run_fenced`, and by nothing else. Makes the script's process,
+    which confines itself, tries the fence, reports on FD and becomes the script; then adopts and ends what the script
+    leaves, and exits with the script's exit code."""
     spec = json.loads(Path(spec_path).read_text())
     report = {"applied": False, "tried": [], "why_not": None}
 
-    pipe = os.fdopen(fd, "w")  # not handed on to the script: the keeper alone reports
+    fd_again = os.dup(fd)  # the keeper's own, for what it says after the script has ended
+    os.set_inheritable(fd_again, False)
+    pipe = os.fdopen(fd, "w")  # the report of the fence, written by the process that becomes the script and closed before it does
 
     def say(last: bool = True) -> None:
         pipe.write(json.dumps(report) + "\n")
@@ -416,26 +497,52 @@ def inside(spec_path: str, fd: int) -> int:
     if sys.platform.startswith("linux"):
         with contextlib.suppress(OSError, AttributeError):
             ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER: the script's orphans come here
-    if spec["kernel"]:
-        why = _confine([*spec["read"], f"/proc/{os.getpid()}"], spec["write"])  # its own entry in /proc: to find what it must end
-        if why:
-            report["why_not"] = why
-            say()
-            return 120
-        report["applied"] = True
-        report["tried"], leaks = _try(spec["must_not_read"], spec["must_not_write"])
-        if leaks or not report["tried"]:
-            report["why_not"] = "the fence was applied and did not hold: " + ("; ".join(leaks) or "nothing could be tried")
-            say()
-            return 123
-    else:
-        report["why_not"] = spec.get("why_no_kernel") or "this machine has no kernel fence"
-    say(last=False)
+    # The process that becomes the script confines itself, after it is forked and before it runs anything of the script's: so
+    # the kernel fence can give it its own entry in /proc (DuckDB, among others, reads /proc/self/cgroup to start), and no
+    # other process's. It tries the fence, writes the report, closes the report, and only then becomes the script.
     try:
-        proc = subprocess.Popen(spec["argv"], cwd=spec["cwd"], env=spec["env"], stdin=subprocess.DEVNULL, start_new_session=True)
+        pid = os.fork()
     except OSError as e:
-        print(f"could not run: {e}", file=sys.stderr)
+        report["why_not"] = f"the script's process could not be made ({e})"
+        say()
         return 127
+    if pid == 0:  # the process that will be the script
+        try:
+            os.setsid()
+            if spec["kernel"]:
+                why = _confine([*spec["read"], f"/proc/{os.getpid()}"], spec["write"])
+                if why:
+                    report["why_not"] = why
+                    say()
+                    os._exit(120)
+                report["applied"] = True
+                report["tried"], leaks = _try(spec["must_not_read"], spec["must_not_write"])
+                if leaks or not report["tried"]:
+                    report["why_not"] = "the fence was applied and did not hold: " + ("; ".join(leaks) or "nothing could be tried")
+                    say()
+                    os._exit(123)
+            else:
+                report["why_not"] = spec.get("why_no_kernel") or "this machine has no kernel fence"
+            say()
+            null = os.open(os.devnull, os.O_RDONLY)
+            os.dup2(null, 0)
+            os.chdir(spec["cwd"])
+            os.execve(spec["argv"][0], spec["argv"], spec["env"])
+        except BaseException as e:  # noqa: BLE001  nothing of the script ran
+            with contextlib.suppress(BaseException):
+                os.write(2, f"could not run: {e}\n".encode())
+            os._exit(127)
+    pipe.close()  # the keeper's copy: the report is the script's process's, written before it became the script
+    pipe = os.fdopen(fd_again, "w")
+
+    class _Proc:
+        pid = 0
+
+        @staticmethod
+        def wait():
+            return os.waitstatus_to_exitcode(os.waitpid(_Proc.pid, 0)[1])
+    proc = _Proc
+    proc.pid = pid
     code = proc.wait()
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
@@ -578,6 +685,8 @@ def make_scratch(prefix: str) -> Path:
     scratch = Path(tempfile.mkdtemp(prefix=prefix)).resolve()
     for sub in ("work", "tmp", "cache", "home", "private"):
         (scratch / sub).mkdir()
+    guard_folder(scratch).mkdir()
+    (guard_folder(scratch) / "sitecustomize.py").write_text(DUCKDB_GUARD)
     return scratch
 
 

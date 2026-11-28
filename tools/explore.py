@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "duckdb"]
 # ///
 """explore: the exploring tool. It keeps the exploration log and holds the fence.
 
@@ -722,6 +722,10 @@ def dated_rows(f: Path) -> dict | None:
     "dated_columns": bool}. None for a file that is not tabular (other text is read by `past_cut_off`)."""
     import csv
     import io
+    if stac_tool().is_parquet(f):  # a Parquet file is read by its date columns, every row, with DuckDB (stac.parquet_table)
+        t = parquet_reading(f)
+        return {"rows": t["rows"], "dated": [(i + 1, a_, b_) for i, (a_, b_, _n) in enumerate(t["dated"])],
+                "undated": range(1, t["undated"] + 1), "dated_columns": True, "parquet": True}
     try:
         text = f.read_text(errors="replace")
     except OSError:
@@ -876,12 +880,12 @@ def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
     """Why a look may not be given these files under a release set aside: the release binds the data as it stood at the
     start. A working file whose checksum changed, or that was not there at the start, may hold the release; so may any
     file that holds a date or a month past the cut-off. Each is refused before anything runs."""
+    out = stac_problems(x, sa, files)
     cut = sa.get("cut_off")
     if not cut:
-        return []
+        return out
     bound = {str(Path(os.path.normpath(x.d / b["path"])).resolve()): b["sha256"] for b in sa.get("bound") or []}
     places = working_places(x)
-    out = []
     for tok, f in files.items():
         real = f.resolve()
         if any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d):
@@ -903,6 +907,27 @@ def cut_off_problems(x: "Exploration", sa: dict, files: dict) -> list:
             out.append(f"`{tok}` is dated data with {len(undated)} row(s) whose date the tool cannot read (row "
                        f"{', '.join(map(str, undated[:3]))}): under a release set aside after {cut}, a row the tool cannot date may be a "
                        "row of the release, so the file is not given to a look")
+    return out
+
+
+def stac_problems(x: "Exploration", sa: dict, files: dict) -> list:
+    """Under a set aside proposed from a STAC description, the files a look is given are checked against the Items bound at the
+    start, by checksum: no file may be the file of a set-aside Item, wherever it sits (a copy in the exploration too), and a
+    file from the declared working data must be the file of a working Item. A file whose checksum no Item names was not in the
+    description, and may be anything."""
+    bound = sa.get("stac") or {}
+    if not bound:
+        return []
+    fresh, working, places, out = bound.get("fresh") or {}, bound.get("working") or {}, working_places(x), []
+    for tok, f in files.items():
+        sha = sf.sha_file(f)
+        real = f.resolve()
+        if sha in fresh:
+            out.append(f"`{tok}` is, by its checksum, the file of the set-aside Item {fresh[sha]} of the collection {bound.get('collection')}")
+        elif (any(real == q or real.is_relative_to(q) for q in places) and not real.is_relative_to(x.d)
+              and not (tok == next(iter(files)) and str(tok).endswith(".py")) and sha not in working):
+            out.append(f"`{tok}` is in the declared working data and is not, by its checksum, the file of any working Item of the collection "
+                       f"{bound.get('collection')} bound at the start: the fence lets a look read the Items it was told of, and no other file")
     return out
 
 
@@ -999,11 +1024,75 @@ def json_problems(obj, sa: dict, what: str) -> list:
     return p
 
 
-def file_problems(f: Path, sa: dict, shown: str, figure: bool = False) -> list:
+def stac_tool():
+    """tools/stac.py, by its path: the reading of a Parquet file (with DuckDB, in this process) and of STAC."""
+    return sys.modules.get("stac") or _load("stac", HERE / "stac.py")
+
+
+PARQUET_READ = {}  # (the file, its sha256) -> what the fence read of it, so that one look reads each file once
+
+
+def parquet_reading(f: Path) -> dict:
+    key = (str(Path(f).resolve()), sf.sha_file(f))
+    if key not in PARQUET_READ:
+        PARQUET_READ[key] = stac_tool().parquet_table(Path(f), date_column, read_date)
+    return PARQUET_READ[key]
+
+
+def parquet_problems(f: Path, sa: dict, shown: str, written: bool = False) -> list:
+    """Why a Parquet file crosses the fence, read with DuckDB in this process: the row-group statistics of its date columns
+    first (a quick check), then every row's date in full (the confirmation), against the set-aside window; the text of its
+    text columns against set-aside sites and releases. A file a look is given must have every row dated: a row the fence
+    cannot date may be a row it must not see. (The cut-off of a release is read the same way, in `cut_off_problems`.)"""
+    try:
+        t = parquet_reading(f)
+    except Refused as r:
+        return [f"`{shown}` is a Parquet file the fence could not read ({r}), so it is not given to a look"]
+    out, windows = [], windows_of(sa)
+    if not written:
+        if not t["date_columns"]:
+            out.append(f"`{shown}` is a Parquet file with no date column (none typed as a date or a time, none named like one): the fence "
+                       "lets a Parquet file into a look only by reading the date of every row")
+        elif t["undated"]:
+            out.append(f"`{shown}` has {t['undated']} row(s) whose date the fence cannot read: a row it cannot date may be set-aside data")
+
+    def meets(a_, b_):
+        return any(sf.windows_overlap({"start": a_.isoformat(), "end": b_.isoformat()}, core(w)) for w in windows)
+    quick = []
+    for g in t["row_groups"]:
+        lo, hi = read_date(g["min"], g["column"]), read_date(g["max"], g["column"])
+        if lo and hi and meets(lo[0], hi[1]):
+            quick.append(g)
+    inside = sum(n for a_, b_, n in t["dated"] if meets(a_, b_))
+    if inside:
+        out.append(f"`{shown}` holds {inside} row(s) dated inside the set-aside window"
+                   + (" (the row-group statistics showed it before the full read confirmed it)" if quick else ""))
+    toks = tokens_of(sa)
+    for col, vals in sorted(t["text"].items()):
+        hit = next((tok for v in vals for tok in toks if names_token(str(v).casefold(), tok, sa)), None)
+        if hit:
+            out.append(f"`{shown}` holds `{hit}`, which was set aside, in its column `{col}`")
+    return out
+
+
+def parquet_in_words(f: Path) -> dict:
+    """What the fence read of a Parquet file, for the receipt: its checksum, rows, date columns, first and last day."""
+    t = parquet_reading(f)
+    return {"sha256": t["sha256"], "rows": t["rows"], "date_columns": t["date_columns"], "row_groups_read": len(t["row_groups"]),
+            "first": min((a_ for a_, _b, _n in t["dated"]), default=None).isoformat() if t["dated"] else None,
+            "last": max((b_ for _a, b_, _n in t["dated"]), default=None).isoformat() if t["dated"] else None,
+            "undated_rows": t["undated"], "read_with": "DuckDB in the tool's process: row-group statistics, then every row"}
+
+
+def file_problems(f: Path, sa: dict, shown: str, figure: bool = False, written: bool = False) -> list:
     """Read one existing file the way the fence reads it."""
     for path in sa.get("paths") or []:
         if f.resolve() == Path(path).resolve() or f.resolve().is_relative_to(Path(path).resolve()):
             return [f"`{shown}` is a set-aside path"]
+    if f.suffix.lower() == ".parquet" or stac_tool().is_parquet(f):
+        if not stac_tool().is_parquet(f):
+            return [f"`{shown}` is named like a Parquet file and is not one, so the fence cannot read it"]
+        return parquet_problems(f, sa, shown, written)
     try:
         raw = f.read_bytes()
     except OSError:
@@ -1254,6 +1343,8 @@ def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: 
             dest = work / f["at"]
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(Path(os.path.normpath(x.d / f["from"])), dest)
+            if f.get("sha256") and sf.sha_file(dest) != f["sha256"]:  # the copy the script gets is the file the fence read, by checksum
+                raise Refused(f"`{f['word']}` changed between the fence's reading of it and its copy into the look's folder; nothing was run")
         script = next((work / f["at"] for f in placed if f.get("role") == "script"), work / placed[0]["at"])
         try:
             ready = fence.prepare_interpreter(list(launcher_words), script, scratch / "private")
@@ -1360,6 +1451,12 @@ def cmd_start(x: Exploration, a) -> None:
         fresh = {"file": str(fpath), "sha256": sf.sha_file(fpath), "kind": prop["kind"], "kind_in_words": prop["kind_in_words"],
                  "proposed_by": (prop.get("proposed") or {}).get("by"), "proposed_at": (prop.get("proposed") or {}).get("at"),
                  "seed_sha256": (prop.get("draw") or {}).get("seed_sha256")}
+    stac_bound = None
+    if prop and prop.get("stac"):  # the Items the proposal bound, by the checksums of their files: what the fence checks a look against
+        stx = prop["stac"]
+        sums = lambda its: {v["sha256"]: i["id"] for i in its or [] for v in (i.get("assets") or {}).values() if v.get("sha256")}  # noqa: E731
+        stac_bound = {"collection": stx.get("collection"), "query": stx.get("query"), "fresh": sums(stx.get("items")),
+                      "working": {k: v for k, v in sums(stx.get("working_items")).items() if k not in sums(stx.get("items"))}}
     if how == "a new release" and not cut:
         raise Refused("a new release set aside binds the data as it stands: give the last date of the working data before the release "
                       "(`--release-cut-off YYYY-MM-DD`, or a proposal that fixes it). A release that arrives as new rows of the same "
@@ -1426,6 +1523,11 @@ def cmd_start(x: Exploration, a) -> None:
     present = [p for p in paths if Path(p).exists()]
     if present:
         raise Refused(f"set-aside data is already here ({present[0]}); it is set aside before it is fetched, and it is not fetched by an exploration")
+    if stac_bound:
+        for f, sha in bound_files([Path(os.path.normpath(x.d.resolve() / q)) for q in places]) if places else []:
+            if sha in stac_bound["fresh"]:
+                raise Refused(f"{f.name}, in the declared working data, is by its checksum the file of the set-aside Item "
+                              f"{stac_bound['fresh'][sha]}: data that is set aside is not working data. Nothing was started")
     bound = []
     if cut:  # the data as it stands, bound by checksum: a look given a working file that changed afterwards is refused
         named = dict((prop or {}).get("rule", {}).get("files") or {})
@@ -1466,6 +1568,8 @@ def cmd_start(x: Exploration, a) -> None:
         sa["cut_off"], sa["bound"] = cut, bound
     if fresh:
         sa["fresh_data"] = fresh
+    if stac_bound:
+        sa["stac"] = stac_bound
     if pages:
         sa["boundary_read_from"] = pages
     x.d.mkdir(parents=True, exist_ok=True)
@@ -1696,7 +1800,7 @@ def cmd_look(x: Exploration, a) -> None:
             if kept_place(rel):
                 not_kept.append({"file": rel, "why": "a look leaves nothing in a place the tool or another role keeps"})
                 continue
-            crossed = file_problems(q, sa, rel, figure=rel.startswith("figures/"))
+            crossed = file_problems(q, sa, rel, figure=rel.startswith("figures/"), written=True)
             if crossed:
                 crossing += crossed
                 not_kept.append({"file": rel, "why": "it crosses the fence"})
@@ -1717,11 +1821,15 @@ def cmd_look(x: Exploration, a) -> None:
                if rel.startswith("figures/") and Path(rel).suffix.lower() in FIGURES]
     crossing += [f"set-aside data appeared at {p}" for p in set_aside_present(sa)]
     inputs = [{"word": f["word"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in placed if f["role"] != "script"]
+    parquet_read = {f["word"]: parquet_in_words(Path(os.path.normpath(x.d / f["from"]))) for f in placed
+                    if f["role"] != "script" and stac_tool().is_parquet(Path(os.path.normpath(x.d / f["from"])))}
     declared = sum(int(n) for n in COMPARISONS.findall(out))
     how = {"folder": "a scratch folder that held the files below and nothing else", "confined": ran["confined"], "placed": placed,
            "argv_as_run": argv_as_run, "not_kept": not_kept, "processes_ended": ran["ended"],
            "fence": ran["fence"], "interpreter": ran["interpreter"], "environment": ran["environment"],
            "launcher_settings": ran["settings"]}
+    if parquet_read:
+        how["parquet_read_by_the_fence"] = parquet_read
     receipt = {"id": lid, "why": a.why, "argv": argv, "launcher": launcher, "script": {"word": script, "sha256": placed[0]["sha256"]},
                "inputs": inputs, "exit_code": code, "output": {"file": out_rel, "sha256": sf.sha_file(x.d / out_rel)},
                "standard_error": {"file": err_rel, "sha256": sf.sha_file(x.d / err_rel)} if err.strip() else None,
@@ -3788,6 +3896,98 @@ def selftest() -> int:
         quiet(cmd_start, xrp, A(id="E-RP", working_data=[str(monthly)], **rstart))
         ok("with the proposal, the start takes the cut-off it fixed and binds the file the metadata described",
            xrp.set_aside()["cut_off"] == "2024-12-31" and xrp.set_aside()["bound"][0]["sha256"] == sf.sha_file(monthly / "monthly.csv"))
+        # ---- Parquet working data, read by its dates; DuckDB inside a look; the Items of a STAC description bound by checksum ----
+        st_ = stac_tool()
+        pqdir = tmp / "parquet"
+        pqdir.mkdir()
+
+        def pq(name: str, sql: str, where: Path = pqdir) -> Path:
+            con = st_.duck([where])
+            con.execute(f"COPY ({sql}) TO {st_.sql_text(str(where / name))} (FORMAT parquet)")
+            con.close()
+            return where / name
+        pq("good.parquet", "SELECT DATE '2024-01-01' + i::INTEGER AS day, 'R1' AS reach, i * 0.5 AS v FROM range(300) t(i)")
+        xq = fresh("E-PARQUET", working_data=[str(pqdir)])
+        known(xq)
+        sq = script(xq, "duck.py", "import duckdb, os, sys\ncon = duckdb.connect()\n"
+                    "print('rows', con.execute(f\"select count(*) from read_parquet('{os.path.abspath(sys.argv[1])}')\").fetchone()[0])\n"
+                    "for name, q in (('remote', \"select * from read_parquet('https://example.invalid/x.parquet')\"), ('install', 'INSTALL httpfs'),\n"
+                    "                ('load', 'LOAD httpfs'), ('unlock', 'SET enable_external_access = true'), ('autoload', 'SET autoload_known_extensions = true')):\n"
+                    "    try:\n        con.execute(q)\n        print(name, 'RAN')\n    except Exception:\n        print(name, 'refused')\n"
+                    "for name, f in (('default', lambda: duckdb.sql(\"select * from read_csv('https://example.invalid/y.csv')\")),\n"
+                    "                ('inner', lambda: __import__('_duckdb').connect().execute('INSTALL httpfs'))):\n"
+                    "    try:\n        f()\n        print(name, 'RAN')\n    except Exception:\n        print(name, 'refused')\n")
+        before = len(xq.events())
+        got = look(xq, ["{python}", sq, str(pqdir / "good.parquet")])
+        rq = json.loads((xq.d / "receipts" / f"{xq.events()[-1]['data']['id']}.json").read_text()) if xq.events()[-1]["kind"] == "look.run" else {}
+        outq = (xq.d / rq["output"]["file"]).read_text() if rq else ""
+        ok("a look is given Parquet working data once the fence has read its date column, every row, and the receipt says what it read",
+           got == "" and "rows 300" in outq and rq["ran_in"]["parquet_read_by_the_fence"][str(pqdir / "good.parquet")]["rows"] == 300
+           and rq["ran_in"]["parquet_read_by_the_fence"][str(pqdir / "good.parquet")]["last"] == "2024-10-26"
+           and rq["ran_in"]["parquet_read_by_the_fence"][str(pqdir / "good.parquet")]["sha256"] == sf.sha_file(pqdir / "good.parquet"))
+        ok("DuckDB inside a look cannot read a remote file, install or load an extension, or turn its settings back on, on a connection it "
+           "makes, on the default one or on the inner module's",
+           all(f"{n} refused" in outq for n in ("remote", "install", "load", "unlock", "autoload", "default", "inner")) and "RAN" not in outq)
+        pq("inwin.parquet", "SELECT DATE '2025-04-01' + i::INTEGER AS day, i AS v FROM range(60) t(i)")
+        got = look(xq, ["{python}", sq, str(pqdir / "inwin.parquet")])
+        ok("a Parquet file with rows inside the set-aside window is refused, the row-group statistics first, and the refusal is logged",
+           "dated inside the set-aside window" in got and "row-group statistics" in got and xq.events()[-1]["kind"] == "look.refused")
+        pq("nodate.parquet", "SELECT i AS n, i * 0.5 AS v FROM range(10) t(i)")
+        pq("holes.parquet", "SELECT CASE WHEN i = 3 THEN NULL ELSE DATE '2024-02-01' + i::INTEGER END AS day, i AS v FROM range(10) t(i)")
+        ok("a Parquet file with no date column, or with a row whose date cannot be read, is refused",
+           "no date column" in look(xq, ["{python}", sq, str(pqdir / "nodate.parquet")])
+           and "1 row(s) whose date the fence cannot read" in look(xq, ["{python}", sq, str(pqdir / "holes.parquet")]))
+        (pqdir / "fake.parquet").write_text("day,v\n2024-01-01,1\n")
+        ok("a file named like Parquet that is not Parquet is refused", "is not one" in look(xq, ["{python}", sq, str(pqdir / "fake.parquet")]))
+        reldir = tmp / "parquet-release"
+        reldir.mkdir()
+        pq("upto.parquet", "SELECT DATE '2024-01-01' + i::INTEGER AS day, i AS v FROM range(366) t(i)", reldir)
+        xqr = fresh("E-PARQUET-REL", how="a new release", set_aside_window=None, set_aside_release=["next-parquet"], working_window=None,
+                    subject="reach_id=R71,gauge=G71", release_cut_off="2024-12-31", working_data=[str(reldir)])
+        known(xqr)
+        sq2 = script(xqr, "n.py", "import sys\nprint('given', len(sys.argv) - 1)\n")
+        ok("under a release, Parquet working data up to the cut-off is read in full and runs; its checksum is bound at the start",
+           look(xqr, ["{python}", sq2, str(reldir / "upto.parquet")]) == ""
+           and [b["sha256"] for b in xqr.set_aside()["bound"]] == [sf.sha_file(reldir / "upto.parquet")])
+        pq("upto.parquet", "SELECT DATE '2024-01-01' + i::INTEGER AS day, i AS v FROM range(400) t(i)", reldir)
+        got = look(xqr, ["{python}", sq2, str(reldir / "upto.parquet")])
+        ok("a Parquet working file refreshed with rows past the cut-off is refused: its checksum changed and its dates say so",
+           "has changed since the exploration started" in got and "holds a date past the cut-off" in got and xqr.events()[-1]["kind"] == "look.refused")
+        stdir = tmp / "stac-data"
+        (stdir / "working").mkdir(parents=True)
+        (stdir / "later").mkdir()
+        w24, l25 = stdir / "working" / "first.csv", stdir / "later" / "second.csv"
+        w24.write_text("time,a,b\n" + "".join(f"2024-{m:02d}-15,{m},{m * 1.1:.2f}\n" for m in range(1, 13)))
+        l25.write_text("time,a,b\n" + "".join(f"2025-{m:02d}-15,{m},{m * 1.1:.2f}\n" for m in range(6, 13)))
+        stcol = {"type": "Collection", "stac_version": st_.STAC_VERSION, "stac_extensions": [], "id": "a-b", "description": "A and B",
+                 "license": "other", "extent": {"spatial": {"bbox": [list(st_.GLOBAL)]}, "temporal": {"interval": [["2024-01-15T00:00:00Z", None]]}},
+                 "sf:subject": {"reach_id": "R1", "gauge": "G1"}}
+        st_items = [st_.make_item(n, "a-b", d0, d1, f, stdir / "cat" / "items", None, "global", {"sf:count": c})
+                    for n, d0, d1, f, c in (("first", dt.date(2024, 1, 15), dt.date(2024, 12, 15), w24, 12),
+                                            ("second", dt.date(2025, 6, 15), dt.date(2025, 12, 15), l25, 7))]
+        st_.write_description(stdir / "cat", stcol, st_items, validate=False)  # validated where it is written for real, by fresh_data.py
+        sprop = tmp / "proposals" / "stac-later.yaml"
+        quiet(fdt.cmd_propose, fdt.A(metadata=str(stdir / "cat" / "collection.json"), kind="later-period", from_="2025-04-28", what="w", why="y",
+                                    unfair="u", studies=str(work / "studies"), out=str(sprop)))
+        xst = fresh("E-STAC", working_data=[str(stdir / "working")], fresh_data=str(sprop))
+        known(xst)
+        sst = script(xst, "rows.py", "import sys\nprint('lines', len(open(sys.argv[1]).read().splitlines()))\n")
+        ok("an exploration set aside from a STAC description binds the Items by the checksums of their files, and a look at a working Item's "
+           "file runs", xst.set_aside()["stac"]["fresh"] == {sf.sha_file(l25): "second"}
+           and xst.set_aside()["stac"]["working"] == {sf.sha_file(w24): "first"} and look(xst, ["{python}", sst, str(w24)]) == "")
+        (stdir / "working" / "extra.csv").write_text("time,a,b\n2024-03-01,1,1\n")
+        ok("a file in the working data that is not the file of a working Item is refused: the fence checks what it lets a look read "
+           "against the bound Items' checksums", "not, by its checksum, the file of any working Item" in look(xst, ["{python}", sst, str(stdir / "working" / "extra.csv")]))
+        (xst.d / "looks" / "renamed.txt").write_bytes(l25.read_bytes())
+        ok("a copy of a set-aside Item's file, under any name, is refused by its checksum",
+           "the file of the set-aside Item second" in look(xst, ["{python}", sst, "looks/renamed.txt"]))
+        (xst.d / "looks" / "renamed.txt").unlink()
+        (stdir / "working" / "extra.csv").unlink()
+        shutil.copyfile(l25, stdir / "working" / "second-copy.csv")
+        ok("a start whose working data holds a set-aside Item's file is refused",
+           "the file of the set-aside Item" in said(cmd_start, Exploration(work / "explorations" / "E-STAC-2"),
+                                                     A(request=str(req), id="E-STAC-2", working_data=[str(stdir / "working")], fresh_data=str(sprop))))
+        (stdir / "working" / "second-copy.csv").unlink()
         # a site is written many ways: the fence reads the ways people type it (found by the hydrologist's review)
         xu = fresh("E-USGS", how="sites never opened", set_aside_window=None, set_aside_sites="USGS-06935965,USGS-06909000", working_window=None,
                    subject="reach_id=R9,gauge=USGS-07374000")

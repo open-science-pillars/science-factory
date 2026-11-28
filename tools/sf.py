@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "duckdb"]
 # ///
 """sf: the study tool. It keeps the study log and holds a study to its stages.
 
@@ -7261,9 +7261,11 @@ def selftest() -> int:
             cmd_test(study, A(what="working-data", by="agent:b"))
         finally:
             del os.environ["SF_SYSTEM_TRIAL_SEAL"], os.environ["SF_ANYTHING"]
-        check("a command the tool runs sees no SF_ variable and no PYTHON variable but the three the tool sets",
+        check("a command the tool runs sees no SF_ variable and no PYTHON variable but those the tool sets (the four PYTHON settings, "
+              "PYTHONPATH naming only the DuckDB guard, and the guard's allowed folders)",
               json.loads((study.d / "receipts" / "working-data.json").read_text())["seen"]
-              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX", "SF_INSIDE_A_STEP"])  # the last is the tool's own mark
+              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPATH", "PYTHONPYCACHEPREFIX", "SF_DUCKDB_ALLOWED", "SF_INSIDE_A_STEP"]
+              and fence.GUARD_FOLDER in fence.minimal_environment(tmp, sys.executable)["PYTHONPATH"])  # the last is the tool's own mark
         planted = {"EARTHDATA_TOKEN": "secret-value-123", "AWS_SECRET_ACCESS_KEY": "another-secret", "LD_LIBRARY_PATH": str(tmp / "planted-libs"),
                    "BASH_ENV": str(tmp / "planted.sh"), "UV_NO_PROGRESS": "1"}
         token_sha = hashlib.sha256(planted["EARTHDATA_TOKEN"].encode()).hexdigest()

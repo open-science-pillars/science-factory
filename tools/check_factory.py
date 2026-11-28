@@ -234,7 +234,7 @@ def files_of(root: Path) -> list:
 # (a module named like one the tools import, a bytecode folder, anything left behind) is refused at the lock and the
 # opening, because a tool loads its neighbours from that folder.
 TOOL_FILES = ("benchmark.py", "check_factory.py", "check_roles.py", "explore.py", "factory_server.py", "factory_update.py", "fence.py",
-              "fresh_data.py", "knowledge.py", "report.py", "scorers.py", "sf.py", "waiting.py", "wiki_server.py")
+              "fresh_data.py", "knowledge.py", "openings.py", "report.py", "scorers.py", "sf.py", "stac.py", "waiting.py", "wiki_server.py")
 
 
 def is_bytecode(rel: str) -> bool:
