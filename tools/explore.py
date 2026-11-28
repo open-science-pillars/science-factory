@@ -2221,7 +2221,7 @@ def cmd_session(x: Exploration, a) -> None:
         nb_at = place(x, f, taken)
         (work / nb_at).parent.mkdir(parents=True, exist_ok=True)
         (work / nb_at).write_bytes(f.read_bytes())
-        for n, (tok, g) in enumerate(sorted(files.items()), 1):
+        for n, (tok, g) in enumerate(files.items(), 1):  # in the order given: the notebook gets them as its arguments, in that order
             at = place(x, g, taken, f"{n:02d}-")
             (work / at).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(g, work / at)
@@ -2235,7 +2235,8 @@ def cmd_session(x: Exploration, a) -> None:
         token, port = secrets.token_urlsafe(24), int(a.port) if a.port else free_port()
         (scratch / "private" / "token").write_text(token)
         argv = [ready["python"], "-m", "marimo", "-q", "edit", nb_at, "--headless", "--host", "127.0.0.1", "--port", str(port),
-                "--token-password-file", str(scratch / "private" / "token"), "--skip-update-check", "--no-sandbox", "--timeout", str(a.idle_minutes)]
+                "--token-password-file", str(scratch / "private" / "token"), "--skip-update-check", "--no-sandbox", "--timeout", str(a.idle_minutes),
+                *(["--", *(p_["at"] for p_ in placed)] if placed else [])]
         env = fence.minimal_environment(scratch, ready["python"], mark=("SF_INSIDE_A_LOOK", x.d.name))
         never_read = [str(x.d), str(x.log), str(HERE / "explore.py")] + [str(q) for q in sa.get("paths") or []]
         kernel = bool(landlock())
@@ -5827,12 +5828,13 @@ def selftest() -> int:
                     if "id" in got_:
                         break
                     time.sleep(0.25)
-                inside_ = execute("print('rows', len(__import__('json').load(open('outside/01-a_b_2024.json'))['rows']))")
+                inside_ = execute("import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']), sys.argv[1])")
                 reach_ = execute("import os\ntry:\n    print('READ', len(open(os.path.join(*" + repr(list((held2 / "record-2025.json").parts)) + ")).read()))\n"
                                  "except OSError as err:\n    print('kept out', type(err).__name__)")
                 ok("while a session is open no other command writes to the exploration: a look is refused",
                    "is held" in look(nbs, ["uv", "run", nbs_nb, str(data)]))
-                ok("a cell run in the session reads the working data the session declared", "rows 12" in inside_.get("stdout", ""))
+                ok("a cell run in the session reads the working data the session declared, given to the notebook as its argument as a look's is",
+                   "rows 12 outside/01-a_b_2024.json" in inside_.get("stdout", ""))
                 if kernel:
                     ok("a cell run in the session that reads set-aside data by a path it builds fails: the server and its kernel are inside "
                        "the kernel fence", "kept out PermissionError" in reach_.get("stdout", "") and "READ" not in reach_.get("stdout", ""))

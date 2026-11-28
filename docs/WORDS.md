@@ -77,6 +77,8 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 
 - **exploration**: one folder with its own log, made by `tools/explore.py`.
 - **look**: one script run through the exploring tool, logged with its inputs and output.
+- **notebook look**: a marimo notebook run as a look, top to bottom in the order its cells depend on each other; a Jupyter notebook is converted to one first.
+- **notebook session**: marimo's editor opened inside the fence on declared working data, logged by each saved version; nothing it shows is quotable until the notebook runs as a look.
 - **choice**: a decision recorded with its alternatives and what it rests on.
 - **fence**: what keeps set-aside data out of a look (`tools/fence.py`): the scratch folder, the reading of what goes in and out, the kernel fence.
 - **kernel fence**: Landlock on Linux, which keeps a script from opening anything outside its scratch folder.

@@ -70,6 +70,8 @@ uv run tools/explore.py look --exploration <x> --by <you> --model <your model> -
 - A failed look is still a look and still counted; do not delete scripts to tidy the record.
 - Look as hard for where it does not hold: split by the conditions the question cares about, look at the worst cases by name, and check whether a few points carry the result.
 
+**Notebooks.** A look may be a script or a marimo notebook (a `.py` file whose `# /// script` header names marimo), run the same way, with `uv run`. Use a notebook when the work is a chain of steps a person will want to read or change cell by cell, and add `--export html` to keep its page as a figure the person opens at the so what and the lock; use a script for one computation. Only what a notebook prints is its output, so print each number you will quote. A Jupyter notebook is given as `uv run looks/NAME.ipynb`: the tool strips its outputs, converts it beside itself to `looks/NAME.py` and runs that; from then on run the `.py`. A notebook session (`explore.py session`) is a person's, never an agent's: marimo's editor inside the fence, logged by each saved version and never by a cell run. A number seen in a session, or in a person's account of one, is quoted only once the session's final notebook has run as a look and printed it, and the lead cites that look.
+
 ## 5. Record choices when you make them
 
 Every time you pick one way over another (which observations to drop, which tolerance, which model form, which terms in a fit, which period to show), record it then:
