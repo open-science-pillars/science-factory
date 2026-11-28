@@ -7953,6 +7953,18 @@ def tool_help() -> str:
     return subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL).stdout
 
 
+def refuse_foreign_definition(factory, allowed: bool, tool: str = "sf.py") -> None:
+    """A definition that is not this factory's own, and whose code is not this package's, is refused before anything reads it,
+    as the factory server refuses it; with --use-workspace-code it is used, and the warning says so in capitals."""
+    if factory is None or Path(factory).resolve() == FACTORY.resolve():
+        return
+    found = definition_tool().foreign_code(Path(factory))
+    if found and not allowed:
+        raise Refused(definition_tool().foreign_code_words(found, f"the definition at {factory}", False))
+    if found:
+        print(f"{tool}: " + definition_tool().foreign_code_words(found, f"the definition at {factory}", True), file=sys.stderr)
+
+
 def started_from_a_look() -> str | None:
     """What says this process was started by a script the tools ran (a look, or a command of a plan: a test, a
     rehearsal step, a fetch, the opening's analysis), or None. Such a script runs on data and nothing else: one
@@ -8006,6 +8018,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--study", required=True, help="the study directory")
         if by in args and not any(names == ["--model"] for names, _ in args):
             args = (*args, model, cost)
+        if proc in args:
+            args = (*args, its_code)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
@@ -8019,6 +8033,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
     proc = (["--factory"], {"default": str(FACTORY), "help": "the factory's definition, a folder rooted at factory.yaml (default: factory/, this factory's own)"})
+    its_code = ([definition_tool().USE_ITS_CODE], {"action": "store_true", "dest": "use_workspace_code", "help": definition_tool().USE_ITS_CODE_HELP})
     comment = (["--comment"], {"default": None, "help": "free text kept with the event"})
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,
@@ -8086,6 +8101,7 @@ def main() -> int:
         refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
+        refuse_foreign_definition(getattr(a, "factory", None), getattr(a, "use_workspace_code", False))
         global LIVE
         LIVE = {}  # this command asks the platform about each act once, at the first point that needs it
         study = Study(a.study)

@@ -541,11 +541,22 @@ def selftest(root: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent, help="the repository (default: the one this file is in)")
+    ap.add_argument("--use-workspace-code", dest="use_workspace_code", action="store_true",
+                    help="read the parsers of tools that are not this package's own (refused without it); the output then says so in capitals")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     root = a.root.resolve()
     if a.selftest:
         return selftest(root)
+    spec = _source_spec("check_factory", Path(__file__).resolve().parent / "check_factory.py")
+    cf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cf)
+    foreign = cf.foreign_code(root / "factory", root)
+    if foreign:
+        print("check-roles: " + cf.foreign_code_words(foreign, f"the repository at {root}", a.use_workspace_code))
+        if not a.use_workspace_code:
+            print("check-roles: NOT CHECKED (nothing was loaded)")
+            return 2
     found = problems(root)
     for q in found:
         print("check-roles:", q)

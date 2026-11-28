@@ -464,6 +464,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--workspace", type=Path, default=Path("."), help="the workspace (studies/, explorations/); default .")
     ap.add_argument("--factory", type=Path, default=sf.FACTORY, help="the factory's definition (default: factory/ beside tools/)")
+    ap.add_argument(sf.definition_tool().USE_ITS_CODE, dest="use_workspace_code", action="store_true", help=sf.definition_tool().USE_ITS_CODE_HELP)
     ap.add_argument("--out", type=Path, default=None, help="write the Markdown here instead of printing it")
     ap.add_argument("--html", type=Path, default=None, help="also write one self-contained HTML page here")
     ap.add_argument("--json", action="store_true", help="print the JSON this docstring documents")
@@ -474,6 +475,7 @@ def main() -> int:
         sf.refuse_inside_a_look()
         if a.selftest:
             return selftest()
+        sf.refuse_foreign_definition(a.factory, a.use_workspace_code, "report.py")
         sf.LIVE = {}
         r = report(a.workspace, a.factory)
     except Refused as r_:

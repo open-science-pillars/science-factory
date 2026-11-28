@@ -138,7 +138,7 @@ FORBIDDEN_COMMANDS = {"lock", "signature", "so-what", "verify-acts", "verify-so-
                       "request-lock", "request-signature", "held-out-change", "reviewer", "ask-so-what", "correct", "fit", "note", "choice",
                       "known", "read", "selftest", "update", "pin"}
 FORBIDDEN_OPTIONS = {"--local-practice", "--record-merge", "--platform-record", "--record-comment", "--people-not-verified", "--evidence",
-                     "--nothing-set-aside", "--seed-file", "--merge-commit", "--asked-by", "--cost", "--summary", "--html"}
+                     "--nothing-set-aside", "--seed-file", "--merge-commit", "--asked-by", "--cost", "--summary", "--html", "--use-workspace-code"}
 
 
 class Refusal(Exception):
