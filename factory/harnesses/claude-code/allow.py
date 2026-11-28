@@ -899,6 +899,9 @@ def selftest() -> int:
            and "a person's decision" in str(call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 "
                                                                                   "--by agent:coordinating --people-not-verified no-network"))
            and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 --by agent:coordinating") is None)
+        ok("no role writes an opening into the shared registry of openings: only the workflow does, after a verified opening",
+           all(call(r, "Bash", command=f"uv run {tmp}/tools/openings.py record --registry reg --study studies/S1 --by agent:{r}") is not None
+               for r in ("coordinating", "analysis", "review", "curating")))
         ok("no role tells a tool to run the code a workspace carries in place of the factory's own (--use-workspace-code)",
            all("a person's decision" in str(call(r, "Bash", command=f"uv run {tmp}/tools/sf.py status --study studies/S1 --use-workspace-code"))
                for r in ("coordinating", "analysis", "review", "curating"))

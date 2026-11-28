@@ -19,6 +19,7 @@ may_call:
   - "tools/knowledge.py about"
   - "tools/fresh_data.py propose"
   - "tools/fresh_data.py show"
+  - "tools/openings.py check"
   - "tools/sf.py check-plan"
   - "tools/sf.py test"
   - "tools/sf.py rehearse"

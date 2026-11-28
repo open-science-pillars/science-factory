@@ -13,9 +13,11 @@ You propose from metadata only: what data exists (identifiers, sites or regions,
 
 Use `read-what-is-known` first. What the request says the scientist has looked at is working data and cannot be fresh. A page may say where a record changes (a new sensor, reprocessing, a dam), which decides where a later period can begin.
 
-## 2. Get the metadata, as a file
+## 2. Get the description: STAC, or the factory's own form
 
-The proposing tool reads one file in this form, JSON or YAML, and refuses any other key:
+The default is STAC: a Collection and its Items (static JSON, NDJSON for many Items, or a stac-geoparquet file), each Item with its time and each file by its File Info checksum and size. Take it from where the data is catalogued, or have the coordinating agent write one at intake: `uv run tools/fresh_data.py describe --csv <file> --date-column <dates> --series-column <series> --period year --subject <key=value> --what "<what>" --stac <a new folder>` (positions with `--lat-column` and `--lon-column`, else `--place global` or `--place none`; `--files A B` for one Item for each file). `propose --metadata <its collection.json>` refuses a property it does not read, since a value may hide there, unless you name it in `--drop-properties`; narrows by place with `--bbox`; and binds the fresh Items by ID and checksum, or the query when none is published. With `--registry <a clone of the registry of openings>` it asks first whether another study opened that data, and refuses it as not fresh if so (`uv run tools/openings.py check --registry <clone> --proposal <it>` asks the same).
+
+The factory's own form stays for data with no time or place. The proposing tool reads one file in this form, JSON or YAML, and refuses any other key:
 
 ```
 subject: {record: two-sensor}           # what the data is about: the keys a later plan's `pair` carries
