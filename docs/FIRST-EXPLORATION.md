@@ -93,7 +93,7 @@ print(con.execute(f"SELECT regr_slope(stage, epoch(day) / 86400) FROM read_parqu
 
 ## Working in a notebook
 
-A marimo notebook (a plain `.py` file whose `# /// script` header names marimo) is a look like any script, run top to bottom in the order its cells depend on each other. Only what it prints is the look's output, so print each number you will quote. `--export html` keeps its page as a figure, which the so-what question and the lock request link:
+A marimo notebook (a plain `.py` file whose `# /// script` header names marimo) is a look like any script, run top to bottom in the order its cells depend on each other. Only what it prints is the look's output, so print each number you will quote. `--export html` keeps its page as a figure, which the so-what question and the lock request link (marimo runs an export's cells, and a session's, in a child process, where DuckDB cannot start inside the fence):
 
 ```
 uv run tools/explore.py look --exploration $X --by $ME --why "the gain, in a notebook" --export html \

@@ -14,7 +14,7 @@ uv run tools/sf.py selftest
 uv run examples/stand-alone/run.py
 ```
 
-The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, takes a study to its lock, and describes a second record as STAC and looks at it with DuckDB inside the fence; it ends with `stand-alone example: PASS` (about four minutes) and prints a scratch folder holding everything it made; nothing is left in the repository.
+The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, takes a study to its lock, and describes a second record as STAC and looks at it with DuckDB and a marimo notebook inside the fence; it ends with `stand-alone example: PASS` (about five minutes) and prints a scratch folder holding everything it made; nothing is left in the repository.
 
 ## How it works, in one paragraph
 
