@@ -541,6 +541,50 @@ def main() -> int:
              and "Definition 99.0.0: the review agent reads the request first." in body.read_text() and "**valid**" in body.read_text()
              and "check-factory: VALID" in ran(["uv", "run", str(here_tools / "check_factory.py")], answer=True))
 
+        # Data described as STAC, a Parquet look inside the fence, and the shared registry of openings: a synthetic gauge
+        # record in two Parquet files, 2024 to explore and 2025 kept unopened, in a folder the exploration is not given
+        gauge, held = work / "gauge-data", work / "gauge-held"
+        gauge.mkdir()
+        held.mkdir()
+        ran(["uv", "run", str(HERE / "make_parquet.py"), "2024", str(gauge / "2024.parquet")])
+        ran(["uv", "run", str(HERE / "make_parquet.py"), "2025", str(held / "2025.parquet")])
+        said = tool("fresh_data.py", "describe", "--files", gauge / "2024.parquet", held / "2025.parquet", "--date-column", "day",
+                    "--lat-column", "lat", "--lon-column", "lon", "--subject", "record=gauge", "--what", "a synthetic river gauge, one file a year",
+                    "--stac", work / "gauge-stac")
+        item = json.loads((work / "gauge-stac" / "items" / "2025.json").read_text())
+        step("the data is described as STAC from its date and position columns only: a Collection, one Item for each file with its start "
+             "and end, its place, and its file by checksum and size, validated against the schemas shipped with pystac",
+             "STAC description written" in said and "no schema was fetched" in said and item["geometry"]["type"] == "Point"
+             and item["properties"]["start_datetime"] == "2025-01-01T00:00:00Z"
+             and item["assets"]["data"]["file:checksum"] == "1220" + hashlib.sha256((held / "2025.parquet").read_bytes()).hexdigest()
+             and "stage" not in (work / "gauge-stac" / "items" / "2025.json").read_text())
+        tool("openings.py", "init", "--registry", work / "registry")
+        xg = work / "explorations" / "EXPLORATION-G"
+        said = tool("fresh_data.py", "propose", "--metadata", work / "gauge-stac" / "collection.json", "--kind", "later-period", "--from", "2025-01-01",
+                    "--what", "the whole of 2025 at the gauge", "--why", "only 2024 has been looked at", "--unfair", "a new gauge datum in 2025",
+                    "--by", me, "--studies", studies, "--registry", work / "registry", "--out", xg / "fresh-data.yaml")
+        step("the fresh data is proposed as a STAC query, its Item bound by ID and checksum, after asking the shared registry of openings",
+             "As a STAC query" in said and "2025 (" in said and "records no opening" in (xg / "fresh-data.yaml").read_text())
+        tool("explore.py", "start", "--exploration", xg, "--id", "EXPLORATION-G", "--by", me, "--question", "How fast does the gauge rise?",
+             "--request", request, "--subject", "record=gauge", "--how", "a later period", "--set-aside-window", "2025-01-01:",
+             "--why", "the year after the one explored", "--working", "2024 at the gauge", "--working-data", gauge,
+             "--fresh-data", xg / "fresh-data.yaml")
+        tool("explore.py", "known", "--exploration", xg, "--by", me, "--wiki", wiki)
+        shutil.copyfile(HERE / "looks" / "duck_slope.py", xg / "looks" / "duck_slope.py")
+        said = tool("explore.py", "look", "--exploration", xg, "--by", me, "--why", "the slope of the stage on the day",
+                    "--", "uv", "run", "looks/duck_slope.py", gauge / "2024.parquet")
+        receipt = json.loads((xg / "receipts" / "LOOK-001.json").read_text())
+        step("a look uses DuckDB over Parquet working data inside the fence: the fence read every row's date first, and DuckDB in the "
+             "look could not read a remote file", "slope of the stage per day: 0.0100" in said and "a remote file: refused" in said
+             and receipt["ran_in"]["parquet_read_by_the_fence"] and list(receipt["ran_in"]["parquet_read_by_the_fence"].values())[0]["rows"] == 365)
+        shutil.copyfile(held / "2025.parquet", xg / "looks" / "copy.parquet")
+        step("a copy of the set-aside Item's file is refused, by its checksum and by its dates",
+             "the file of the set-aside Item 2025" in tool("explore.py", "look", "--exploration", xg, "--by", me, "--why", "2025",
+                                                           "--", "uv", "run", "looks/duck_slope.py", "looks/copy.parquet", expect=2))
+        (xg / "looks" / "copy.parquet").unlink()
+        step("the registry answers in plain words, as the lock request and the opening will ask it",
+             "records no opening of these Items" in tool("openings.py", "check", "--registry", work / "registry", "--proposal", xg / "fresh-data.yaml"))
+
         # What the workspace did, counted: a report in Markdown and as one page of HTML
         tool("report.py", "--workspace", work, "--out", work / "report.md", "--html", work / "report.html")
         said = (work / "report.md").read_text()
@@ -580,6 +624,8 @@ def main() -> int:
   report.md, report.html        what the workspace did, counted by tools/report.py: by stage and outcome, time, models
   update-pair/                  a throwaway science factory and a study repository copied from it, pinned, then updated on
                                 a branch by tools/factory_update.py; PULL_REQUEST.md is the description it wrote
+  gauge-stac/, registry/        a STAC description of a synthetic gauge record (Parquet), and a shared registry of openings
+  explorations/EXPLORATION-G/   an exploration set aside from that description, with a DuckDB look over Parquet
   data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0

@@ -257,6 +257,9 @@ def argv_problem(words: list, role: str, fm: dict, cwd: Path, root: Path = ROOT)
                 values.append((name, value))
             elif eq:
                 return f"`{name}` takes no value"
+            elif name == "--use-workspace-code":
+                return ("`--use-workspace-code` runs code a workspace carries in place of the factory's own: whether to trust that code is a "
+                        "person's decision and a person's command, never a role's")
         else:
             seen += 1
             if seen > plain:
@@ -896,6 +899,13 @@ def selftest() -> int:
            and "a person's decision" in str(call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 "
                                                                                   "--by agent:coordinating --people-not-verified no-network"))
            and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py open-held-out --study studies/S1 --by agent:coordinating") is None)
+        ok("no role writes an opening into the shared registry of openings: only the workflow does, after a verified opening",
+           all(call(r, "Bash", command=f"uv run {tmp}/tools/openings.py record --registry reg --study studies/S1 --by agent:{r}") is not None
+               for r in ("coordinating", "analysis", "review", "curating")))
+        ok("no role tells a tool to run the code a workspace carries in place of the factory's own (--use-workspace-code)",
+           all("a person's decision" in str(call(r, "Bash", command=f"uv run {tmp}/tools/sf.py status --study studies/S1 --use-workspace-code"))
+               for r in ("coordinating", "analysis", "review", "curating"))
+           and call("coordinating", "Bash", command=f"uv run {tmp}/tools/sf.py status --study studies/S1") is None)
         ok("no role writes a lock request or a signature request by hand",
            all(call(r, "Write", file_path=f"studies/S1/{folder}/{name}", content="x") is not None for r in ("coordinating", "analysis", "review", "curating")
                for folder in ("lock-request", "signature-request") for name in ("manifest.json", "EVIDENCE.md")))

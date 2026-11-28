@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "duckdb"]
 # ///
 """sf: the study tool. It keeps the study log and holds a study to its stages.
 
@@ -2122,6 +2122,25 @@ def fresh_data_of(study: Study, plan: dict) -> dict | None:
             "seed_sha256": None, "record": tool.on_record(f, study.d.parent), "to_be_drawn_at_the_lock": prop["kind"] == "random"}
 
 
+def openings_tool():
+    """tools/openings.py: the shared registry of openings. It loads this tool by the name `sf`, so it is given this one."""
+    if "openings" not in sys.modules:
+        sys.modules.setdefault("sf", sys.modules[__name__])
+    return _beside("openings")
+
+
+def ask_registry(registry, proposal: dict | None, lock_at: str | None, study_id: str) -> dict:
+    """The registry of openings, asked about a plan's fresh data (tools/openings.py `check`); a refusal there is one here."""
+    if not proposal or not proposal.get("stac"):
+        raise Refused("`--registry` checks fresh data proposed from a STAC description, and this plan's proposal is not one")
+    try:
+        return openings_tool().check(registry, proposal, lock_at, study_id)
+    except Exception as e:  # noqa: BLE001  the registry tool's refusal, raised in its own name
+        if type(e).__name__ != "Refused":
+            raise
+        raise Refused(str(e))
+
+
 def explore_tool():
     """tools/explore.py, for the fence's own reading of dates. Loading it loads its own copy of this tool under the name
     `sf`; whatever stood under that name before is put back."""
@@ -2186,7 +2205,8 @@ def release_at_start(study: Study, a, src: Path | None) -> dict | None:
         return {"name": (sa.get("releases") or [rule.get("release")])[0], "cut_off": sa["cut_off"],
                 "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"), "expected_on": rule.get("expected_on"),
                 "from": f"the start of the exploration {start['data'].get('id')} ({start['seq']}:{start['hash']})", "exploration": True,
-                "working": working, "proposal": {"sha256": fd["sha256"]} if fd else None}
+                "working": working, "proposal": {"sha256": fd["sha256"]} if fd else None,
+                **({"stac": stac_of_release(prop, Path(fd["file"]))} if prop.get("stac") else {})}
     if not fresh:
         if given:
             raise Refused("`--working-data` goes with `--fresh-data`, the proposal of the next release whose cut-off it is bound against")
@@ -2225,7 +2245,27 @@ def release_at_start(study: Study, a, src: Path | None) -> dict | None:
                       "named here. Nothing was started")
     return {"name": rule["release"], "cut_off": rule["cut_off"], "cadence": rule.get("cadence") or (rule.get("periods") or {}).get("cadence"),
             "expected_on": rule.get("expected_on"), "from": f"the proposal {f.name}, written by tools/fresh_data.py from metadata",
-            "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)}}
+            "exploration": False, "working": working, "proposal": {"sha256": sha_file(f)},
+            **({"stac": stac_of_release(prop, f)} if prop.get("stac") else {})}
+
+
+def stac_of_release(prop: dict, proposal_file: Path) -> dict:
+    """What a release proposed from a STAC description carries into the study: the query that is the fresh data, and the
+    catalog to ask whether its Items are published (a path from the proposal's folder, or a STAC API's address)."""
+    return {"collection": prop["stac"].get("collection"), "query": prop["stac"].get("query"),
+            "catalog": fresh_tool().catalog_of(prop, proposal_file)}
+
+
+def ask_the_catalog(rel: dict) -> dict:
+    """The Items the release's catalog lists for its query, asked now: {"items", "first", "last", "asked", "how"}, or
+    {"problem"} when it cannot be asked. A static catalog is a path; a STAC API is an address (tools/stac.py)."""
+    stx = rel.get("stac") or {}
+    st = explore_tool().stac_tool()
+    try:
+        got = st.search(str(stx.get("catalog")), stx.get("query") or {})
+    except Exception as e:  # noqa: BLE001  tools/stac.py's refusal, or a catalog that cannot be read
+        return {"problem": str(e)}
+    return {**st.coverage(got["items"]), "asked": got["asked"], "how": got["how"]}
 
 
 def release_fences(study: Study, plan: dict | None, ev: list) -> list:
@@ -2342,7 +2382,18 @@ def release_waiting(rel: dict, window: dict) -> str | None:
     today = _today()
     due = dt.date.fromisoformat(rel["expected_on"]) if rel.get("expected_on") else None
     if today > last and not (due and today < due):
-        return None
+        if not rel.get("stac"):
+            return None
+        said = ask_the_catalog(rel)  # the dates say it can be out: the catalog says whether it is
+        if said.get("problem"):
+            return (f"waiting: the fresh data is the release after {rel['cut_off']}, and its catalog ({rel['stac'].get('catalog')}) could "
+                    f"not be asked ({said['problem']}): nothing is known to be published. Nothing was opened and the opening is not used up")
+        if said["items"] and said["last"] and said["last"] >= window["end"]:
+            return None
+        return (f"waiting: the fresh data is the release after {rel['cut_off']}, and its catalog ({rel['stac'].get('catalog')}, {said['how']}) "
+                + (f"lists {said['items']} Item(s) of the collection `{rel['stac'].get('collection')}` after it, reaching to {said['last']}"
+                   if said["items"] else f"lists no Item of the collection `{rel['stac'].get('collection')}` after it")
+                + f"; the plan needs data to {window['end']}. Nothing was opened and the opening is not used up; open it once the release is out")
     need = (f"the plan needs {n} {rel['cadence']} period(s), {first} to {last}" if n else
             f"the plan needs data from {first} to {last} (the release declares no cadence, so its periods are not counted)")
     return (f"waiting: the fresh data is the release after {rel['cut_off']}, and it is not published yet. {need[0].upper() + need[1:]}"
@@ -3203,6 +3254,15 @@ def lock_evidence(study: Study, a) -> dict:
                "request and the proposal's checksum: nobody can choose them" if fresh.get("to_be_drawn_at_the_lock") else ""))
     else:
         say("the fresh data: the plan names no proposal (`data.held_out.fresh_data`), so nothing records who chose it or why")
+    if getattr(a, "registry", None):
+        said = ask_registry(a.registry, (fresh or {}).get("proposal"), None, plan["study"])
+        if said["before"]:
+            raise Refused("the lock is refused, and nothing was written: " + said["words"])
+        registry = {"asked": said["registry"], "openings_read": said["openings_read"], "words": said["words"]}
+    else:
+        registry = {"asked": None, "words": "No registry of openings was named (`--registry`): whether another factory has opened this "
+                                            "data was not checked."}
+    say("the registry of openings: " + registry["words"])
     say("what is held out, and every change to it this study's log knows:")
     for line in held_out_in_words(held_out_block(plan)["block"]):
         say("  now: " + line[2:])
@@ -3225,7 +3285,7 @@ def lock_evidence(study: Study, a) -> dict:
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills", "tools", "opening_without_verification")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
             "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed", "to_be_drawn_at_the_lock")} if fresh else None,
-            "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
+            "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {}), "registry": registry}
     for line in so_whats:
         say(f"the exploration this study comes from, and its person's so what, asked now: {line}")
     data["so_whats"] = so_whats
@@ -3272,6 +3332,9 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
         out += ["The plan names no proposal of the fresh data (`data.held_out.fresh_data`). What it holds out was written into the plan "
                 "by hand, and nothing in the study records who chose it, why, or what would make it unfair. Ask before you approve. "
                 "`tools/fresh_data.py propose` writes such a proposal from metadata only.", ""]
+    if d.get("registry"):
+        out += [f"**The shared registry of openings.** {d['registry']['words']}"
+                + (f" (asked at {d['registry']['asked']}, {d['registry']['openings_read']} opening(s) merged there)" if d["registry"].get("asked") else ""), ""]
     why = ((plan.get("data") or {}).get("held_out") or {}).get("why_this_window")
     out += ["What the plan holds out (the tools call it held-out data):", ""] + held_out_in_words(d["held_out"]["block"])
     out += ([f"- Why this, as the plan says: {' '.join(str(why).split())}"] if why else []) + ["", "Every change to it this study's log knows:", ""]
@@ -3858,6 +3921,12 @@ def cmd_open_held_out(study: Study, a) -> None:
     spec = plan["tests"].get(a.test)
     if not spec:
         raise Refused(f"{a.test} is not in the plan")
+    registry_said = None
+    if getattr(a, "registry", None):  # asked before anything is started: a refusal here uses nothing up
+        lock_ = study.last("lock.recorded")
+        registry_said = ask_registry(a.registry, (fresh_data_of(study, plan) or {}).get("proposal"), lock_["at"] if lock_ else None, plan["study"])
+        if registry_said["before"]:
+            raise Refused("the opening is refused, and nothing is used up: " + registry_said["words"])
     with study.held() as f:
         n, prior, before, data_rel = start_opening(study, plan, a.test, a.by, f, getattr(a, "factory", None),
                                                    bool(getattr(a, "local_practice", False)), getattr(a, "people_not_verified", None))
@@ -3879,7 +3948,8 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "figures": figures_drawn(study, spec)[0],
                                                 "env_names": given_names(passes), "ran_in": how_it_ran(mark),
                                                 "outcomes": outcomes, "method_declined": declined,
-                                                **({"release": release} if release else {})})
+                                                **({"release": release} if release else {}),
+                                                **({"registry": {"asked": registry_said["registry"], "words": registry_said["words"]}} if registry_said else {})})
     if (release or {}).get("refused"):
         raise Refused(f"the data fetched is not the release after {rel['cut_off']} that the plan needs: " + "; ".join(release["refused"])
                       + f". The locked analysis was not run. The opening is used up, because the fetched data is in the workspace; this "
@@ -3888,6 +3958,8 @@ def cmd_open_held_out(study: Study, a) -> None:
           + (f". The release after {rel['cut_off']}: {release['first']} to {release['last']}, sha256 {release['sha256']}" if release else ""))
     if prior:
         print(f"this data was already opened by {[x['dir'] for x in prior]}: this study is exploratory")
+    if registry_said:
+        print(registry_said["words"])
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
 
 
@@ -5840,6 +5912,96 @@ def _selftest_release(tmp: Path, check) -> None:
         TODAY = None
 
 
+def _selftest_stac_release(tmp: Path, check) -> None:
+    """A release proposed from a STAC description: the query is bound at the start and the lock, and the opening and `waiting`
+    ask the catalog whether its Items are out: a static catalog by its files, a STAC API by a stand-in on this machine's
+    loopback address (no real STAC API has been asked). Every number is made up."""
+    global TODAY
+    import http.server
+    import threading
+    fd, person = fresh_tool(), "human:throwaway-placeholder"
+    st = explore_tool().stac_tool()
+    studies, source, cat = tmp / "studies", tmp / "source", tmp / "catalog"
+    source.mkdir(parents=True)
+    csv = source / "monthly.csv"
+    csv.write_text("time,Mean\n" + "".join(f"2026-{m:02d},{m / 10:.2f}\n" for m in range(1, 8)))
+    col = {"type": "Collection", "stac_version": st.STAC_VERSION, "stac_extensions": [], "id": "toy-monthly", "description": "a made-up series",
+           "license": "other", "extent": {"spatial": {"bbox": [list(st.GLOBAL)]}, "temporal": {"interval": [["2026-01-01T00:00:00Z", None]]}},
+           "sf:subject": {"record": "toy-monthly"},
+           "sf:releases": [{"name": "next-update", "cadence": "monthly", "after": "2026-07-31"}]}
+    items = [st.make_item("toy-2026-h1", "toy-monthly", dt.date(2026, 1, 1), dt.date(2026, 7, 31), csv, cat / "items", None, "global", {"sf:count": 7})]
+    st.write_description(cat, col, items, validate=False)  # validated where it is written for real (fresh_data.py describe)
+    prop = tmp / "proposals" / "stac-release.yaml"
+    fd.cmd_propose(fd.A(metadata=str(cat / "collection.json"), kind="next-release", release="next-update", periods=3, what="the next three months",
+                        why="they come after every month explored", unfair="a reprocessing of the old months", studies=str(studies), out=str(prop)))
+    study = Study(studies / "S-STAC")
+    cmd_start(study, A(id="S-STAC", question=PLAN["question"], by="agent:coordinating", fresh_data=str(prop), working_data=[str(csv)]))
+    rel = study.events()[0]["data"]["release"]
+    check("a release proposed from a STAC description carries its query and its catalog into the study, bound at the start",
+          rel["stac"]["query"]["datetime"] == "2026-08-01T00:00:00Z/2026-10-31T23:59:59Z" and rel["stac"]["collection"] == "toy-monthly"
+          and Path(rel["stac"]["catalog"]) == cat / "collection.json" and rel["cut_off"] == "2026-07-31")
+    plan = json.loads(json.dumps(PLAN))
+    plan["data"]["held_out"].update(window={"start": "2026-08-01", "end": "2026-10-31"}, pair={"record": "toy-monthly", "case": "S-STAC"},
+                                    fresh_data=os.path.relpath(prop, study.d))
+    (study.d / "toy.py").write_text(TOY.replace("POWER", "0.9").replace("TESTED", "None"))
+    study.plan_path.write_text(yaml.safe_dump(plan, sort_keys=False))
+    cmd_test(study, A(what="known-answers", by="agent:analysis"))
+    cmd_test(study, A(what="working-data", by="agent:analysis"))
+    cmd_request_lock(study, A(by="agent:coordinating"))
+    words = (study.d / "lock-request" / "EVIDENCE.md").read_text()
+    check("the lock request says in words that the lock binds the STAC query itself, no Item of the release being published",
+          "As a STAC query" in words and "the lock binds the query itself" in words and "2026-08-01T00:00:00Z/2026-10-31T23:59:59Z" in words)
+    window = {"start": "2026-08-01", "end": "2026-10-31"}
+    TODAY = "2026-11-27"
+    try:
+        said = release_waiting(rel, window)
+        check("once the dates say the release can be out, the static catalog is asked, and a catalog with no Item after the cut-off is waiting",
+              said is not None and "lists no Item of the collection `toy-monthly` after it" in said and "not used up" in said)
+        later = source / "update.csv"
+        later.write_text("time,Mean\n2026-08,0.8\n2026-09,0.9\n2026-10,1.0\n")
+        new = st.make_item("toy-2026-q3", "toy-monthly", dt.date(2026, 8, 1), dt.date(2026, 10, 31), later, cat / "items", None, "global", {"sf:count": 3})
+        (cat / "items" / "toy-2026-q3.json").write_text(json.dumps(new))
+        c = json.loads((cat / "collection.json").read_text())
+        c["links"].append({"rel": "item", "href": "./items/toy-2026-q3.json", "type": "application/geo+json"})
+        (cat / "collection.json").write_text(json.dumps(c))
+        check("when the catalog lists Items that reach the end of the window, the study is no longer waiting", release_waiting(rel, window) is None)
+        TODAY = "2026-10-15"
+        check("before the last period has ended the study waits on the dates alone, whatever the catalog says",
+              "has not ended" in str(release_waiting(rel, window)))
+        TODAY = "2026-11-27"
+        served = {"features": [], "asked": []}
+
+        class Stand(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                served["asked"].append((self.path, body))
+                out = json.dumps({"type": "FeatureCollection", "features": served["features"], "links": []}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/geo+json")
+                self.end_headers()
+                self.wfile.write(out)
+
+            def log_message(self, *a):
+                pass
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Stand)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            api = {**rel, "stac": {**rel["stac"], "catalog": f"http://127.0.0.1:{srv.server_address[1]}"}}
+            empty = release_waiting(api, window)
+            served["features"] = [new]
+            full = release_waiting(api, window)
+            check("a STAC API, here a stand-in on the loopback address, is asked by its item search with the bound query: waiting while it "
+                  "lists nothing, not waiting once it lists the release (no real STAC API has been asked)",
+                  "lists no Item" in str(empty) and full is None and served["asked"][0][0] == "/search"
+                  and served["asked"][0][1]["collections"] == ["toy-monthly"] and served["asked"][0][1]["datetime"] == rel["stac"]["query"]["datetime"])
+        finally:
+            srv.shutdown()
+        gone = {**rel, "stac": {**rel["stac"], "catalog": "http://127.0.0.1:9/"}}
+        check("a catalog that cannot be asked is waiting, never an opening", "could not be asked" in str(release_waiting(gone, window)))
+    finally:
+        TODAY = None
+
+
 def secrets_hex() -> str:
     import secrets
     return secrets.token_hex(32)
@@ -7261,9 +7423,11 @@ def selftest() -> int:
             cmd_test(study, A(what="working-data", by="agent:b"))
         finally:
             del os.environ["SF_SYSTEM_TRIAL_SEAL"], os.environ["SF_ANYTHING"]
-        check("a command the tool runs sees no SF_ variable and no PYTHON variable but the three the tool sets",
+        check("a command the tool runs sees no SF_ variable and no PYTHON variable but those the tool sets (the four PYTHON settings, "
+              "PYTHONPATH naming only the DuckDB guard, and the guard's allowed folders)",
               json.loads((study.d / "receipts" / "working-data.json").read_text())["seen"]
-              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPYCACHEPREFIX", "SF_INSIDE_A_STEP"])  # the last is the tool's own mark
+              == ["PYTHONDONTWRITEBYTECODE", "PYTHONNOUSERSITE", "PYTHONPATH", "PYTHONPYCACHEPREFIX", "SF_DUCKDB_ALLOWED", "SF_INSIDE_A_STEP"]
+              and fence.GUARD_FOLDER in fence.minimal_environment(tmp, sys.executable)["PYTHONPATH"])  # the last is the tool's own mark
         planted = {"EARTHDATA_TOKEN": "secret-value-123", "AWS_SECRET_ACCESS_KEY": "another-secret", "LD_LIBRARY_PATH": str(tmp / "planted-libs"),
                    "BASH_ENV": str(tmp / "planted.sh"), "UV_NO_PROGRESS": "1"}
         token_sha = hashlib.sha256(planted["EARTHDATA_TOKEN"].encode()).hexdigest()
@@ -7924,6 +8088,8 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_release(Path(t).resolve(), check)
     with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
+        _selftest_stac_release(Path(t).resolve(), check)
+    with tempfile.TemporaryDirectory() as t, contextlib.redirect_stdout(io.StringIO()):
         _selftest_bytecode(Path(t).resolve(), check)
     shown = tool_help()
     check("the tool's help is words, not its own source: `sf.py --help` holds no line of Python, and the clean start runs as code",
@@ -7951,6 +8117,23 @@ def tool_help() -> str:
     """What `sf.py --help` prints, run as a person runs it."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON") or k in KEPT_PYTHON}
     return subprocess.run([sys.executable, str(TOOL), "--help"], capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL).stdout
+
+
+USE_ITS_CODE = "--use-workspace-code"  # as tools/check_factory.py names it; said here so the parser loads nothing
+USE_ITS_CODE_HELP = ("run the code of a definition that is not this package's own (refused without it): for a workspace you trust; "
+                     "the output then says so in capitals")
+
+
+def refuse_foreign_definition(factory, allowed: bool, tool: str = "sf.py") -> None:
+    """A definition that is not this factory's own, and whose code is not this package's, is refused before anything reads it,
+    as the factory server refuses it; with --use-workspace-code it is used, and the warning says so in capitals."""
+    if factory is None or Path(factory).resolve() == FACTORY.resolve():
+        return
+    found = definition_tool().foreign_code(Path(factory))
+    if found and not allowed:
+        raise Refused(definition_tool().foreign_code_words(found, f"the definition at {factory}", False))
+    if found:
+        print(f"{tool}: " + definition_tool().foreign_code_words(found, f"the definition at {factory}", True), file=sys.stderr)
 
 
 def started_from_a_look() -> str | None:
@@ -8006,6 +8189,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--study", required=True, help="the study directory")
         if by in args and not any(names == ["--model"] for names, _ in args):
             args = (*args, model, cost)
+        if proc in args:
+            args = (*args, its_code)
         for names, kw in args:
             p.add_argument(*names, **kw)
         p.set_defaults(fn=fn)
@@ -8019,6 +8204,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "help": "SEQ:HASH, a log fingerprint posted outside the workspace; repeatable"})
     evidence = (["--evidence"], {"default": None, "help": "https URL, host name and all, of the person's approving review or comment"})
     proc = (["--factory"], {"default": str(FACTORY), "help": "the factory's definition, a folder rooted at factory.yaml (default: factory/, this factory's own)"})
+    its_code = ([USE_ITS_CODE], {"action": "store_true", "dest": "use_workspace_code", "help": USE_ITS_CODE_HELP})
     comment = (["--comment"], {"default": None, "help": "free text kept with the event"})
     held_out = (["--test"], {"default": "held-out", "help": "which test on held-out data (default: held-out)"})
     add("start", cmd_start, (["--id"], {"required": True}), (["--question"], {"required": True}), by,
@@ -8040,11 +8226,13 @@ def build_parser() -> argparse.ArgumentParser:
     platform_rec = (["--platform-record"], {"default": None, "dest": "platform_record",
                                             "help": "the JSON file the recording job wrote from the platform's record of the pull request. "
                                                     "The names in it are recorded as handed to the tool and verify nothing"})
-    add("request-lock", cmd_request_lock, by, proc)
+    registry = (["--registry"], {"default": None, "help": "a clone of the shared registry of openings (tools/openings.py): asked whether "
+                                                          "another study opened this fresh data; its answer is in the request in words"})
+    add("request-lock", cmd_request_lock, by, proc, registry)
     add("request-signature", cmd_request_signature, by, proc, anchor, (["--decision"], {"required": True, "help": "signed or declined"}))
     add("check-request", cmd_check_request, proc, (["--act"], {"required": True, "help": "lock or signature"}))
     add("lock", cmd_lock, by, evidence, proc, practice, record_merge, platform_rec)
-    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice,
+    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice, registry,
         (["--people-not-verified"], {"default": None, "dest": "people_not_verified", "metavar": "REASON",
                                      "help": "for a place with no network only: open on a lock that is a merge found with git, whose "
                                              "people the platform could not be asked about. Logged with the reason; the study stays at "
@@ -8086,6 +8274,7 @@ def main() -> int:
         refuse_inside_a_look()
         if a.cmd == "selftest":
             return selftest()
+        refuse_foreign_definition(getattr(a, "factory", None), getattr(a, "use_workspace_code", False))
         global LIVE
         LIVE = {}  # this command asks the platform about each act once, at the first point that needs it
         study = Study(a.study)

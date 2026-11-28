@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "pystac[validation]", "duckdb"]
 # ///
 """factory_server: the factory, reached from Claude by a scientist's plain words.
 
@@ -123,9 +123,12 @@ ALLOW = {
     ("explore.py", "status"): {"options": {"--exploration"}, "reads": True},
     ("explore.py", "contribution"): {"options": {"--exploration"}, "flags": {"--print-only"}, "required_flags": {"--print-only"}, "reads": True},
     ("fresh_data.py", "describe"): {"options": {"--csv", "--date-column", "--series-column", "--period", "--subject", "--what", "--release",
-                                                "--cadence", "--out"}},
+                                                "--cadence", "--out", "--stac", "--lat-column", "--lon-column", "--place", "--collection",
+                                                "--license"}, "flags": {"--ndjson"}},
     ("fresh_data.py", "propose"): {"options": {"--metadata", "--kind", "--from", "--until", "--sites", "--regions", "--release", "--periods",
-                                               "--fraction", "--draw-over", "--what", "--why", "--unfair", "--by", "--model", "--out", "--studies"}},
+                                               "--fraction", "--draw-over", "--what", "--why", "--unfair", "--by", "--model", "--out", "--studies",
+                                               "--drop-properties", "--bbox", "--catalog", "--registry"}},
+    ("openings.py", "check"): {"options": {"--registry", "--proposal", "--study"}, "flags": {"--json"}, "reads": True},
     ("explore.py", "start"): {"options": {"--exploration", "--by", "--model", "--id", "--question", "--request", "--subject", "--boundary-from",
                                           "--how", "--set-aside-window", "--set-aside-sites", "--set-aside-release", "--release-cut-off",
                                           "--set-aside-path", "--fresh-data", "--why", "--working", "--working-data", "--working-window",
@@ -136,9 +139,9 @@ ALLOW = {
 FORBIDDEN_COMMANDS = {"lock", "signature", "so-what", "verify-acts", "verify-so-what", "open-held-out", "void-unread", "promote", "log-change",
                       "look", "recheck", "test", "rehearse", "review", "lead", "end", "hand-over", "resolve", "close", "attach", "reveal",
                       "request-lock", "request-signature", "held-out-change", "reviewer", "ask-so-what", "correct", "fit", "note", "choice",
-                      "known", "read", "selftest", "update", "pin"}
+                      "known", "read", "selftest", "update", "pin", "record", "init", "index"}
 FORBIDDEN_OPTIONS = {"--local-practice", "--record-merge", "--platform-record", "--record-comment", "--people-not-verified", "--evidence",
-                     "--nothing-set-aside", "--seed-file", "--merge-commit", "--asked-by", "--cost", "--summary", "--html"}
+                     "--nothing-set-aside", "--seed-file", "--merge-commit", "--asked-by", "--cost", "--summary", "--html", "--use-workspace-code"}
 
 
 class Refusal(Exception):
@@ -360,15 +363,21 @@ TOOLS = [
            "page": _s("a page's path below the wiki, as search returns it"), "section": _s("a heading of the page")}),
     _tool("factory_summary", "Each workspace's factory: which definition it uses, its version and checksum, and whether it is valid "
           "(tools/check_factory.py). Read-only.", {"workspace": WS}),
+    _tool("registry_check", "What the shared registry of openings (a static STAC catalog, given to the server with --registry) says about "
+          "a proposal's fresh data: whether another study opened these Items or this query, and when against this study's lock "
+          "(tools/openings.py check). It records nothing. Read-only.",
+          {"workspace": WS, "proposal": _s("the proposal below the workspace, made from a STAC description"),
+           "study": _s("the study below the workspace (studies/NAME), for when its lock was")}, ["proposal"]),
     _tool("submit_request", "Write a request, in the person's own words, from factory/templates/request.md into requests/NAME.md of a "
           "workspace. Refuses to write over a file. It starts nothing.",
           {"workspace": WS, "name": _s("the file's name, letters, digits, - and _ (requests/NAME.md)"), "by": BY, "model": MODEL,
            **{k: _s(f"the person's words for: {v}") for k, v in REQUEST_FIELDS.items() if k != "what_i_will_do"},
            **{k: _s(f"the person's words for: What I will do with each answer, {v}") for k, v in LIST_FIELDS.items()}},
           ["name", "what_i_want_to_know", "by", "model"]),
-    _tool("propose_fresh_data", "From metadata only: describe a CSV file by its date column (step describe), or propose the fresh data that "
-          "will check an idea from a metadata file (step propose: the next release, a later period, another site, or a random set aside, "
-          "drawn at the lock). Wraps tools/fresh_data.py; never opens fresh data.",
+    _tool("propose_fresh_data", "From metadata only: describe a CSV file by its date column (step describe), as a STAC Collection and Items "
+          "(give stac, a new folder) or in the factory's own form (give out), or propose the fresh data that will check an idea from a "
+          "description (step propose, from a STAC description or a metadata file: the next release, a later period, another site, or a "
+          "random set aside, drawn at the lock). Wraps tools/fresh_data.py; never opens fresh data.",
           {"workspace": WS, "step": {"type": "string", "enum": ["describe", "propose"]}, "by": BY, "model": MODEL,
            "csv": _s("describe: the data file below the workspace; only its date and series columns are read"),
            "date_column": _s("describe"), "series_column": _s("describe"), "period": _s("describe: year or month"),
@@ -379,8 +388,15 @@ TOOLS = [
            "release": _s("the release's name"), "periods": {"type": "integer", "description": "propose, next-release"},
            "fraction": {"type": "number", "description": "propose, random"}, "draw_over": _s("propose, random: site or id"),
            "what": _s("exactly what data, in words"), "why": _s("propose: why it suits the question"),
-           "unfair": _s("propose: what would make it unfair"), "out": _s("the .yaml file to write, below the workspace")},
-          ["step", "out", "what"]),
+           "unfair": _s("propose: what would make it unfair"), "out": _s("the .yaml file to write, below the workspace"),
+           "stac": _s("describe: a new folder below the workspace for the STAC Collection and Items"),
+           "lat_column": _s("describe, stac"), "lon_column": _s("describe, stac"), "place": _s("describe, stac, with no position: global or none"),
+           "collection": _s("describe, stac: the Collection's id"), "license": _s("describe, stac"),
+           "ndjson": {"type": "boolean", "description": "describe, stac: the Items as one NDJSON file"},
+           "drop_properties": _s("propose, STAC: fields left unread, by name"), "bbox": _s("propose, STAC: west,south,east,north"),
+           "catalog": _s("propose, STAC: where the catalog is asked (below the workspace, or a STAC API's https address)"),
+           "registry": {"type": "boolean", "description": "propose, STAC: ask the registry the server was given (--registry) first"}},
+          ["step", "what"]),
     _tool("start_exploration", "Start an exploration (tools/explore.py start): the data set aside first, exactly as declared, and the working "
           "data the looks may be given. It runs no look.",
           {"workspace": WS, "id": _s("the exploration's id; it goes in explorations/ID"), "question": _s("one sentence ending in a question mark"),
@@ -401,7 +417,7 @@ TOOL_NAMES = [t["name"] for t in TOOLS]
 # ---------------------------------------------------------------- the server
 
 class Server:
-    def __init__(self, workspaces: list, wiki: Path | None):
+    def __init__(self, workspaces: list, wiki: Path | None, registry: Path | None = None):
         try:
             self.workspaces = [Workspace(w) for w in workspaces]
         except Refusal as r:
@@ -410,6 +426,7 @@ class Server:
         if not self.workspaces or len(set(names)) != len(names):
             raise SystemExit("factory_server: give each workspace once, with folders of different names (" + ", ".join(names) + ")")
         self.wiki = Path(wiki).resolve() if wiki and Path(wiki).is_dir() else None
+        self.registry = Path(registry).resolve() if registry and (Path(registry) / "catalog.json").is_file() else None
         self._wiki_server = None
 
     # -- choosing
@@ -707,22 +724,40 @@ class Server:
                                "next": "start_exploration with request " + rel + ", or a study by sf.py start --request (an agent's step)",
                                "text": text}, "composed": True}
 
+    def t_registry_check(self, a):
+        ws = self.ws(a)
+        if self.registry is None:
+            raise Refusal("this server was started without a registry of openings (--registry)")
+        argv = ["openings.py", "check", f"--registry={self.registry}", f"--proposal={inside(ws.root, a.get('proposal'), 'proposal')}", "--json"]
+        if a.get("study"):
+            argv.append(f"--study={inside(ws.root, a['study'], 'study')}")
+        return [run_tool(argv, ws.root)], {"says": "read only: what is merged into the registry is the record; a pull request still open is not"}
+
     def t_propose_fresh_data(self, a):
         ws = self.ws(a)
         step = a.get("step")
         out = str(a.get("out") or "")
-        if not out.endswith((".yaml", ".yml")):
-            raise Refusal("out is a .yaml file below the workspace")
-        if inside(ws.root, out, "out").exists():
-            raise Refusal(f"{out} already exists: a proposal or metadata file is written once, never over")
+        if step == "describe" and a.get("stac"):
+            if out:
+                raise Refusal("describe writes STAC (stac) or the factory's own form (out), not both")
+            if inside(ws.root, a["stac"], "stac").exists():
+                raise Refusal(f"{a['stac']} already exists: a description is written into a new folder, never over one")
+        else:
+            if not out.endswith((".yaml", ".yml")):
+                raise Refusal("out is a .yaml file below the workspace")
+            if inside(ws.root, out, "out").exists():
+                raise Refusal(f"{out} already exists: a proposal or metadata file is written once, never over")
         argv = []
         if step == "describe":
             for k in ("csv", "date_column", "subject"):
                 if not a.get(k):
                     raise Refusal(f"describe needs {k}")
             argv = ["fresh_data.py", "describe", f"--csv={inside(ws.root, a['csv'], 'csv')}", f"--date-column={a['date_column']}",
-                    f"--subject={a['subject']}", f"--what={a['what']}", f"--out={inside(ws.root, out, 'out')}"]
-            argv += [f"--{k.replace('_', '-')}={a[k]}" for k in ("series_column", "period", "release", "cadence") if a.get(k) not in (None, "")]
+                    f"--subject={a['subject']}", f"--what={a['what']}"]
+            argv += [f"--stac={inside(ws.root, a['stac'], 'stac')}"] if a.get("stac") else [f"--out={inside(ws.root, out, 'out')}"]
+            argv += [f"--{k.replace('_', '-')}={a[k]}" for k in ("series_column", "period", "release", "cadence", "lat_column", "lon_column",
+                                                                  "place", "collection", "license") if a.get(k) not in (None, "")]
+            argv += ["--ndjson"] if a.get("ndjson") is True else []
         elif step == "propose":
             by, model = self.agent(a)
             for k in ("metadata", "kind", "why", "unfair"):
@@ -731,8 +766,14 @@ class Server:
             argv = ["fresh_data.py", "propose", f"--metadata={inside(ws.root, a['metadata'], 'metadata')}", f"--kind={a['kind']}",
                     f"--what={a['what']}", f"--why={a['why']}", f"--unfair={a['unfair']}", f"--by={by}", f"--model={model}",
                     f"--out={inside(ws.root, out, 'out')}", f"--studies={ws.root / 'studies'}"]
-            argv += [f"--{k.replace('_', '-')}={a[k]}" for k in ("from", "until", "sites", "regions", "release", "periods", "fraction", "draw_over")
-                     if a.get(k) not in (None, "")]
+            argv += [f"--{k.replace('_', '-')}={a[k]}" for k in ("from", "until", "sites", "regions", "release", "periods", "fraction", "draw_over",
+                                                                  "drop_properties", "bbox") if a.get(k) not in (None, "")]
+            if a.get("catalog"):
+                argv += [f"--catalog={a['catalog'] if re.match(r'^https://', str(a['catalog'])) else inside(ws.root, a['catalog'], 'catalog')}"]
+            if a.get("registry") is True:
+                if self.registry is None:
+                    raise Refusal("this server was started without a registry of openings (--registry)")
+                argv += [f"--registry={self.registry}"]
         else:
             raise Refusal("step is describe or propose")
         return [run_tool(argv, ws.root)], {"says": "from metadata only: the tool reads one metadata file (or, to describe, one CSV file's "
@@ -787,7 +828,8 @@ class Server:
             want = schema["properties"][k]
             ok = (isinstance(v, str) if want["type"] == "string" else isinstance(v, int) and not isinstance(v, bool) if want["type"] == "integer"
                   else isinstance(v, (int, float)) and not isinstance(v, bool) if want["type"] == "number"
-                  else isinstance(v, list) and all(isinstance(i, str) for i in v) if want["type"] == "array" else False)
+                  else isinstance(v, list) and all(isinstance(i, str) for i in v) if want["type"] == "array"
+                  else isinstance(v, bool) if want["type"] == "boolean" else False)
             if not ok or "\x00" in json.dumps(v):
                 raise Refusal(f"{k} is {'a list of strings' if want['type'] == 'array' else 'a ' + want['type']}")
             if "enum" in want and v not in want["enum"]:
@@ -872,6 +914,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--workspace", action="append", type=Path, default=None, help="a workspace (studies/, explorations/); repeatable")
     ap.add_argument("--wiki", type=Path, default=PACKAGE / "openwiki", help="the wiki the knowledge tool searches (default: openwiki/)")
+    ap.add_argument("--registry", type=Path, default=None, help="a clone of the shared registry of openings, read by registry_check")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -880,7 +923,7 @@ def main(argv=None) -> int:
     if any(not Path(w).is_dir() for w in a.workspace or []) or not a.workspace:
         print("factory_server: each --workspace is a folder, and at least one is given", file=sys.stderr)
         return 2
-    return Server(a.workspace, a.wiki).serve()
+    return Server(a.workspace, a.wiki, a.registry).serve()
 
 
 # ---------------------------------------------------------------- the self-test
@@ -1060,6 +1103,12 @@ def selftest() -> int:
                   call(73, "propose_fresh_data", workspace="alpha", step="describe", csv="../secret.md", date_column="Date", subject="a=b", what="w", out="m2.yaml"),
                   call(74, "propose_fresh_data", workspace="alpha", step="propose", metadata="metadata/series.yaml", kind="later-period", **{"from": "2025-01-01"},
                        what="w", why="w", unfair="w", by="agent:analysis-s", model="m", out="proposals/X2-fresh-data.yaml"),
+                  call(75, "propose_fresh_data", workspace="alpha", step="describe", csv="source/series.csv", date_column="Date", series_column="Source",
+                       period="month", subject="record=toy,case=X5", what="the toy series as STAC", stac="stac/series", place="none"),
+                  call(76, "propose_fresh_data", workspace="alpha", step="propose", metadata="stac/series/collection.json", kind="later-period",
+                       **{"from": "2025-01-01"}, what="2025", why="only 2024 has been looked at", unfair="a change at the new year",
+                       by="agent:analysis-s", model="selftest-model", out="proposals/X5-fresh-data.yaml", registry=True),
+                  call(77, "registry_check", workspace="alpha", proposal="proposals/X5-fresh-data.yaml"),
                   call(80, "start_exploration", workspace="alpha", id="X2", question="Does y follow x over 2024?", request="requests/R1.md",
                        subject="record=toy,case=X2", how="a later period", set_aside_window="2025-01-01:2025-12-31",
                        fresh_data="proposals/X2-fresh-data.yaml", why="the following year --by=" + people + " --local-practice",
@@ -1080,9 +1129,11 @@ def selftest() -> int:
                        local_practice=True)]
         audit = tmp / "audit.jsonl"
         env = {k: v for k, v in os.environ.items() if k not in TOKENS}
+        registry = tmp / "registry"
+        subprocess.run([sys.executable, str(HERE / "openings.py"), "init", f"--registry={registry}"], capture_output=True, env=environment(False), check=True)
         before = snapshot()
         driver = [sys.executable, "-I", "-B", "-c", AUDIT_DRIVER, str(audit), str(Path(__file__).resolve()),
-                  "--workspace", str(alpha), "--workspace", str(beta), "--workspace", str(crafted), "--wiki", str(wiki)]
+                  "--workspace", str(alpha), "--workspace", str(beta), "--workspace", str(crafted), "--wiki", str(wiki), "--registry", str(registry)]
         done = subprocess.run(driver, input="\n".join(json.dumps(m) for m in reads) + "\n", capture_output=True, text=True, env=env, timeout=1800)
         after_reads = snapshot()
         got = {r["id"]: r for r in (json.loads(ln) for ln in done.stdout.splitlines() if ln.strip())}
@@ -1125,7 +1176,7 @@ def selftest() -> int:
         check("it answers the handshake, stays silent on a notification, and answers every request of both sessions",
               got.get(1, {}).get("result", {}).get("protocolVersion") == PROTOCOL and len(got) == len([m for m in reads + intake if "id" in m]))
         names = [t["name"] for t in got.get(2, {}).get("result", {}).get("tools", [])]
-        check("it offers exactly the nine read tools and three intake tools", names == TOOL_NAMES and len(names) == 12)
+        check("it offers exactly the ten read tools and three intake tools", names == TOOL_NAMES and len(names) == 13)
         bad_words = ("lock", "sign", "so_what", "verify", "open", "promote", "change", "approve", "merge", "run", "shell", "exec", "look")
         check("no tool's name is a person's act, an opening, a promotion, a change to the definition or a command",
               not [n for n in names if any(w in n for w in bad_words)])
@@ -1133,13 +1184,14 @@ def selftest() -> int:
               all("error" in got.get(100 + n, {}) and "no such tool" in got[100 + n]["error"]["message"] for n in range(11)))
         check("every tool takes only the arguments it lists", all(t["inputSchema"].get("additionalProperties") is False for t in TOOLS))
         # the allow list
-        check("the allow list is exactly the ten commands the tools wrap",
+        check("the allow list is exactly the eleven commands the tools wrap",
               set(ALLOW) == {("waiting.py", None), ("report.py", None), ("check_factory.py", None), ("sf.py", "status"), ("sf.py", "contribution"),
                              ("explore.py", "status"), ("explore.py", "contribution"), ("fresh_data.py", "describe"), ("fresh_data.py", "propose"),
-                             ("explore.py", "start")})
+                             ("explore.py", "start"), ("openings.py", "check")})
         check("no entry of the allow list is a forbidden command or carries a forbidden option",
               not {c for _, c in ALLOW} & FORBIDDEN_COMMANDS and not set().union(*(e["options"] | e.get("flags", set()) for e in ALLOW.values())) & FORBIDDEN_OPTIONS)
-        refused_lists = [["sf.py", "lock", "--study=/s", f"--by={people}", "--local-practice"], ["explore.py", "so-what", "--exploration=/x"],
+        refused_lists = [["openings.py", "record", "--registry=/r", "--study=/s", "--by=platform:github"], ["openings.py", "init", "--registry=/r"],
+                         ["sf.py", "lock", "--study=/s", f"--by={people}", "--local-practice"], ["explore.py", "so-what", "--exploration=/x"],
                          ["sf.py", "verify-acts", "--study=/s"], ["sf.py", "open-held-out", "--study=/s"], ["explore.py", "promote", "--exploration=/x"],
                          ["sf.py", "log-change", "--study=/s"], ["explore.py", "look", "--exploration=/x", "--", "python3", "x.py"],
                          ["fresh_data.py", "reveal", "--proposal=/p"], ["explore.py", "start", f"--by={people}"],
@@ -1258,6 +1310,13 @@ def selftest() -> int:
         check("propose_fresh_data describes a CSV from its date column and proposes from that metadata, as fresh_data.py does",
               not err(70) and (alpha / "metadata" / "series.yaml").is_file() and not err(71) and "proposal written" in text(71)
               and (alpha / "proposals" / "X2-fresh-data.yaml").is_file())
+        check("propose_fresh_data describes the CSV as a STAC Collection and Items, and proposes from it, asking the registry first",
+              not err(75) and (alpha / "stac" / "series" / "collection.json").is_file() and "STAC description written" in text(75)
+              and not err(76) and "As a STAC query" in text(76) and (alpha / "proposals" / "X5-fresh-data.yaml").is_file()
+              and "records no opening" in (alpha / "proposals" / "X5-fresh-data.yaml").read_text())
+        check("registry_check answers as `openings.py check` does on the command line",
+              not err(77) and doc(77).get("answer") == json.loads(cli("openings.py", "check", f"--registry={registry}",
+                                                                     f"--proposal={alpha / 'proposals' / 'X5-fresh-data.yaml'}", "--json")))
         check("propose_fresh_data refuses a person, a file outside the workspace, and a proposal written twice",
               err(72) and err(73) and err(74) and "already exists" in text(74))
         x2 = alpha / "explorations" / "X2" / "exploration-log.jsonl"
@@ -1272,7 +1331,7 @@ def selftest() -> int:
               "options no tool lists", all(err(i) for i in (81, 82, 83, 84, 85, 86)) and not any((alpha / "explorations" / n).exists() for n in ("X3", "X4", "X5", "X6", "X7")))
         made = sorted(k for k in set(after) - set(before))
         check("intake wrote only the request, the metadata, the proposal, the exploration and the record of what is set aside",
-              all(m_.startswith(tuple(str(alpha / p) for p in ("requests", "metadata", "proposals", "explorations/X2", "studies/fresh-data.jsonl"))) for m_ in made)
+              all(m_.startswith(tuple(str(alpha / p) for p in ("requests", "metadata", "stac", "proposals", "explorations/X2", "studies/fresh-data.jsonl"))) for m_ in made)
               and {k for k in before if before[k] != after.get(k)} <= {str(alpha / "studies" / "openings.jsonl"), str(alpha / "studies" / "fresh-data.jsonl")})
         check("serving left no bytecode folder beside the tools", not (HERE / "__pycache__").exists())
         if done.stderr.strip() or done2.stderr.strip():

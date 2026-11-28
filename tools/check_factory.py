@@ -234,7 +234,7 @@ def files_of(root: Path) -> list:
 # (a module named like one the tools import, a bytecode folder, anything left behind) is refused at the lock and the
 # opening, because a tool loads its neighbours from that folder.
 TOOL_FILES = ("benchmark.py", "check_factory.py", "check_roles.py", "explore.py", "factory_server.py", "factory_update.py", "fence.py",
-              "fresh_data.py", "knowledge.py", "report.py", "scorers.py", "sf.py", "waiting.py", "wiki_server.py")
+              "fresh_data.py", "knowledge.py", "openings.py", "report.py", "scorers.py", "sf.py", "stac.py", "waiting.py", "wiki_server.py")
 
 
 def is_bytecode(rel: str) -> bool:
@@ -267,6 +267,54 @@ def unbound_files(factory: Path, tools: Path) -> list:
             elif label == "tools/" and rel not in TOOL_FILES and "__pycache__" not in rel.split("/"):
                 out.append(f"tools/{rel}: not one of the tools ({', '.join(TOOL_FILES)}), and a tool loads its neighbours from this folder")
     return out
+
+
+# A definition, or a repository's tools, that a command is pointed at may sit in a workspace nobody vouches for. The tools
+# load code from there (a definition's harness verifier, the parsers of a repository's tools), so they compare it first with
+# their own, byte for byte, as the factory server does, and refuse code that differs unless told to run it (USE_ITS_CODE).
+USE_ITS_CODE = "--use-workspace-code"
+USE_ITS_CODE_HELP = ("run the code of a definition or of tools that are not this package's own (refused without it): for a workspace "
+                     "you trust; the output then says so in capitals")
+
+
+def code_of(tree: Path) -> dict:
+    """Every file of a tree that a tool could run or load (a .py file, a shell script, bytecode, anything executable), by
+    path, with its checksum; a link counts, as a link."""
+    out, tree = {}, Path(tree)
+    if not tree.is_dir():
+        return out
+    for f in sorted(tree.rglob("*")):
+        rel = f.relative_to(tree).as_posix()
+        if f.is_symlink():
+            out[rel] = "a link"
+        elif f.is_file() and (f.suffix in (".py", ".sh", ".pyc", ".pyo") or "__pycache__" in f.parts or os.access(f, os.X_OK)):
+            out[rel] = sha_bytes(f.read_bytes())
+    return out
+
+
+def foreign_code(definition: Path | None, repository: Path | None = None) -> list:
+    """The files of code, in a definition tree that is not this package's own factory/ and in the tools/ of a repository that
+    is not this package's own, that differ from this package's own, by path. Empty when there are none."""
+    out = []
+    if definition is not None and Path(definition).resolve() != (REPO / "factory").resolve():
+        mine, theirs = code_of((REPO / "factory").resolve()), code_of(Path(definition).resolve())
+        out += [f"factory/{k}" for k in sorted(set(mine) | set(theirs)) if mine.get(k) != theirs.get(k)]
+        if Path(definition).is_symlink():
+            out.append("factory/: a link")
+    if repository is not None and Path(repository).resolve() != REPO.resolve() and (Path(repository) / "tools").exists():
+        mine, theirs = code_of(HERE), code_of((Path(repository) / "tools").resolve())
+        out += [f"tools/{k}" for k in sorted(set(mine) | set(theirs)) if mine.get(k) != theirs.get(k)]
+    return out
+
+
+def foreign_code_words(found: list, where: str, allowed: bool) -> str:
+    """What a tool says about code that is not its own: a refusal, or, when told to run it, a warning in capitals."""
+    listed = ", ".join(found[:4]) + (f" and {len(found) - 4} more" if len(found) > 4 else "")
+    if allowed:
+        return (f"USING THE WORKSPACE'S OWN CODE, NOT THIS PACKAGE'S: {where} carries code that differs from the tools that are running "
+                f"({listed}), and {USE_ITS_CODE} says to run it. Nothing here vouches for that code")
+    return (f"{where} carries code that is not this package's own ({listed}): this tool would load it and run it in its own name. Run "
+            f"that workspace's own tools on it, or pass {USE_ITS_CODE} if you trust it")
 
 
 def acts_change_problems(root: Path, spec: dict | None = None) -> list:
@@ -1675,6 +1723,39 @@ def selftest() -> int:
                         and set(st["skills"]) == {"read-what-is-known", "propose-fresh-data", "explore-a-record", "write-up-a-lead", "review-work", "draft-a-knowledge-page", "note-the-fit"}
                         and all(SHA.match(v) for v in st["skills"].values())))
         results.append(("the checks a stage and a scorer may name are known here", len(STAGE_CHECKS) == 11 and len(SCORER_CHECKS) == 9))
+        # the command line, like the factory server, does not run code a workspace carries unless told to
+        same = copy("identical").parent
+        crafted = copy("crafted").parent
+        marker = tmp / "MARKER"
+        plant = f"import pathlib as _p; _p.Path({str(marker)!r}).write_text('ran')\n"
+        for rel in ("tools/sf.py", "tools/explore.py", "factory/harnesses/github/verify_acts.py"):
+            f = crafted / rel
+            f.write_text(f.read_text().replace("import sys\n", "import sys\n" + plant, 1))
+        (crafted / "studies" / "S1").mkdir(parents=True)
+
+        def cli(tool: str, *args) -> subprocess.CompletedProcess:
+            env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON") and k not in ("SF_INSIDE_A_LOOK", "SF_INSIDE_A_STEP")}
+            return subprocess.run([sys.executable, str(HERE / tool), *map(str, args)], capture_output=True, text=True, env=env,
+                                  cwd=str(tmp), stdin=subprocess.DEVNULL, timeout=600)
+        got = cli("check_factory.py", crafted / "factory")
+        results.append(("the command line refuses to validate a definition whose tools or harness code are not its own, runs none of "
+                        "that code, and says it is not validated", got.returncode == 2 and "NOT VALIDATED" in got.stdout
+                        and "not this package's own" in got.stdout and "tools/sf.py" in got.stdout and not marker.exists()))
+        got = cli("check_roles.py", "--root", crafted)
+        results.append(("check_roles.py refuses a repository whose tools are not its own, and loads none of them",
+                        got.returncode == 2 and "not this package's own" in got.stdout and not marker.exists()))
+        got = cli("sf.py", "status", "--study", crafted / "studies" / "S1", "--factory", crafted / "factory")
+        got2 = cli("waiting.py", "--workspace", crafted, "--factory", crafted / "factory")
+        got3 = cli("report.py", "--workspace", crafted, "--factory", crafted / "factory")
+        results.append(("sf.py, waiting.py and report.py refuse a definition whose code is not their own, before reading anything",
+                        all(g.returncode == 2 and "not this package's own" in g.stderr for g in (got, got2, got3)) and not marker.exists()))
+        got = cli("check_factory.py", same / "factory")
+        results.append(("a definition and tools whose code is this package's own, byte for byte, are validated as before",
+                        got.returncode == 0 and "check-factory: VALID" in got.stdout and "WORKSPACE'S OWN CODE" not in got.stdout))
+        got = cli("check_factory.py", crafted / "factory", USE_ITS_CODE)
+        results.append((f"told with {USE_ITS_CODE}, the validator runs the workspace's own code and says so in capitals, first and last",
+                        "USING THE WORKSPACE'S OWN CODE, NOT THIS PACKAGE'S" in got.stdout.splitlines()[0]
+                        and "CAME FROM RUNNING THE WORKSPACE'S OWN CODE" in got.stdout.splitlines()[-1] and marker.exists()))
         results.append(("the self-test leaves no bytecode folder beside the tools", not (HERE / "__pycache__").exists()))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1691,6 +1772,7 @@ def main() -> int:
     ap.add_argument("--repository", type=Path, default=None, help="the repository the tools are in (default: the folder the tree is in)")
     ap.add_argument("--summary", nargs=2, metavar=("OLD", "NEW"), default=None, help="what changed between two trees; a tree is a folder or git:<ref>:<path>")
     ap.add_argument("--checksum", action="store_true", help="print the tree's checksum, as the lock binds it")
+    ap.add_argument(USE_ITS_CODE, dest="use_workspace_code", action="store_true", help=USE_ITS_CODE_HELP)
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -1712,6 +1794,12 @@ def main() -> int:
             print(f"check-factory: NOT VALIDATED: {e}")
             return 2
         return 0
+    foreign = foreign_code(a.root, a.repository or Path(a.root).resolve().parent)
+    if foreign and not a.use_workspace_code:
+        print(f"check-factory: NOT VALIDATED: {foreign_code_words(foreign, f'the definition at {a.root} or the tools beside it', False)}")
+        return 2
+    if foreign:
+        print("check-factory: " + foreign_code_words(foreign, f"the definition at {a.root} or the tools beside it", True))
     word, code, problems, nv = result(a.root, a.repository)
     for q in problems:
         print("check-factory:", q)
@@ -1727,6 +1815,8 @@ def main() -> int:
         print(f"check-factory: INVALID ({len(problems)} broken rule(s))")
     else:
         print(f"check-factory: NOT VALIDATED ({len(nv)} thing(s) could not be told; this is never a pass)")
+    if foreign:
+        print("check-factory: THE RESULT ABOVE CAME FROM RUNNING THE WORKSPACE'S OWN CODE, NOT THIS PACKAGE'S")
     return code
 
 

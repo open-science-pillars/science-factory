@@ -1,0 +1,60 @@
+# The shared registry of openings, added to after a verified opening. A template: copy it to .github/workflows/openings.yml in
+# the repository where the studies live, with tools/ and factory/ of the science factory in that repository. This workflow
+# has never run on GitHub; `tools/openings.py selftest` tests what it runs, on throwaway git repositories, in practice.
+#
+# When a commit on the protected branch adds an opening to a study log (the coordinating agent's `sf.py open-held-out`,
+# committed by pull request), this job asks GitHub whether that study's lock is a merge people approved (`verified`), and
+# only then runs `tools/openings.py record --by platform:github`, which writes the opening as a STAC Item into a new branch
+# of the registry, and opens a pull request there for a person, or a workflow of the registry, to merge. No agent writes
+# into the registry. The registry is a repository of its own (REGISTRY below, owner/name), reached with a token that may
+# write its contents and pull requests (the secret OPENINGS_REGISTRY_TOKEN, scoped to that repository alone).
+name: record an opening in the registry
+
+on:
+  push:
+    branches: [main]            # the protected branch that factory.yaml names
+    paths: ["studies/*/study-log.jsonl"]
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: OWNER/openings-registry   # the registry's repository on GitHub
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read       # the standing of each lock, asked of GitHub
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: astral-sh/setup-uv@v5
+      - name: The registry, cloned beside the studies
+        env:
+          GH_TOKEN: ${{ secrets.OPENINGS_REGISTRY_TOKEN }}
+        run: gh repo clone "$REGISTRY" "$RUNNER_TEMP/registry"
+      - name: Each study whose log gained a finished opening, recorded after its lock is verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for log in $(git diff --name-only HEAD^ HEAD -- 'studies/*/study-log.jsonl'); do
+            study=$(dirname "$log")
+            if git diff HEAD^ HEAD -- "$log" | grep -q '"kind": "opening.finished"'; then
+              uv run tools/openings.py record --registry "$RUNNER_TEMP/registry" --study "$study" --by platform:github \
+                | tee -a "$GITHUB_STEP_SUMMARY" || echo "$study: not recorded (the tool said why above)"
+            fi
+          done
+      - name: A pull request in the registry for each branch written
+        env:
+          GH_TOKEN: ${{ secrets.OPENINGS_REGISTRY_TOKEN }}
+        run: |
+          cd "$RUNNER_TEMP/registry"
+          for branch in $(git for-each-ref --format='%(refname:short)' refs/heads/opening/); do
+            git push origin "$branch"
+            gh pr create --repo "$REGISTRY" --head "$branch" --base main \
+              --title "The opening ${branch#opening/}" \
+              --body "Written by tools/openings.py after a verified opening in ${{ github.repository }} (commit ${{ github.sha }}). Merging it makes it the record."
+          done

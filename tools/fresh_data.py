@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "pystac[validation]", "duckdb"]
 # ///
 """fresh_data: the fresh data for a confirming study, proposed from metadata only.
 
@@ -138,6 +138,30 @@ def _fence():
     return sys.modules["fence"]
 
 
+def _stac():
+    """tools/stac.py, by its path: STAC descriptions read, written, validated and queried."""
+    if "stac" not in sys.modules:
+        spec = _source_spec("stac", HERE / "stac.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["stac"] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules["stac"]
+
+
+def is_stac(path) -> bool:
+    """Is this file a STAC description (a Collection, a Catalog, a FeatureCollection of Items, NDJSON of Items, stac-geoparquet)?"""
+    f = Path(path)
+    if f.suffix.lower() in (".ndjson", ".jsonl", ".parquet"):
+        return True
+    if f.suffix.lower() != ".json" or not f.is_file():
+        return False
+    try:
+        obj = json.loads(f.read_bytes())
+    except ValueError:
+        return False
+    return isinstance(obj, dict) and obj.get("type") in ("Collection", "Catalog", "FeatureCollection") and "stac_version" in json.dumps(obj)[:100000]
+
+
 KINDS = {  # the name on the command line: (the words people read, a caution the tool adds, how explore.py sets it aside)
     "next-release": ("the next data release (wait for it)",
                      "A new release can reprocess the old data too: if the working data changes with it, compare like with like, "
@@ -196,17 +220,36 @@ def subject_key(subject) -> str:
 
 
 # ---- metadata, and nothing else ----------------------------------------------------
-def read_metadata(path) -> dict:
-    """The one file this tool reads to make a proposal. It is metadata only: what exists, never what was measured.
-    Any key the form does not have is refused, because a field nobody named may hold values."""
+def read_metadata(path, drop=()) -> dict:
+    """The one description this tool reads to make a proposal. It is metadata only: what exists, never what was measured.
+    Any key the form does not have is refused, because a field nobody named may hold values. A STAC description (the default
+    way to describe data) is read through tools/stac.py into the same form, its own refusals first: a property or asset field
+    a proposal does not read is refused unless named in `drop`."""
     f = Path(path)
     if not f.is_file():
         raise Refused(f"`--metadata {path}` names no file")
+    if is_stac(f):
+        st = _stac()
+        try:
+            desc = st.read_description(f)
+            got = st.to_metadata(desc, drop)
+        except st.Refused as r:
+            raise Refused(f"the STAC description {f.name}: {r}")
+        _check_meta(got["meta"])
+        return {"meta": got["meta"], "sha256": desc["sha256"], "path": str(f.resolve()), "stac": got["stac"], "read": desc["files"]}
+    if drop:
+        raise Refused("`--drop-properties` names properties of a STAC description; this metadata file is the factory's own form")
     raw = f.read_bytes()
     try:
         meta = json.loads(raw) if f.suffix.lower() == ".json" else yaml.safe_load(raw)
     except (ValueError, yaml.YAMLError):
         raise Refused(f"`--metadata {path}` is not JSON or YAML that parses")
+    _check_meta(meta)
+    return {"meta": meta, "sha256": sha_bytes(raw), "path": str(f.resolve())}
+
+
+def _check_meta(meta) -> None:
+    """The form of a metadata file, whichever way it was written."""
     if not isinstance(meta, dict):
         raise Refused("a metadata file is a mapping with `subject` and `items`")
     other = sorted(set(map(str, meta)) - set(TOP_KEYS))
@@ -260,7 +303,6 @@ def read_metadata(path) -> dict:
             raise Refused(f"each entry of `files` is a mapping with `name` and `sha256` (64 hexadecimal digits), and at most {', '.join(FILE_KEYS)}")
         if "rows" in fl and not (isinstance(fl["rows"], int) and not isinstance(fl["rows"], bool) and fl["rows"] >= 0):
             raise Refused(f"file {fl['name']}: `rows` is a whole number")
-    return {"meta": meta, "sha256": sha_bytes(raw), "path": str(f.resolve())}
 
 
 def span(it: dict) -> tuple | None:
@@ -330,9 +372,20 @@ def propose(a) -> dict:
         raise Refused("`--by` is human:<id> or agent:<id>, the actor's own name")
     if str(a.by).startswith("agent:") and not str(a.model or "").strip():
         raise Refused("an agent says which model it is: pass --model <the model's name>")
-    got = read_metadata(a.metadata)
+    got = read_metadata(a.metadata, [d.strip() for d in str(getattr(a, "drop_properties", None) or "").split(",") if d.strip()])
     meta = got["meta"]
     items = meta["items"]
+    box = None
+    if getattr(a, "bbox", None):
+        if not got.get("stac"):
+            raise Refused("`--bbox` narrows a STAC description by place; this metadata file is the factory's own form, which has no place")
+        st = _stac()
+        try:
+            box = st.parse_bbox(a.bbox)
+        except st.Refused as r:
+            raise Refused(str(r))
+        if a.kind not in ("later-period", "next-release"):
+            raise Refused("`--bbox` goes with a later period or the next release: the fresh data is then the Items after a date that meet the box")
     rule, fresh, working, neither, members, seed, population = {}, [], [], [], [], None, []
     explore = ["--how", KINDS[a.kind][2]]
     if a.kind == "later-period":
@@ -351,6 +404,10 @@ def propose(a) -> dict:
                 working.append(it)
             else:
                 neither.append(it)
+        if box is not None:  # Items in the period that do not meet the box are neither fresh nor to be explored: the window still fences them
+            away = [it for it in fresh if not _stac().bbox_meets(got["stac"]["items"][it["id"]]["bbox"], box)]
+            fresh = [it for it in fresh if it not in away]
+            neither += away
         members = [it["id"] for it in fresh]
         explore += ["--set-aside-window", f"{a.from_}:{a.until or ''}"]
     elif a.kind == "another-site":
@@ -457,12 +514,42 @@ def propose(a) -> dict:
         "set_aside_with": explore, "held_out_for_the_plan": held,
         "proposed": {"by": a.by, "model": a.model, "at": now(), "tool_sha256": sha_file(TOOL)},
     }
+    if got.get("stac"):
+        proposal["stac"] = stac_block(a, got, rule, fresh, working, box)
     if a.kind == "random":
         size.update(fresh_items=rule["k"], working_items=None, fresh_observations=None, working_observations=None,
                     to_be_drawn=f"{rule['k']} of {rule['of']} ({unit}s), drawn at the lock")
         proposal["draw"] = {"at": "the lock", "drawn_from": population, "seed_from": DRAWN_AT,
                             "not_before_the_lock": "no seed exists before the lock request is merged, so nobody can draw again until the members suit them"}
     return {"proposal": proposal, "seed": None}
+
+
+def stac_block(a, got: dict, rule: dict, fresh: list, working: list, box) -> dict:
+    """What a proposal made from a STAC description binds: the query that is the fresh data (the collection, the time after
+    the cut-off or inside the later period, a box or none), the fresh Items published now with each asset's checksum (bound
+    at the lock; none when the release is not out, and then the query is what is bound), and the working Items by checksum
+    (what the fence lets a look read)."""
+    st, sx = _stac(), got["stac"]
+    cid = sx["collection"]
+    if a.kind == "later-period":
+        q = st.query_of(cid, a.from_, a.until, box)
+    elif a.kind == "next-release":
+        first = (dt.date.fromisoformat(rule["cut_off"]) + dt.timedelta(days=1)).isoformat()
+        q = st.query_of(cid, first, (rule.get("periods") or {}).get("until"), box)
+    else:
+        q = {"collections": [cid], "datetime": None, "bbox": None, "ids": "the members"}
+
+    def bound(it):
+        s_ = sx["items"][it["id"]]
+        return {"id": it["id"], "start": s_["start"], "end": s_["end"], "assets": s_["assets"]}
+    unsummed = [it["id"] for it in fresh + working if any(v["sha256"] is None for v in sx["items"][it["id"]]["assets"].values())
+                or not sx["items"][it["id"]]["assets"]]
+    return {"collection": cid, "description": {"file": os.path.basename(got["path"]), "kind": sx["kind"], "sha256": got["sha256"],
+                                               "files_read": len(got.get("read") or [])},
+            "catalog": getattr(a, "catalog", None) or got["path"], "query": q,
+            "items": [bound(it) for it in fresh] if a.kind != "random" else [],
+            "published": bool(fresh) if a.kind != "random" else None,
+            "working_items": [bound(it) for it in working], "without_checksums": unsummed, "dropped_unread": sx["dropped"]}
 
 
 # ---- describe: the metadata of one long file, from its date column ------------------
@@ -545,6 +632,15 @@ def describe(path, date_column: str, series_column: str | None, period: str) -> 
 
 
 def cmd_describe(a) -> None:
+    if getattr(a, "stac", None):
+        if getattr(a, "out", None):
+            raise Refused("describe writes STAC (`--stac DIR`) or the factory's own form (`--out FILE`), not both")
+        return cmd_describe_stac(a)
+    for k in ("files", "lat_column", "lon_column", "place", "collection", "license"):
+        if getattr(a, k, None):
+            raise Refused(f"`--{k.replace('_', '-')}` goes with `--stac`")
+    if not a.csv or not a.out:
+        raise Refused("describe takes `--stac DIR` (a STAC Collection and Items, the default way) or `--csv FILE --out FILE.yaml`")
     out = Path(os.path.abspath(a.out))
     if out.suffix.lower() not in (".yaml", ".yml"):
         raise Refused("`--out` is the metadata file to write, a .yaml file")
@@ -576,6 +672,160 @@ def cmd_describe(a) -> None:
           + (f"; release `{a.release}` declared, {a.cadence}" if a.release else ""))
 
 
+def catalog_of(p: dict, proposal_path) -> str | None:
+    """Where the catalog of a STAC proposal is: an address as written, or a local path from the proposal's own folder."""
+    c = (p.get("stac") or {}).get("catalog")
+    if not c:
+        return None
+    if re.match(r"^https?://", str(c), re.I):
+        return str(c)
+    return os.path.normpath(Path(os.path.abspath(proposal_path)).parent / str(c))
+
+
+def describe_rows(f: Path, date_column: str, series_column, lat_column, lon_column) -> list:
+    """(series, first day, last day, lat, lon) for each row of a CSV or Parquet file: its date column, and its series and
+    position columns where named. No other column is read."""
+    want = [c for c in (date_column, series_column, lat_column, lon_column) if c]
+    if _stac().is_parquet(f):
+        st = _stac()
+        con = st.duck([f])
+        try:
+            have = [r[0] for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet({st.sql_text(str(f.resolve()))})").fetchall()]
+            for c in want:
+                if c not in have:
+                    raise Refused(f"`{c}` is not a column of {f.name} (it has {', '.join(have)})")
+            got = con.execute("SELECT " + ", ".join(f'"{c}"' for c in want) + f" FROM read_parquet({st.sql_text(str(f.resolve()))})").fetchall()
+        finally:
+            con.close()
+        table = [dict(zip(want, r)) for r in got]
+    else:
+        import csv
+        rows = list(csv.reader(io.StringIO(f.read_bytes().decode("utf-8-sig", errors="replace"))))
+        if not rows:
+            raise Refused(f"{f.name} is empty")
+        head = [c.strip() for c in rows[0]]
+        for c in want:
+            if c not in head:
+                raise Refused(f"`{c}` is not a column of {f.name} (its header names {', '.join(head)})")
+        idx = {c: head.index(c) for c in want}
+        table = [{c: (r[i] if i < len(r) else "") for c, i in idx.items()} for r in rows[1:] if any(x.strip() for x in r)]
+    out, bad = [], 0
+    for r in table:
+        v = r[date_column]
+        got = (v, v) if isinstance(v, dt.date) and not isinstance(v, dt.datetime) else \
+            ((v.date(), v.date()) if isinstance(v, dt.datetime) else span_of_cell(str(v) if v is not None else ""))
+        if got is None:
+            bad += 1
+            continue
+        name = str(r.get(series_column) or "").strip() if series_column else ""
+        if series_column:
+            try:
+                float(name)
+                raise Refused(f"the column `{series_column}` holds numbers ({name!r}): a series is named, not measured, so this is not a "
+                              "series column, and nothing was written")
+            except ValueError:
+                pass
+        pos = None
+        if lat_column and lon_column:
+            try:
+                pos = (float(r[lat_column]), float(r[lon_column]))
+            except (TypeError, ValueError):
+                bad += 1
+                continue
+            if not (-90 <= pos[0] <= 90 and -180 <= pos[1] <= 180):
+                raise Refused(f"{f.name} has a position outside the globe ({pos[0]}, {pos[1]}): `--lat-column` and `--lon-column` are degrees")
+        out.append((name, got[0], got[1], pos))
+    if bad:
+        raise Refused(f"{bad} row(s) of {f.name} have no date in `{date_column}` that reads as YYYY, YYYY-MM or YYYY-MM-DD"
+                      + (" or no position that reads as degrees" if lat_column else "") + ": this file cannot be described this way")
+    if not out:
+        raise Refused(f"{f.name} has no rows to describe")
+    return out
+
+
+def cmd_describe_stac(a) -> None:
+    """Describe data as STAC: a Collection, and one Item for each series and period of one long file (`--csv`), or for each file
+    (`--files`), each with its time (start and end), its file by File Info checksum and size, and its place from the data's own
+    positions where named, or the whole globe or none as the person states it. Validated against the shipped schemas."""
+    st = _stac()
+    out = Path(os.path.abspath(a.stac))
+    subject = {}
+    for part in str(a.subject or "").split(","):
+        k, eq, v = part.partition("=")
+        if not eq or not k.strip() or not v.strip():
+            raise Refused("`--subject` is key=value,key=value: what the data is about, the keys a later plan's `pair` carries")
+        subject[k.strip()] = v.strip()
+    if bool(a.lat_column) != bool(a.lon_column):
+        raise Refused("a position is named by both `--lat-column` and `--lon-column`")
+    if not a.lat_column and a.place not in ("global", "none"):
+        raise Refused("the data names no position (`--lat-column`, `--lon-column`), so say what place it covers: `--place global` (the "
+                      "whole globe) or `--place none` (no geometry, which STAC allows, and then no bbox); the tool does not guess")
+    if a.lat_column and a.place:
+        raise Refused("`--place` is for data with no position of its own; the positions named are its place")
+    if a.release and a.cadence not in CADENCES:
+        raise Refused(f"a release this data will grow by has a cadence: `--cadence` is one of {', '.join(CADENCES)}")
+    sources = [Path(os.path.abspath(x)) for x in ([a.csv] if a.csv else []) + list(a.files or [])]
+    if bool(a.csv) == bool(a.files):
+        raise Refused("describe as STAC takes one long file (`--csv`, one Item for each series and period) or `--files` (one Item for each file)")
+    for f in sources:
+        if not f.is_file():
+            raise Refused(f"{f} names no file")
+    cid = a.collection or "-".join(re.sub(r"[^A-Za-z0-9_.-]+", "-", v).strip("-") for v in subject.values()).lower() or "data"
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", cid):
+        raise Refused("`--collection` is a short identifier: letters, digits, `.`, `_` and `-`")
+    many = a.ndjson or None
+    groups = {}  # (item id) -> [first, last, count, positions, file, series]
+    for f in sources:
+        rows = describe_rows(f, a.date_column, a.series_column, a.lat_column, a.lon_column)
+        for name, first, last, pos in rows:
+            if a.csv:
+                label = first.strftime("%Y" if a.period == "year" else "%Y-%m")
+                key = f"{name}-{label}" if name else label
+            else:
+                key = f.stem if not name else f"{f.stem}-{name}"
+            g = groups.setdefault(key, [first, last, 0, [], f, name])
+            g[0], g[1], g[2] = min(g[0], first), max(g[1], last), g[2] + 1
+            if pos:
+                g[3].append(pos)
+    names = {g[5] for g in groups.values() if g[5]}
+    if len(names) > 100:
+        raise Refused(f"`{a.series_column}` names {len(names)} series: more than a hundred is a column of values, not of names")
+    if a.csv and a.period not in ("year", "month"):
+        raise Refused("`--period` is year or month: one Item for each series and period")
+    total = len(groups)
+    nd = (total > st.NDJSON_FROM) if many is None else True
+    item_dir = out if nd else out / "items"
+    items = []
+    for key, (first, last, n, pos, f, name) in sorted(groups.items()):
+        iid = re.sub(r"[^A-Za-z0-9_.-]+", "-", key).strip("-")
+        box = [min(p[1] for p in pos), min(p[0] for p in pos), max(p[1] for p in pos), max(p[0] for p in pos)] if pos else None
+        extra = {"sf:count": n, **({"sf:series": name} if name else {})}
+        items.append(st.make_item(iid, cid, first, last, f, item_dir, box, a.place or "none", extra))
+    boxes = [it["bbox"] for it in items if it.get("bbox")]
+    spatial = [min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)] if boxes else list(st.GLOBAL)
+    first = min(g[0] for g in groups.values())
+    last = max(g[1] for g in groups.values())
+    col = {"type": "Collection", "stac_version": st.STAC_VERSION, "stac_extensions": [], "id": cid,
+           "description": " ".join(str(a.what).split()) + ("" if boxes else (" The data names no position: " + (
+               "its Items carry the whole globe as their place, as stated" if a.place == "global" else
+               "its Items carry no geometry, and the Collection's spatial extent is the whole globe, which STAC requires"))),
+           "license": a.license or "other", "extent": {"spatial": {"bbox": [spatial]}, "temporal": {"interval": [[st.iso(first), st.iso(last, True)]]}},
+           "sf:subject": subject, "sf:written_by": "tools/fresh_data.py describe, from the date column"
+           + (", the series column" if a.series_column else "") + (", the position columns" if a.lat_column else "") + " only; no measured value is here"}
+    if a.release:
+        col["sf:releases"] = [{"name": a.release, "cadence": a.cadence, "after": last.isoformat(),
+                               "note": f"the {a.cadence} update that adds data after {last.isoformat()}"}]
+    try:
+        done = st.write_description(out, col, items, ndjson=nd)
+    except st.Refused as r:
+        raise Refused(str(r))
+    read_metadata(done["collection"])  # what it wrote is a description the proposing step accepts
+    print(f"STAC description written: {done['collection']}: the collection `{cid}`, {done['items']} Item(s)"
+          + (f" for {len(names)} series ({', '.join(sorted(names))})" if names else "") + f", {first} to {last}"
+          + (" as one NDJSON file" if done["ndjson"] else " as one file each") + f", each asset by sha256 and size; validated with {done['validated']}"
+          + (f"; release `{a.release}` declared, {a.cadence}, after {last}" if a.release else ""))
+
+
 def seed_path(proposal_path: Path) -> Path:
     return Path(proposal_path).with_suffix(".seed")
 
@@ -602,6 +852,20 @@ def cmd_propose(a) -> None:
     studies = Path(os.path.abspath(a.studies))
     got = propose(a)
     p, seed = got["proposal"], got["seed"]
+    if getattr(a, "registry", None):  # the shared registry of openings: data another study opened is not fresh
+        if not p.get("stac"):
+            raise Refused("`--registry` checks a proposal made from a STAC description, and this one is made from the factory's own form")
+        if "openings" not in sys.modules:
+            spec = _source_spec("openings", HERE / "openings.py")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["openings"] = mod
+            spec.loader.exec_module(mod)
+        said = sys.modules["openings"].check(a.registry, p)
+        if said["before"]:
+            raise Refused("nothing was proposed: " + said["words"])
+        p["registry"] = {"asked": said["registry"], "openings_read": said["openings_read"], "words": said["words"], "at": now()}
+    if p.get("stac") and not re.match(r"^https?://", str(p["stac"]["catalog"]), re.I):  # a local catalog, from where the proposal is
+        p["stac"]["catalog"] = os.path.relpath(os.path.abspath(p["stac"]["catalog"]), out.parent)
     out.parent.mkdir(parents=True, exist_ok=True)
     body = ("# A proposal of the fresh data for a confirming study, written by tools/fresh_data.py from metadata only.\n"
             "# Do not edit it: the record beside the studies holds its checksum, and the study tool and the exploring tool\n"
@@ -711,6 +975,20 @@ def in_words(p: dict, revealed: str | None = None, record: dict | None = None) -
         what = f"{rule.get('k')} of {rule.get('of')} ({'sites' if rule.get('draw_over') == 'site' else 'items'}), to be drawn at the lock"
     lines += [f"**The members.** {what}: " + (", ".join(map(str, p.get("members") or [])) or ("to be drawn at the lock" if p.get("kind") == "random"
                                                                                               else "none listed yet")) + ".", ""]
+    stx = p.get("stac")
+    if stx:
+        q = stx.get("query") or {}
+        bound = stx.get("items") or []
+        lines += [f"**As a STAC query.** The fresh data is the collection `{stx.get('collection')}`"
+                  + (f", {q['datetime']}" if q.get("datetime") else "") + (f", within the box {q['bbox']} (west, south, east, north)" if q.get("bbox") else "")
+                  + f", asked of {stx.get('catalog')}. "
+                  + (f"{len(bound)} Item(s) are published and the lock binds each by ID and the checksum of its files: "
+                     + ", ".join(f"{i['id']} ({', '.join(str(v.get('sha256') or 'NO CHECKSUM')[:12] for v in i['assets'].values())})" for i in bound[:6])
+                     + (f", and {len(bound) - 6} more" if len(bound) > 6 else "") + "."
+                     if bound else "No Item of it is published yet: the lock binds the query itself, and the opening asks the catalog.")
+                  + f" The working data is {len(stx.get('working_items') or [])} Item(s), each bound by checksum: a look is given their files and no others."
+                  + (f" ITEMS WITH NO CHECKSUM, which nothing can bind: {', '.join(stx['without_checksums'][:6])}." if stx.get("without_checksums") else "")
+                  + (f" Fields of the description left unread: {', '.join(stx['dropped_unread'])}." if stx.get("dropped_unread") else ""), ""]
     prop = p.get("proposed") or {}
     meta = p.get("metadata") or {}
     lines += [f"**Who chose it, and from what.** Proposed by {prop.get('by')}" + (f" (model {prop.get('model')})" if prop.get("model") else "")
@@ -792,6 +1070,9 @@ def cmd_check(a) -> None:
 class A:
     def __init__(self, **k):  # the arguments of a command, as the parser gives them
         self.__dict__.update({"from_": None, "until": None, "sites": None, "regions": None, "release": None, "fraction": None, "periods": None,
+                              "stac": None, "files": None, "lat_column": None, "lon_column": None, "place": None, "collection": None,
+                              "license": None, "ndjson": False, "drop_properties": None, "bbox": None, "catalog": None, "registry": None, "csv": None, "out": None,
+                              "series_column": None, "release": None, "cadence": None,
                               "draw_over": None, "model": "selftest-model", "by": "agent:analysis", "studies": None, **k})
 
 
@@ -988,6 +1269,76 @@ def selftest() -> int:
               nr["rule"].get("cadence") == "monthly" and propose(A(kind="next-release", release="next-update", **cbase))["proposal"]["rule"].get("cadence") == "monthly")
         check("a number of periods for a release with no cadence is refused, and says why",
               "declares none" in refused(propose, A(kind="next-release", release="v2", periods=12, **base)))
+        # STAC, the default way to describe data
+        gauges = tmp / "gauges.csv"
+        gauges.write_text("site,time,lat,lon,stage\n" + "".join(f"{s},{y}-{m:02d}-15,{la},{lo},{1 + m / 10:.2f}\n" for s, la, lo in
+                                                                 (("A", 30.5, -91.2), ("B", 31.0, -92.0)) for y in (2024, 2025) for m in range(1, 13)))
+        cat = tmp / "stac-gauges"
+        cmd_describe(A(csv=str(gauges), date_column="time", series_column="site", period="year", subject="record=gauges", what="two gauges",
+                       release="next-year", cadence="monthly", out=None, stac=str(cat), lat_column="lat", lon_column="lon"))
+        col = json.loads((cat / "collection.json").read_text())
+        item = json.loads((cat / "items" / "A-2025.json").read_text())
+        check("describe writes a STAC Collection and one Item for each series and year, each with its start and end, its place from the "
+              "data's own positions, and its file by File Info checksum and size",
+              col["type"] == "Collection" and len([ln for ln in col["links"] if ln["rel"] == "item"]) == 4
+              and item["properties"]["start_datetime"] == "2025-01-15T00:00:00Z" and item["properties"]["end_datetime"] == "2025-12-15T23:59:59Z"
+              and item["properties"]["datetime"] is None and item["geometry"] == {"type": "Point", "coordinates": [-91.2, 30.5]}
+              and item["assets"]["data"]["file:checksum"] == "1220" + sha_file(gauges) and item["assets"]["data"]["file:size"] == gauges.stat().st_size
+              and col["sf:releases"][0]["after"] == "2025-12-15")
+        check("the STAC description keeps no measured value: the stage column is in no file it wrote",
+              all("1.30" not in f.read_text() and "stage" not in f.read_text() for f in cat.rglob("*.json")))
+        noplace = tmp / "noplace.csv"
+        noplace.write_text("time,v\n2024-01-01,1\n2025-01-01,2\n")
+        check("data with no position of its own is described only when the person states its place, the whole globe or none",
+              "--place global" in refused(cmd_describe, A(csv=str(noplace), date_column="time", series_column=None, period="year", subject="r=x",
+                                                           what="w", out=None, stac=str(tmp / "np1")))
+              and refused(cmd_describe, A(csv=str(noplace), date_column="time", series_column=None, period="year", subject="r=x", what="w",
+                                          out=None, stac=str(tmp / "np2"), place="none")) == ""
+              and json.loads((tmp / "np2" / "items" / "2024.json").read_text())["geometry"] is None
+              and "bbox" not in json.loads((tmp / "np2" / "items" / "2024.json").read_text()))
+        sbase = {**base, "metadata": str(cat / "collection.json")}
+        sp = propose(A(kind="later-period", from_="2025-01-01", **sbase))["proposal"]
+        check("a later period proposed from a STAC description binds the query and the fresh Items by ID and checksum, and the working "
+              "Items by checksum", sp["members"] == ["A-2025", "B-2025"] and sp["stac"]["query"]["datetime"] == "2025-01-01T00:00:00Z/.."
+              and sp["stac"]["query"]["collections"] == ["gauges"] and [i["id"] for i in sp["stac"]["items"]] == ["A-2025", "B-2025"]
+              and sp["stac"]["items"][0]["assets"]["data"]["sha256"] == sha_file(gauges) and len(sp["stac"]["working_items"]) == 2
+              and sp["subject"] == {"record": "gauges"} and sp["test_size"]["fresh_observations"] == 24)
+        sbox = propose(A(kind="later-period", from_="2025-01-01", bbox="-91.5,30,-91,31", **sbase))["proposal"]
+        check("a box narrows the fresh Items to those that meet it; the others in the period are in neither, and said so",
+              sbox["members"] == ["A-2025"] and sbox["stac"]["query"]["bbox"] == [-91.5, 30.0, -91.0, 31.0]
+              and sbox["test_size"]["items_in_neither"] == ["B-2025"])
+        snr = propose(A(kind="next-release", release="next-year", **sbase))["proposal"]
+        words_nr = "\n".join(in_words(snr))
+        check("the next release proposed from STAC binds the query (the collection, after the cut-off) when no Item of it is published, and "
+              "says so in words", snr["stac"]["items"] == [] and snr["stac"]["published"] is False and snr["rule"]["cut_off"] == "2025-12-15"
+              and snr["stac"]["query"]["datetime"] == "2025-12-16T00:00:00Z/.." and "the lock binds the query itself" in words_nr
+              and "As a STAC query" in words_nr)
+        cloud = json.loads((cat / "items" / "A-2024.json").read_text())
+        cloud["properties"]["eo:cloud_cover"] = 3.5
+        (cat / "items" / "A-2024.json").write_text(json.dumps(cloud))
+        check("a STAC property the proposing step does not read is refused, and a proposal names it when it is left unread",
+              "eo:cloud_cover" in refused(propose, A(kind="later-period", from_="2025-01-01", **sbase))
+              and propose(A(kind="later-period", from_="2025-01-01", drop_properties="eo:cloud_cover", **sbase))["proposal"]["stac"]["dropped_unread"] == ["eo:cloud_cover"])
+        check("`--bbox` and `--drop-properties` are refused for the factory's own metadata form, which has no place",
+              "no place" in refused(propose, A(kind="later-period", from_="2024-01-01", bbox="0,0,1,1", **base))
+              and "factory's own form" in refused(propose, A(kind="later-period", from_="2024-01-01", drop_properties="x", **base)))
+        pqd = tmp / "pq"
+        pqd.mkdir()
+        st = _stac()
+        con = st.duck([pqd])
+        for y in (2024, 2025):
+            con.execute(f"COPY (SELECT DATE '{y}-01-01' + i::INTEGER AS day, i * 0.1 AS v FROM range(30) t(i)) TO "
+                        f"{st.sql_text(str(pqd / f'{y}.parquet'))} (FORMAT parquet)")
+        con.close()
+        cmd_describe(A(files=[str(pqd / "2024.parquet"), str(pqd / "2025.parquet")], date_column="day", series_column=None, period="year",
+                       subject="record=pq", what="two Parquet files", out=None, stac=str(tmp / "stac-pq"), place="global", ndjson=True))
+        pcol = json.loads((tmp / "stac-pq" / "collection.json").read_text())
+        pitems = [json.loads(ln) for ln in (tmp / "stac-pq" / "items.ndjson").read_text().splitlines()]
+        check("Parquet files are described one Item each from their date column, as NDJSON when asked, with the whole globe stated as their place",
+              [i["id"] for i in pitems] == ["2024", "2025"] and pitems[1]["properties"]["end_datetime"] == "2025-01-30T23:59:59Z"
+              and pitems[0]["bbox"] == [-180.0, -90.0, 180.0, 90.0] and any(ln["rel"] == "items" for ln in pcol["links"])
+              and pitems[0]["assets"]["data"]["type"] == "application/vnd.apache.parquet"
+              and propose(A(kind="later-period", from_="2025-01-01", **{**base, "metadata": str(tmp / "stac-pq" / "collection.json")}))["proposal"]["members"] == ["2025"])
         # the reviewer's check: written before the work started
         log = tmp / "log.jsonl"
         log.write_text(json.dumps({"kind": "exploration.started", "at": "2000-01-01T00:00:00Z", "data": {"set_aside": {}}}) + "\n")
@@ -1007,7 +1358,15 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("propose", allow_abbrev=False, help="write a proposal from a metadata file")
-    p.add_argument("--metadata", required=True, help="the metadata file (JSON or YAML): subject, items, releases; no values")
+    p.add_argument("--metadata", required=True, help="the description of the data: a STAC Collection's or Catalog's JSON, NDJSON of "
+                   "Items or stac-geoparquet (the default way), or the factory's own metadata form (JSON or YAML: subject, items, releases); no values")
+    p.add_argument("--drop-properties", dest="drop_properties", default=None,
+                   help="STAC: properties or asset fields to leave unread, by name, separated by commas (listed in the proposal); any other unknown one is refused")
+    p.add_argument("--bbox", default=None, help="STAC, a later period or the next release: west,south,east,north; the fresh Items are those that meet it")
+    p.add_argument("--registry", default=None, help="STAC: a clone of the shared registry of openings, asked whether these Items or this query "
+                   "were opened before; a proposal of opened data is refused")
+    p.add_argument("--catalog", default=None, help="STAC: where the catalog is asked at the opening and by `waiting` (a path, or a STAC API's "
+                   "https address); default: the description itself")
     p.add_argument("--kind", required=True, help=", ".join(KINDS))
     p.add_argument("--from", dest="from_", default=None, help="later-period: the first date, YYYY-MM-DD")
     p.add_argument("--until", default=None, help="later-period: the last date, if it ends")
@@ -1025,8 +1384,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, help="where the proposal is written (a .yaml file; a random draw's seed goes beside it)")
     p.add_argument("--studies", default="studies", help="the folder of studies, where the record of proposals is kept (default: studies)")
     p.set_defaults(fn=cmd_propose)
-    p = sub.add_parser("describe", allow_abbrev=False, help="write the metadata of one CSV file from its date column")
-    p.add_argument("--csv", required=True, help="the data file; only its date column and its series column are kept")
+    p = sub.add_parser("describe", allow_abbrev=False, help="describe data from its date column: as STAC (--stac), or in the factory's own form (--out)")
+    p.add_argument("--csv", default=None, help="one long data file; only its date column and its series column are kept")
+    p.add_argument("--files", nargs="+", default=None, help="--stac only: data files (CSV or Parquet), one Item for each")
+    p.add_argument("--stac", default=None, help="write a STAC Collection and its Items into this new folder (the default way to describe data)")
+    p.add_argument("--lat-column", dest="lat_column", default=None, help="--stac: a column of latitudes, for each Item's place")
+    p.add_argument("--lon-column", dest="lon_column", default=None, help="--stac: a column of longitudes, for each Item's place")
+    p.add_argument("--place", default=None, help="--stac, for data with no position: global (the whole globe) or none (no geometry)")
+    p.add_argument("--collection", default=None, help="--stac: the Collection's identifier (default: from the subject)")
+    p.add_argument("--license", default=None, help="--stac: the Collection's license, an SPDX identifier or other (default: other)")
+    p.add_argument("--ndjson", action="store_true", help="--stac: write the Items as one NDJSON file (the default above 1000 Items)")
     p.add_argument("--date-column", dest="date_column", required=True, help="the column of dates: YYYY, YYYY-MM or YYYY-MM-DD")
     p.add_argument("--series-column", dest="series_column", default=None, help="a column that names the series a row belongs to")
     p.add_argument("--period", default="year", help="year (the default) or month: one item for each series and period")
@@ -1034,7 +1401,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--what", required=True, help="what the file holds, in words")
     p.add_argument("--release", default=None, help="the name of the update the file grows by, declared under `releases`")
     p.add_argument("--cadence", default=None, help="the release's cadence: " + ", ".join(CADENCES))
-    p.add_argument("--out", required=True, help="the metadata file to write (.yaml)")
+    p.add_argument("--out", default=None, help="the metadata file to write (.yaml), in the factory's own form")
     p.set_defaults(fn=cmd_describe)
     p = sub.add_parser("show", allow_abbrev=False, help="a proposal in plain words")
     p.add_argument("--proposal", required=True)
@@ -1064,6 +1431,11 @@ def main() -> int:
             return selftest()
         a.fn(a)
     except Refused as r:
+        print(f"REFUSED: {r}", file=sys.stderr)
+        return 2
+    except Exception as r:  # noqa: BLE001  a refusal of tools/stac.py, raised in its own name
+        if type(r).__name__ != "Refused":
+            raise
         print(f"REFUSED: {r}", file=sys.stderr)
         return 2
     return 0

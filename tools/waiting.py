@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "duckdb"]
 # ///
 """waiting: everything in a workspace that waits on a person, with the next step.
 
@@ -841,6 +841,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
     ap.add_argument("--workspace", action="append", type=Path, default=None, help="a workspace (studies/, explorations/, knowledge-queue/); repeatable (default: .)")
     ap.add_argument("--factory", type=Path, default=sf.FACTORY, help="the factory's definition (default: factory/ beside tools/)")
+    ap.add_argument(sf.USE_ITS_CODE, dest="use_workspace_code", action="store_true", help=sf.USE_ITS_CODE_HELP)
     ap.add_argument("--json", action="store_true", help="print the JSON this docstring documents")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
@@ -849,6 +850,7 @@ def main() -> int:
         sf.refuse_inside_a_look()
         if a.selftest:
             return selftest()
+        sf.refuse_foreign_definition(a.factory, a.use_workspace_code, "waiting.py")
         sf.LIVE = {}  # each act is asked about once in this command
         w = waiting(a.workspace or [Path(".")], a.factory)
     except Refused as r:
