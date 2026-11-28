@@ -14,7 +14,7 @@ uv run tools/sf.py selftest
 uv run examples/stand-alone/run.py
 ```
 
-The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, and takes a study to its lock; it ends with `stand-alone example: PASS` (about three minutes) and prints a scratch folder holding everything it made; nothing is left in the repository.
+The first says the factory's definition is valid (a second). The second has the study tool attack itself and ends with `selftest: PASS` (about a minute). The third explores a small record, proposes the fresh data from a description of it, drafts what it learned, takes a study to its lock, and describes a second record as STAC and looks at it with DuckDB inside the fence; it ends with `stand-alone example: PASS` (about four minutes) and prints a scratch folder holding everything it made; nothing is left in the repository.
 
 ## How it works, in one paragraph
 
@@ -44,7 +44,7 @@ Reference: [the words](docs/WORDS.md), [compared with Warp Factories](docs/WARP-
 | Folder | What is in it |
 |---|---|
 | `factory/` | the definition: `factory.yaml`, the agents, skills, harnesses, runners, checks, benchmarks, templates and change log |
-| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py`, `waiting.py` (what waits on a person), `factory_update.py` (a study repository's copy, updated), `report.py` (what a workspace did), `factory_server.py` (the factory from Claude) |
+| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `stac.py` (data described as STAC), `openings.py` (the shared registry of openings), `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py`, `waiting.py` (what waits on a person), `factory_update.py` (a study repository's copy, updated), `report.py` (what a workspace did), `factory_server.py` (the factory from Claude) |
 | `methods/` | the built-in method the trials and examples use |
 | `compute/` | the contract any runner keeps, and its test |
 | `openwiki/` | this repository's knowledge base, a wiki |

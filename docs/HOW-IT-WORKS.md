@@ -4,7 +4,7 @@
 
 ## Fresh data, and who chooses it
 
-Say what you have already looked at. An agent reads only descriptions of the data (dates, places, versions, counts, never values) and proposes what could check your idea: why it suits, what would make it unfair, how large a test it allows. You change or approve it, and it is locked with the plan. The tools call it held-out data; nobody opens it before the lock.
+Say what you have already looked at. An agent reads only descriptions of the data (dates, places, versions, counts, never values; by default a STAC catalog, the open standard for describing data in time and space) and proposes what could check your idea: why it suits, what would make it unfair, how large a test it allows. You change or approve it, and it is locked with the plan. The tools call it held-out data; nobody opens it before the lock.
 
 | You might say | Known as | Suits | Unfair when |
 |---|---|---|---|
@@ -14,7 +14,7 @@ Say what you have already looked at. An agent reads only descriptions of the dat
 | keep a random part unopened | a random hold-out | many similar items, nothing to wait for | the items sit close in time or space to those explored |
 | score the forecasts later | prospective testing | predictions | the forecast is revised after it is issued |
 
-A random set aside is drawn at the opening from the merge commit GitHub makes when a person merges the lock request, so nobody chooses the members; an exploration cannot set one aside. It is the weakest kind: neighbouring sites and times share their errors, so a random part of one record checks less than it seems.
+A random set aside is drawn at the opening from the merge commit GitHub makes when a person merges the lock request, so nobody chooses the members; an exploration cannot set one aside. It is the weakest kind: neighbouring sites and times share their errors, so a random part of one record checks less than it seems. Across factories, every verified opening is written by the workflow into a shared registry of openings (a STAC catalog in a repository of its own), and data it records as opened before a lock is refused as fresh.
 
 ![The fresh data is proposed by an agent from metadata only, checked by the review agent, and approved by people at the lock; only then is it opened, once.](diagrams/fresh-data.svg)
 

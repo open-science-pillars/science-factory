@@ -83,6 +83,14 @@ uv run tools/explore.py look --exploration $X --by $ME --why "the same, without 
 
 Each prints the gain and is logged by checksum. A look sees only itself and the files its command names; your own scripts go in `$X/looks/`.
 
+Parquet working data enters a look only after the fence has read its date column, every row, and found none set aside or undated. A look may use DuckDB on it; inside the fence DuckDB loads and installs no extension and reads no file outside the look's folder, so give it the path as the look sees it (`examples/stand-alone/looks/duck_slope.py` in full):
+
+```
+import duckdb, os, sys
+con = duckdb.connect()
+print(con.execute(f"SELECT regr_slope(stage, epoch(day) / 86400) FROM read_parquet('{os.path.abspath(sys.argv[1])}')").fetchone())
+```
+
 ## 6. Record the choice you made
 
 ```

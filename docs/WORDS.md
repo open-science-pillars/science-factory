@@ -33,6 +33,11 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **proposal of the fresh data**: what `tools/fresh_data.py propose` writes: the kind, exactly what, why, what would make it unfair, the test size.
 - **random set aside**: fresh data the tool draws from the items the metadata lists, at the opening, from the lock's merge commit; nobody chooses the members.
 - **withheld values**: what nobody reads before the opening.
+- **STAC**: the SpatioTemporal Asset Catalog, an open standard that describes data as Items grouped in Collections; the default description of data here.
+- **Item**: one STAC record of data: its time, its place, and its files with their checksums and sizes.
+- **Collection**: a STAC record of a dataset, which its Items belong to.
+- **stac-geoparquet**: STAC Items stored as one GeoParquet file; here only a generated, checksummed index, never the record.
+- **registry of openings**: a static STAC catalog in a repository of its own, one Item for each opening, shared by every factory (`tools/openings.py`).
 - **subject** (`pair` in a plan): what the data is about, as key and value; the records match on it.
 - **window**: the period a study holds out, from one date to another.
 
