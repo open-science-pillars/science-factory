@@ -745,8 +745,8 @@ class Server:
         if not NAME.fullmatch(xid):
             raise Refusal("id is letters, digits, - and _")
         x = inside(ws.root, f"explorations/{xid}", "the exploration")
-        if x.exists():
-            raise Refusal(f"explorations/{xid} already exists: an exploration is started once")
+        if (x / "exploration-log.jsonl").exists() or (x.exists() and not x.is_dir()):
+            raise Refusal(f"explorations/{xid} is already started: an exploration is started once")
         if not (a.get("set_aside_window") or a.get("set_aside_sites") or a.get("set_aside_release")):
             raise Refusal("an exploration started here declares what is set aside (set_aside_window, set_aside_sites or set_aside_release) "
                           "before anything is looked at")
