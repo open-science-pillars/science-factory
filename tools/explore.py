@@ -70,6 +70,10 @@ Commands.
                  refused until this has run
   read           say which concepts were read and what each changes
   look           run one script on working data; logged with checksums
+  session        a notebook session: marimo's editor inside the fence on declared
+                 working data; logs the start, each saved version and the end.
+                 Nothing a session shows is quotable until the notebook runs
+                 as a look
   recheck        run a logged look again, on the same files by checksum, and
                  compare the output; adds nothing to the log (for the
                  review agent), and says what was pinned
@@ -114,7 +118,13 @@ Commands.
 
 What a look is. A launcher the study tool knows (`{python}` followed by a
 script file, or `uv run` followed by a script file), then the script's own
-arguments, exactly as in a plan. Paths in the command are read from the
+arguments, exactly as in a plan. A marimo notebook is such a script: run
+with `uv run`, top to bottom in the order its cells depend on each other,
+its printed output the look's (`--export html` keeps its page as a figure,
+exported after the run in the same folder and fence). A Jupyter notebook
+(`uv run looks/NAME.ipynb`) is stripped of its outputs in place, converted
+beside itself with `marimo convert` inside the fence, and the conversion
+is the look. Paths in the command are read from the
 exploration directory. The script does not run there. It runs in a scratch
 folder made for that one look, which holds the script and the files the
 command names (a file from outside the exploration is put under `outside/`
@@ -261,17 +271,22 @@ if __name__ == "__main__" and not sys.flags.safe_path and sys.path:
     sys.path[:] = [p for p in sys.path if p != _own]
 
 import argparse  # noqa: E402
+import ast  # noqa: E402
 import contextlib  # noqa: E402
 import ctypes  # noqa: E402
 import datetime as dt  # noqa: E402
+import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
+import secrets  # noqa: E402
 import shutil  # noqa: E402
 import signal  # noqa: E402
+import socket  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
+import threading  # noqa: E402
 import time  # noqa: E402
 import tomllib  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -353,6 +368,14 @@ QUESTION_OPTIONAL = ("options",)  # the ways on the lead sets out for the person
 VERDICTS = ("holes-found", "no-holes-found")
 DISPOSITIONS = ("drafted", "linked", "declined")
 FIGURES = (".svg", ".png", ".pdf", ".jpg", ".jpeg")  # what a look may leave in figures/ as a picture
+# Notebooks. A marimo notebook is a Python file that runs as a script; the tool names this marimo when it converts a Jupyter
+# notebook and when it makes a new notebook for a session, so that what it writes is the same on every machine.
+MARIMO = "marimo==0.26.0"
+MARIMO_CACHE = "__marimo__"  # where marimo keeps a notebook's outputs beside it; never kept in an exploration
+PAGE = ".html"               # a notebook's exported page: a figure a person opens in a browser, kept by checksum
+NEW_NOTEBOOK = (f'# /// script\n# requires-python = ">=3.11"\n# dependencies = ["{MARIMO}"]\n# ///\nimport marimo\n\n'
+                'app = marimo.App()\n\n\n@app.cell\ndef _():\n    import marimo as mo\n    return (mo,)\n\n\n'
+                'if __name__ == "__main__":\n    app.run()\n')
 ID_PREFIX = re.compile(r"^[A-Za-z]{2,10}[-_:]")      # the agency in front of a site number (USGS-, usgs:)
 COMPARISONS = re.compile(r"^comparisons:\s*(\d+)\s*$", re.I | re.M)
 DEPTHS = ("whole", "skimmed")
@@ -362,7 +385,7 @@ NOT_THE_WORK = ("review.verdict", "note.resolved", "handed.over", "reviewer.name
 PATTERN = set("*?[]{}")  # what a script could expand into names the tool never read
 JOINS = re.compile(r"[,:;@|]")  # what joins several paths into one word, or hides one behind a sign
 KEPT_FILES = ("exploration-log.jsonl", "set-aside.json", "request.md", "lead.json", "lead.md", "curation-list.json", "contribution.md", "contribution.json")
-KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside", "so-what")  # where a look leaves nothing
+KEPT_PLACES = ("receipts", "verdicts", "notes", "leads", "hand-over", "review", "outside", "so-what", "sessions")  # where a look leaves nothing
 PLACES_OF_THE_LAUNCHER = ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR", "UV_PYTHON_BIN_DIR",
                           "UV_CONFIG_FILE", "UV_PYTHON", "UV_INSTALL_DIR")  # variables whose whole purpose is to name a path
 SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt", "/nix", "/proc", "/sys",
@@ -1211,6 +1234,31 @@ def breached(ev: list) -> list:
     return [e for e in ev if e["kind"] == "fence.breached"]
 
 
+def sessions_of(ev: list) -> list:
+    """Each notebook session in the log: its id, its saved versions, its final notebook by checksum, and the look that ran that
+    notebook afterwards, if one did (only a look's printed output is quotable)."""
+    out = []
+    for e in ev:
+        if e["kind"] == "session.started":
+            sid = e["data"]["session"]
+            end = next((g for g in ev if g["kind"] == "session.ended" and g["data"]["session"] == sid), None)
+            final = (end or {}).get("data", {}).get("final_sha256")
+            run = next((g["data"]["id"] for g in ev if g["kind"] == "look.run" and end and g["seq"] > end["seq"] and g["data"]["script_sha"] == final), None)
+            out.append({"id": sid, "notebook": e["data"]["notebook"], "versions": sum(1 for g in ev if g["kind"] == "session.saved" and g["data"]["session"] == sid),
+                        "ended": bool(end), "final_sha256": final, "run_as_a_look": run})
+    return out
+
+
+def sessions_in_words(sessions: list) -> str:
+    if not sessions:
+        return ""
+    not_run = [q["id"] for q in sessions if not q["run_as_a_look"]]
+    return (f" {len(sessions)} notebook session(s) were held, with {sum(q['versions'] for q in sessions)} saved version(s) of their notebooks "
+            "in all: a session logs each saved version and never a cell run, so more was tried in a session than this counts. A number "
+            "from a session is quoted only from the look that ran its final notebook"
+            + (f"; the final notebook of {', '.join(not_run)} has not run as a look, so nothing it showed stands here." if not_run else "."))
+
+
 def count(ev: list, kind: str) -> int:
     return sum(1 for e in ev if e["kind"] == kind)
 
@@ -1330,11 +1378,14 @@ def kept_place(rel: str) -> bool:
     return rel in KEPT_FILES or rel.split("/")[0] in KEPT_PLACES
 
 
-def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: list, placed: list, merged: bool = False) -> dict:
+def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: list, placed: list, merged: bool = False,
+                   then: list | None = None) -> dict:
     """Run a look's command in a new scratch folder that holds the files it was given and nothing else, with the
     exploration log held so that no command of this tool can write to the exploration meanwhile. The script gets an
     interpreter prepared before it starts, an environment the tool builds, and the kernel fence where the machine has
-    one (tools/fence.py). Returns what happened; nothing the script wrote is put into the exploration here."""
+    one (tools/fence.py). With `then` (the words after the interpreter), a second command runs after the first, in the
+    same folder, fence and interpreter, when the first ended well: a notebook's page is exported that way. Returns what
+    happened; nothing the script wrote is put into the exploration here."""
     scratch = fence.make_scratch("sf-look-")
     work = scratch / "work"
     try:
@@ -1363,6 +1414,15 @@ def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: 
             except fence.Cannot as why:
                 raise Refused(f"the look was not run: {why}")
             log_changed = not x.log.is_file() or x.log.is_symlink() or x.log.read_bytes() != log_before
+            second = None
+            if then and not ran["not_run"] and ran["code"] == 0 and not log_changed:
+                try:
+                    second = fence.run_fenced([ready["python"], *then], work, env, scratch, [*ready["read"], str(scratch / "private")],
+                                              [str(scratch / sub) for sub in ("work", "tmp", "cache", "home")], never_read=never_read,
+                                              never_write=[str(x.d)], kernel=bool(landlock()))
+                except fence.Cannot as why:
+                    second = {"code": 127, "out": "", "err": str(why), "not_run": True, "left_alive": 0, "ended": 0, "fence": {"why_not": str(why)}}
+                log_changed = not x.log.is_file() or x.log.is_symlink() or x.log.read_bytes() != log_before
         if log_changed:  # put back, byte for byte, what stood before the script ran
             if x.log.is_symlink() or x.log.is_dir():
                 x.log.unlink() if x.log.is_symlink() else shutil.rmtree(x.log)
@@ -1391,12 +1451,188 @@ def run_in_scratch(x: Exploration, sa: dict, argv_as_run: list, launcher_words: 
                         changed.append(rel)
                 else:
                     new[rel] = q
+        if second is not None:  # what the second command left running, or changed where the tools run from, counts as the look's
+            ended += second.get("ended") or 0
+            ran["left_alive"] += second.get("left_alive") or 0
+            if (second.get("fence") or {}).get("tools_changed"):
+                ran["fence"]["tools_changed"] = sorted(set(ran["fence"].get("tools_changed") or []) | set(second["fence"]["tools_changed"]))
         return {"code": code, "out": out, "err": err, "ended": ended, "confined": ran["confined"], "fence": ran["fence"],
                 "left_alive": ran["left_alive"], "interpreter": ready["how"], "settings": ready["settings"], "environment": sorted(env),
-                "log_changed": log_changed, "meddled": meddled, "new": new, "changed": changed, "odd": odd, "scratch": scratch}
+                "log_changed": log_changed, "meddled": meddled, "new": new, "changed": changed, "odd": odd, "scratch": scratch,
+                "then": None if second is None else {k: second.get(k) for k in ("code", "out", "err", "not_run", "confined")}
+                | {"why_not": (second.get("fence") or {}).get("why_not")}}
     except BaseException:
         shutil.rmtree(scratch, ignore_errors=True)
         raise
+
+
+# ---- notebooks ---------------------------------------------------------------------------------------
+# A marimo notebook is a Python file that runs as a script (`python NOTEBOOK`), its cells in the order they depend on each
+# other; it keeps its dependencies inline (PEP 723). As a look it runs in the fence like any script. A Jupyter notebook is
+# JSON that can carry outputs, data among them, and its cells may have been run in any order: given as a look, it is stripped
+# of what it carries and converted (`marimo convert`), and the conversion is run. A session is marimo's editor in the fence.
+def marimo_notebook(text: str) -> bool:
+    """Is this Python file a marimo notebook as marimo reads one: `import marimo`, `app = marimo.App(...)` and cells under
+    `@app.cell`? Read from the file's syntax; nothing in it is run."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return False
+    imported = any(isinstance(n, ast.Import) and any(m.name == "marimo" and m.asname in (None, "marimo") for m in n.names) for n in tree.body)
+    app = any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "app" for t in n.targets)
+              and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute) and n.value.func.attr == "App"
+              and isinstance(n.value.func.value, ast.Name) and n.value.func.value.id == "marimo" for n in tree.body)
+
+    def cell(d) -> bool:
+        d = d.func if isinstance(d, ast.Call) else d
+        return isinstance(d, ast.Attribute) and d.attr in ("cell", "function", "class_definition") and isinstance(d.value, ast.Name) and d.value.id == "app"
+    cells = any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and any(cell(d) for d in n.decorator_list) for n in tree.body)
+    return imported and app and cells
+
+
+def declares_marimo(text: str) -> bool:
+    """Do the file's inline dependencies (PEP 723) name marimo, so that the interpreter the fence prepares can run it?"""
+    deps = (fence.inline_metadata(text) or {}).get("dependencies") or []
+    return any(re.split(r"[\s<>=!~\[;@(]", str(d).strip(), maxsplit=1)[0].lower().replace("_", "-") == "marimo" for d in deps)
+
+
+def marimo_installed(python: str) -> str | None:
+    """The version of marimo in a prepared environment, from its own record of what is installed, or None."""
+    env = Path(python).parent.parent
+    found = sorted(env.glob("lib/python*/site-packages/marimo-*.dist-info")) + sorted(env.glob("Lib/site-packages/marimo-*.dist-info"))
+    return found[0].name[len("marimo-"):-len(".dist-info")] if found else None
+
+
+def ipynb_left(nb: dict) -> dict:
+    """What a Jupyter notebook carries beside its code and its words: outputs, execution counts, attachments, timings and the
+    state of its widgets. Data can hide in any of them."""
+    left = {"outputs": 0, "execution_counts": 0, "attachments": 0, "timings": 0, "widget_state": 0}
+    for c in nb.get("cells") or []:
+        if isinstance(c, dict):
+            left["outputs"] += len(c.get("outputs") or [])
+            left["execution_counts"] += c.get("execution_count") is not None
+            left["attachments"] += len(c.get("attachments") or {})
+            left["timings"] += bool((c.get("metadata") or {}).get("execution"))
+    left["widget_state"] += bool((nb.get("metadata") or {}).get("widgets"))
+    return left
+
+
+def stripped_ipynb(nb: dict) -> dict:
+    """The notebook without what `ipynb_left` counts: its code, its words and its other metadata as they were."""
+    nb = json.loads(json.dumps(nb))
+    for c in nb.get("cells") or []:
+        if isinstance(c, dict):
+            if c.get("cell_type") == "code":
+                c["outputs"], c["execution_count"] = [], None
+            c.pop("attachments", None)
+            if isinstance(c.get("metadata"), dict):
+                c["metadata"].pop("execution", None)
+    if isinstance(nb.get("metadata"), dict):
+        nb["metadata"].pop("widgets", None)
+    return nb
+
+
+def read_ipynb(f: Path, shown: str) -> dict:
+    try:
+        nb = json.loads(f.read_text())
+    except (OSError, ValueError, UnicodeDecodeError):
+        raise Refused(f"`{shown}` is not a Jupyter notebook the tool can read (JSON, nbformat 4)")
+    if not isinstance(nb, dict) or nb.get("nbformat") != 4 or not isinstance(nb.get("cells"), list):
+        raise Refused(f"`{shown}` is not a Jupyter notebook in nbformat 4")
+    return nb
+
+
+def ipynb_problems(folder: Path) -> list:
+    """Every Jupyter notebook kept in a folder that still carries outputs or anything else data could hide in."""
+    p = []
+    for f in sorted(folder.rglob("*.ipynb")):
+        if f.is_symlink() or not f.is_file():
+            continue
+        rel = f.relative_to(folder).as_posix()
+        try:
+            left = {k: v for k, v in ipynb_left(read_ipynb(f, rel)).items() if v}
+        except Refused as r:
+            p.append(str(r))
+            continue
+        if left:
+            p.append(f"the Jupyter notebook {rel} carries " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in left.items())
+                     + ": a notebook is kept only stripped, because data can hide there")
+    return p
+
+
+def run_marimo(x: Exploration, sa: dict, files: dict, words: list) -> tuple:
+    """Run marimo itself (`python -m marimo WORDS`) inside the fence, in a scratch folder holding only FILES ({name: path}), with
+    an interpreter prepared from the marimo the tool names. (what ran, the scratch folder); the caller removes the folder."""
+    scratch = fence.make_scratch("sf-marimo-")
+    try:
+        stub = scratch / "private" / "marimo-only.py"
+        stub.write_text(f'# /// script\n# requires-python = ">=3.11"\n# dependencies = ["{MARIMO}"]\n# ///\n')
+        for name, src in files.items():
+            shutil.copyfile(src, scratch / "work" / name)
+        ready = fence.prepare_interpreter(["uv", "run"], stub, scratch / "private")
+        env = fence.minimal_environment(scratch, ready["python"], mark=("SF_INSIDE_A_LOOK", x.d.name))
+        with x.held():
+            ran = fence.run_fenced([ready["python"], "-m", "marimo", *words], scratch / "work", env, scratch,
+                                   [*ready["read"], str(scratch / "private")], [str(scratch / sub) for sub in ("work", "tmp", "cache", "home")],
+                                   never_read=[str(x.d), str(x.log), str(HERE / "explore.py")] + [str(q) for q in sa.get("paths") or []],
+                                   never_write=[str(x.d)], kernel=bool(landlock()))
+        if ran["not_run"]:
+            raise Refused("marimo was not run: this machine has a kernel fence, and it could not be put up or did not hold ("
+                          + str(ran["fence"].get("why_not")) + ")")
+        ran["marimo"] = marimo_installed(ready["python"])
+        return ran, scratch
+    except fence.Cannot as why:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise Refused(f"marimo was not run: {why}")
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+
+
+def converted_header(word: str, stripped_sha: str) -> str:
+    return (f'# /// script\n# requires-python = ">=3.11"\n# dependencies = ["{MARIMO}"]\n# ///\n'
+            f"# Converted from {word} (sha256 {stripped_sha}, outputs stripped) by explore.py with `marimo convert`.\n"
+            "# Add the packages its cells import to the dependencies above, then run this file as a look: `uv run` it.\n")
+
+
+def convert_jupyter(x: Exploration, a, sa: dict, argv: list, at: int) -> tuple:
+    """A Jupyter notebook given as a look (`uv run looks/NAME.ipynb`): stripped of its outputs in place, converted beside it to
+    a marimo notebook (looks/NAME.py) inside the fence, and the conversion run as the look. (the command with the converted
+    notebook in the Jupyter notebook's place, what was done)."""
+    word = argv[at]
+    f = x.d / word
+    if Path(word).is_absolute() or ".." in Path(word).parts or f.is_symlink() or not f.is_file():
+        raise Refused(f"`{word}`: a Jupyter notebook given as a look is a file in the exploration, such as looks/NAME.ipynb")
+    problems = file_problems(f, sa, word)
+    if problems:
+        x.add(a.by, "look.refused", {"argv": argv, "why": a.why, "refused_because": problems})
+        raise Refused("this Jupyter notebook names what was set aside (in its code or in the outputs it carries), so it is neither "
+                      "stripped nor run (the refusal is logged): " + "; ".join(problems[:4]))
+    nb = read_ipynb(f, word)
+    given, left = sf.sha_file(f), ipynb_left(nb)
+    if any(left.values()):
+        f.write_text(json.dumps(stripped_ipynb(nb), indent=1, ensure_ascii=False) + "\n")
+    stripped = sf.sha_file(f)
+    target = f.with_suffix(".py")
+    rel = target.relative_to(x.d).as_posix()
+    ran, scratch = run_marimo(x, sa, {f.name: f}, ["-q", "-y", "convert", f.name, "-o", target.name])
+    try:
+        made = scratch / "work" / target.name
+        if ran["code"] != 0 or not made.is_file() or made.is_symlink():
+            raise Refused(f"`marimo convert` could not convert `{word}` (exit {ran['code']}): " + (ran["err"] or ran["out"]).strip()[-400:])
+        body = converted_header(word, stripped) + made.read_text()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if not marimo_notebook(body):
+        raise Refused(f"what `marimo convert` made of `{word}` is not a marimo notebook the tool can read")
+    if target.exists() and (target.is_symlink() or target.read_text(errors="replace") != body):
+        raise Refused(f"`{rel}` exists and is not this notebook's conversion as it stands (it was edited, or the notebook changed): run it "
+                      f"as a look (`-- uv run {rel}`), or move it away to convert `{word}` again")
+    target.write_text(body)
+    done = {"from": word, "sha256_given": given, "stripped": left, "sha256_stripped": stripped, "to": rel, "sha256": sf.sha_file(target),
+            "by": "marimo convert", "marimo": ran.get("marimo"), "confined": ran["confined"]}
+    x.add(a.by, "notebook.converted", done)
+    return [*argv[:at], rel, *argv[at + 1:]], done
 
 
 # ---- commands -----------------------------------------------------------
@@ -1725,6 +1961,19 @@ def cmd_look(x: Exploration, a) -> None:
         raise Refused("a look is `look ... -- LAUNCHER SCRIPT [arguments]`")
     if not str(a.why or "").strip():
         raise Refused("`--why` says what this look is trying to find out; the count of things tried is the count of looks")
+    given_as, converted = None, None
+    jupyter = 1 if argv[0] == "{python}" else 2 if argv[:2] == ["uv", "run"] else None
+    while jupyter is not None and jupyter < len(argv) and argv[jupyter] in sf.UV_RUN_FLAGS:
+        jupyter += 1
+    if jupyter is not None and jupyter < len(argv) and argv[jupyter].lower().endswith(".ipynb"):
+        # a Jupyter notebook in the script's place: stripped of what it carries and converted to a marimo notebook first
+        if argv[0] != "uv":
+            raise Refused("a Jupyter notebook is given as a look as `uv run looks/NAME.ipynb`, then its own arguments: it is stripped of "
+                          "its outputs, converted beside itself to a marimo notebook, and the conversion is run")
+        if set_aside_present(sa):
+            raise Refused(f"set-aside data is in the workspace ({set_aside_present(sa)[0]}); nothing is converted or run")
+        given_as = list(argv)
+        argv, converted = convert_jupyter(x, a, sa, argv, jupyter)
     launcher, script = sf.launch(argv)
     if launcher is None:
         raise Refused(f"{script}. A look is {sf.LAUNCHERS}, then the script's own arguments")
@@ -1736,6 +1985,15 @@ def cmd_look(x: Exploration, a) -> None:
     here = set_aside_present(sa)
     if here:
         raise Refused(f"set-aside data is in the workspace ({here[0]}); an exploration does not fetch it and does not run beside it")
+    notebook = script.endswith(".py") and marimo_notebook((x.d / script).read_text(errors="replace"))
+    export = getattr(a, "export", None)
+    if export not in (None, "html"):
+        raise Refused("`--export` takes one value, html: the notebook's page, exported after the run inside the fence")
+    if export and not notebook:
+        raise Refused(f"`--export html` is for a marimo notebook, and `{script}` is not one (`import marimo`, `app = marimo.App()`, cells under `@app.cell`)")
+    if notebook and not (launcher == "uv run" and declares_marimo((x.d / script).read_text(errors="replace"))):
+        raise Refused(f"`{script}` is a marimo notebook: it runs as a look with `uv run`, and its inline dependencies (the `# /// script` "
+                      f"block) name marimo, such as \"{MARIMO}\", so that the interpreter the fence prepares has it")
     at_script = argv.index(script, 1)
     problems, named, taken = [], [], {}
     for word in argv:
@@ -1778,11 +2036,19 @@ def cmd_look(x: Exploration, a) -> None:
     n = count(ev, "look.run") + 1
     lid = f"LOOK-{n:03d}"
     out_rel, err_rel = f"receipts/{lid}.out.txt", f"receipts/{lid}.err.txt"
-    ran = run_in_scratch(x, sa, argv_as_run, argv[:at_script], placed)
+    page = f"figures/{Path(script).stem}-{lid}{PAGE}" if export else None
+    then = None
+    if page:  # the notebook's page, exported after the run in the same folder and fence: it holds only what this look had
+        then = ["-m", "marimo", "-q", "-y", "export", "html", argv_as_run[at_script], "-o", page, "--no-sandbox", "-f",
+                *(["--", *argv_as_run[at_script + 1:]] if argv_as_run[at_script + 1:] else [])]
+    ran = run_in_scratch(x, sa, argv_as_run, argv[:at_script], placed, then=then)
     try:
         code, out, err = ran["code"], ran["out"], ran["err"]
         crossing, wrote, not_kept = [], {}, []
         crossing += text_problems(out, sa, "what the look printed") + text_problems(err, sa, "what the look wrote to standard error")
+        exported = ran.get("then")
+        if exported:
+            crossing += text_problems(exported["out"] or "", sa, "what the export printed") + text_problems(exported["err"] or "", sa, "what the export wrote to standard error")
         withheld = bool(crossing)  # set-aside data that came back in the output is not kept and is not shown to whoever ran the look
         if ran["log_changed"]:
             crossing.append("the exploration log was changed while the look ran, and the tool put it back as it stood: a look does not call the tools")
@@ -1800,11 +2066,23 @@ def cmd_look(x: Exploration, a) -> None:
             if kept_place(rel):
                 not_kept.append({"file": rel, "why": "a look leaves nothing in a place the tool or another role keeps"})
                 continue
+            if MARIMO_CACHE in Path(rel).parts:
+                not_kept.append({"file": rel, "why": "marimo's cache of a notebook's outputs: the outputs are in the receipt and the page"})
+                continue
             crossed = file_problems(q, sa, rel, figure=rel.startswith("figures/"), written=True)
             if crossed:
                 crossing += crossed
                 not_kept.append({"file": rel, "why": "it crosses the fence"})
                 continue
+            if rel.lower().endswith(".ipynb"):  # a Jupyter notebook is kept only stripped of its outputs, where data could hide
+                try:
+                    nb_ = read_ipynb(q, rel)
+                except Refused:
+                    not_kept.append({"file": rel, "why": "named like a Jupyter notebook and not one the tool can read and strip"})
+                    continue
+                if any(ipynb_left(nb_).values()):
+                    q.write_text(json.dumps(stripped_ipynb(nb_), indent=1, ensure_ascii=False) + "\n")
+                    not_kept.append({"file": rel, "why": "kept stripped: its outputs and execution counts were taken out", "stripped": ipynb_left(nb_)})
             wrote[rel] = sf.sha_file(q)
             (x.d / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(q, x.d / rel)
@@ -1819,6 +2097,8 @@ def cmd_look(x: Exploration, a) -> None:
         (x.d / err_rel).write_text(f"[{WAY}: standard error of {lid}; not part of the output a recheck compares]\n" + err)
     figures = [{"file": rel, "sha256": sha_, "bytes": (x.d / rel).stat().st_size} for rel, sha_ in sorted(wrote.items())
                if rel.startswith("figures/") and Path(rel).suffix.lower() in FIGURES]
+    if page and page in wrote:  # the notebook's page: a figure a person opens in a browser
+        figures.append({"file": page, "sha256": wrote[page], "bytes": (x.d / page).stat().st_size, "page": "a marimo notebook's page, exported after the run"})
     crossing += [f"set-aside data appeared at {p}" for p in set_aside_present(sa)]
     inputs = [{"word": f["word"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in placed if f["role"] != "script"]
     parquet_read = {f["word"]: parquet_in_words(Path(os.path.normpath(x.d / f["from"]))) for f in placed
@@ -1830,6 +2110,16 @@ def cmd_look(x: Exploration, a) -> None:
            "launcher_settings": ran["settings"]}
     if parquet_read:
         how["parquet_read_by_the_fence"] = parquet_read
+    if notebook:
+        how["notebook"] = {"kind": "marimo", "run_as": "a script, top to bottom in the order its cells depend on each other (python NOTEBOOK)",
+                           "numbers": "only what the notebook printed is the look's output; what a cell shows without printing is not"}
+        if page:
+            how["notebook"]["page"] = ({"file": page, "sha256": wrote[page], "exported": "after the run, in the same folder and fence"} if page in wrote
+                                       else {"file": None, "not_exported": (f"the export ended {exported['code']}: " + (exported.get("why_not") or (exported["err"] or "").strip()[-300:]))
+                                             if exported else "the look did not end well, so its page was not exported"})
+    if converted:
+        how["notebook"]["converted_from_jupyter"] = converted
+        how["given_as"] = given_as
     receipt = {"id": lid, "why": a.why, "argv": argv, "launcher": launcher, "script": {"word": script, "sha256": placed[0]["sha256"]},
                "inputs": inputs, "exit_code": code, "output": {"file": out_rel, "sha256": sf.sha_file(x.d / out_rel)},
                "standard_error": {"file": err_rel, "sha256": sf.sha_file(x.d / err_rel)} if err.strip() else None,
@@ -1855,6 +2145,220 @@ def cmd_look(x: Exploration, a) -> None:
     if crossing:
         raise Refused(f"{lid} crossed the fence ({crossing[0]}). The exploration is spoiled: no lead and "
                       "no hand-over can come from it, and the data it held out is no longer held out for this subject")
+
+
+def free_port() -> int:
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        return so.getsockname()[1]
+
+
+def listening(port: int) -> bool:
+    with contextlib.suppress(OSError):
+        socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+        return True
+    return False
+
+
+def processes_under(pid: int) -> list:
+    """The processes whose parent is `pid`, read from /proc; empty where there is none."""
+    out = []
+    with contextlib.suppress(OSError, ValueError):
+        for task in os.listdir(f"/proc/{pid}/task"):
+            out += [int(q) for q in Path(f"/proc/{pid}/task/{task}/children").read_text().split()]
+    return out
+
+
+def cmd_session(x: Exploration, a) -> None:
+    """A notebook session: marimo's editor inside the fence, in a scratch folder holding the notebook and the working data the
+    session declares, bound to this machine's loopback address. The log holds its start (with the notebook's checksum), each
+    saved version of the notebook (kept under sessions/) and its end. A cell run is not logged, and no number seen in a session
+    is quotable until the final notebook has run as a look."""
+    ev = x.events()
+    sa = x.started()["data"]["set_aside"]
+    if breached(ev):
+        raise Refused("this exploration is spoiled: set-aside data reached it (see fence.breached in the log). Nothing more is looked at here")
+    if not last(ev, "knowledge.listed"):
+        raise Refused("nothing has been looked up yet: run `known` first, so the exploring starts from what is already known")
+    if not last(ev, "knowledge.read") and any(e["data"]["concepts"] for e in ev if e["kind"] == "knowledge.listed"):
+        raise Refused("pages were listed and none is recorded as read: read what is known and record it with `read`, then open a session")
+    word = str(a.notebook)
+    f = Path(os.path.normpath(x.d / word))
+    if Path(word).is_absolute() or ".." in Path(word).parts or not f.is_relative_to(x.d) or f.suffix != ".py" or kept_place(Path(word).as_posix()):
+        raise Refused("`--notebook` is a marimo notebook in the exploration, such as looks/NAME.py; a new one is made there if it is missing")
+    if set_aside_present(sa):
+        raise Refused(f"set-aside data is in the workspace ({set_aside_present(sa)[0]}); no session is opened beside it")
+    new = not f.exists() and not f.is_symlink()
+    if not new and (f.is_symlink() or not f.is_file()):
+        raise Refused(f"`{word}` is not a plain file")
+    text = NEW_NOTEBOOK if new else f.read_text(errors="replace")
+    if not (marimo_notebook(text) and declares_marimo(text)):
+        raise Refused(f"`{word}` is not a marimo notebook whose inline dependencies name marimo (such as \"{MARIMO}\"); convert a Jupyter "
+                      "notebook first by giving it as a look, or name a new file and the tool makes an empty notebook there")
+    problems, files = text_problems(text, sa, f"the notebook `{word}`"), {}
+    for w in a.data or []:
+        why_not, named = word_problems(x, str(w))
+        problems += why_not
+        files.update({c: g for c, g in named})
+        if not named and not why_not:
+            problems.append(f"`--data {w}` names no existing file")
+    for tok, g in files.items():
+        problems += file_problems(g, sa, tok) + [q for q in [place_problem(x, tok, g)] if q]
+    problems += cut_off_problems(x, sa, files)
+    if problems:
+        x.add(a.by, "look.refused", {"argv": ["session", word, *map(str, a.data or [])], "why": "a notebook session", "session": True,
+                                     "refused_because": problems})
+        raise Refused("this session names what was set aside, or names it in a way the tool cannot confine, so it is not opened "
+                      "(the refusal is logged): " + "; ".join(problems[:4]))
+    if new:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text)
+    sid = f"SESSION-{count(ev, 'session.started') + 1:03d}"
+    scratch = fence.make_scratch("sf-session-")
+    work = scratch / "work"
+    taken, placed = {}, []
+    try:
+        nb_at = place(x, f, taken)
+        (work / nb_at).parent.mkdir(parents=True, exist_ok=True)
+        (work / nb_at).write_bytes(f.read_bytes())
+        for n, (tok, g) in enumerate(files.items(), 1):  # in the order given: the notebook gets them as its arguments, in that order
+            at = place(x, g, taken, f"{n:02d}-")
+            (work / at).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(g, work / at)
+            if sf.sha_file(work / at) != sf.sha_file(g):
+                raise Refused(f"`{tok}` changed while it was copied into the session's folder; nothing is opened")
+            placed.append({"word": tok, "at": at, "sha256": sf.sha_file(g), "bytes": g.stat().st_size})
+        try:
+            ready = fence.prepare_interpreter(["uv", "run"], work / nb_at, scratch / "private")
+        except fence.Cannot as why:
+            raise Refused(f"the session was not opened: {why}")
+        token, port = secrets.token_urlsafe(24), int(a.port) if a.port else free_port()
+        (scratch / "private" / "token").write_text(token)
+        argv = [ready["python"], "-m", "marimo", "-q", "edit", nb_at, "--headless", "--host", "127.0.0.1", "--port", str(port),
+                "--token-password-file", str(scratch / "private" / "token"), "--skip-update-check", "--no-sandbox", "--timeout", str(a.idle_minutes),
+                *(["--", *(p_["at"] for p_ in placed)] if placed else [])]
+        env = fence.minimal_environment(scratch, ready["python"], mark=("SF_INSIDE_A_LOOK", x.d.name))
+        never_read = [str(x.d), str(x.log), str(HERE / "explore.py")] + [str(q) for q in sa.get("paths") or []]
+        kernel = bool(landlock())
+        before = x.listing()
+        with x.held() as held:  # no other command writes to this exploration while the session is open
+
+            def put(kind: str, data: dict) -> dict:
+                if any(e["kind"] == "exploration.ended" for e in x.read_held(held)):
+                    raise Refused("this exploration has ended")
+                return x._append(held, a.by, kind, {"way": WAY, **data})
+            first = sf.sha_file(f)
+            put("session.started", {"session": sid, "notebook": word, "notebook_sha256": first, "new_notebook": new, "data": placed,
+                                    "folder": str(scratch), "address": f"127.0.0.1:{port}", "marimo": marimo_installed(ready["python"]),
+                                    "interpreter": ready["how"], "fence": "kernel" if kernel else SCRATCH_ONLY})
+            box, keeper, stop = {}, {}, {}
+
+            def serve() -> None:
+                try:
+                    box["ran"] = fence.run_fenced(argv, work, env, scratch, [*ready["read"], str(scratch / "private")],
+                                                  [str(scratch / sub) for sub in ("work", "tmp", "cache", "home")], never_read=never_read,
+                                                  never_write=[str(x.d)], kernel=kernel, on_start=lambda pid: keeper.setdefault("pid", pid))
+                except fence.Cannot as why:
+                    box["cannot"] = str(why)
+            server = threading.Thread(target=serve, daemon=True)
+            versions, state = [], {"sha": first, "pending": None}
+
+            def poll() -> None:
+                q = work / nb_at
+                try:
+                    raw = q.read_bytes() if q.is_file() and not q.is_symlink() else None
+                except OSError:
+                    raw = None
+                if raw is None:
+                    return
+                h = hashlib.sha256(raw).hexdigest()
+                if h == state["sha"]:
+                    state["pending"] = None
+                    return
+                if state["pending"] != h:  # seen once: wait one more look for the file to settle
+                    state["pending"] = h
+                    return
+                n = len(versions) + 1
+                rel = f"sessions/{sid}/v{n:03d}.py"
+                (x.d / rel).parent.mkdir(parents=True, exist_ok=True)
+                (x.d / rel).write_bytes(raw)
+                names = text_problems(raw.decode("utf-8", "replace"), sa, f"version {n} of the notebook")
+                put("session.saved", {"session": sid, "version": n, "file": rel, "sha256": h, "names_set_aside": names[:3]})
+                versions.append({"version": n, "file": rel, "sha256": h})
+                state.update(sha=h, pending=None)
+                print(f"[{sid}: version {n} of {word} saved, kept as {rel}]", flush=True)
+
+            def asked(signum, _frame) -> None:
+                stop.setdefault("why", f"ended by {signal.Signals(signum).name}")
+            old = {sig: signal.signal(sig, asked) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+            how = None
+            try:
+                server.start()
+                shown = False
+                while server.is_alive():
+                    if not shown and listening(port):
+                        shown = True
+                        print(f"[{sid} is open in {word} at http://127.0.0.1:{port}/?access_token={token} on this machine only.\n"
+                              f" The notebook sees {len(placed)} file(s) of working data beside it: "
+                              + (", ".join(f"{p_['at']}" for p_ in placed) or "none") + f". Its folder is {work}.\n"
+                              " Each save is kept as a version (marimo also saves as you type); a cell run is not logged.\n"
+                              " End it with Ctrl-C here. Then run the notebook once as a look before quoting any number it showed.]", flush=True)
+                    poll()
+                    if stop.get("why"):
+                        how = stop["why"]
+                        for pid in processes_under(keeper.get("pid") or 0):  # the server, which ends its kernels as it stops
+                            with contextlib.suppress(ProcessLookupError, PermissionError):
+                                os.killpg(pid, signal.SIGTERM)
+                        server.join(20)
+                        if server.is_alive() and keeper.get("pid"):
+                            for pid in processes_under(keeper["pid"]):
+                                with contextlib.suppress(ProcessLookupError, PermissionError):
+                                    os.killpg(pid, signal.SIGKILL)
+                        break
+                    time.sleep(0.25)
+                server.join(60)
+            finally:
+                for sig, handler in old.items():
+                    signal.signal(sig, handler)
+            poll()
+            poll()  # a save made as it ended
+            ran = box.get("ran")
+            if ran is None or ran.get("not_run"):
+                why = box.get("cannot") or (ran or {}).get("fence", {}).get("why_not") or "the server did not start"
+                put("session.ended", {"session": sid, "versions": len(versions), "not_run": True, "why_not": why})
+                raise Refused(f"the session was not opened: this machine has a kernel fence and it could not be put up or did not hold, "
+                              f"or the server could not start ({why}). A session does not fall back to running without it")
+            final = state["sha"]
+            written = final != first
+            if written:
+                f.write_bytes((x.d / versions[-1]["file"]).read_bytes())
+            after = x.listing()
+            ours = {word, *(v["file"] for v in versions)}
+            meddled = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ours)
+            crossing = text_problems(ran["out"], sa, "what the session's server printed") + text_problems(ran["err"], sa, "what the session's server wrote to standard error")
+            if ran["left_alive"]:
+                crossing.append(f"the session left {ran['left_alive']} process(es) running that could not be ended")
+            if ran["fence"].get("tools_changed"):
+                crossing.append("the session ran without a kernel fence, and what the tools run from changed while it ran ("
+                                + ", ".join(ran["fence"]["tools_changed"][:5]) + ")")
+            if meddled:
+                crossing.append("the session changed files in the exploration itself, outside its scratch folder (" + ", ".join(meddled[:5]) + ")")
+            ended = put("session.ended", {
+                "session": sid, "versions": len(versions), "final_sha256": final, "notebook": word, "written_back": written,
+                "how_it_ended": how or "the server stopped by itself (marimo's own shutdown, or no browser for the idle minutes)",
+                "exit_code": ran["code"], "processes_ended": ran["ended"], "left_alive": ran["left_alive"], "confined": ran["confined"],
+                "fence": ran["fence"], "cell_runs": "not logged: a session logs each saved version of its notebook, never a cell run",
+                "quotable": "nothing yet: a number this session showed is quotable once the final notebook has run as a look"})
+            if crossing:
+                put("fence.breached", {"look": sid, "session": sid, "what": crossing})
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    print(f"[{sid} ended ({WAY}): {len(versions)} saved version(s), the last kept in {word} (sha256 {final[:12]}); the log holds "
+          f"the start, each version and the end, event {ended['seq']}. " + ("Confined by the kernel" if ran["confined"] == CONFINED_BY_THE_KERNEL
+          else "NOT confined by the kernel on this machine: the notebook ran in a scratch folder only") + ". Nothing it showed is quotable "
+          f"yet: run it once as a look, `explore.py look ... -- uv run {word}`]")
+    if crossing:
+        raise Refused(f"{sid} crossed the fence ({crossing[0]}). The exploration is spoiled: no lead and no hand-over can come from it")
 
 
 def without_warnings(text: str) -> str:
@@ -2234,7 +2738,8 @@ def render_lead(lead: dict) -> str:
                  if tried.get("comparisons_declared") else "")
               + (f" {lead['fenced']['in_a_scratch_folder_only']} of the looks ran in a scratch folder only, with no kernel fence: on that "
                  "machine a script could open any file its user can, and the tool would not have seen it."
-                 if (lead.get("fenced") or {}).get("in_a_scratch_folder_only") else ""), "",
+                 if (lead.get("fenced") or {}).get("in_a_scratch_folder_only") else "")
+              + sessions_in_words(lead.get("sessions") or []), "",
               f"**What was set aside, and never looked at.** {aside}. Why: {sa.get('why')}"
               + (f" Neither explored nor set aside, and so protected by nothing: {sa['in_neither']['start']} to {sa['in_neither']['end']}."
                  if sa.get("in_neither") else ""), "",
@@ -2242,7 +2747,8 @@ def render_lead(lead: dict) -> str:
               + (" Working data outside the exploration, as declared at its start: " + ", ".join(f"`{q}`" for q in sa["working"]["places"]) + "."
                  if sa["working"].get("places") else ""), ""]
     for fig in lead.get("figures") or []:
-        lines += [f"![{fig['shows']}]({fig['file']})", "", f"*Figure, drawn by {fig.get('look')} (sha256 {str(fig.get('sha256'))[:12]}): {fig['shows']}*", ""]
+        lines += [f"[Open the notebook page: {fig['shows']}]({fig['file']})" if str(fig["file"]).endswith(PAGE) else f"![{fig['shows']}]({fig['file']})", "",
+                  f"*Figure, drawn by {fig.get('look')} (sha256 {str(fig.get('sha256'))[:12]}): {fig['shows']}*", ""]
     if lead.get("corrections"):
         lines += ["## Corrections of wording since this version was recorded", "",
                   "No number was changed by any of these; a correction that changed one would have been refused.", ""]
@@ -2328,7 +2834,9 @@ def cmd_lead(x: Exploration, a) -> None:
             "question": start["data"]["question"], "request_sha": start["data"]["request"]["sha"], **given,
             "tried": {"looks": count(ev, "look.run"), "failed": sum(1 for e in ev if e["kind"] == "look.run" and e["data"]["exit_code"] != 0),
                       "refused": count(ev, "look.refused"), "ids": [e["data"]["id"] for e in ev if e["kind"] == "look.run"],
-                      "comparisons_declared": sum(int(e["data"].get("comparisons_declared") or 0) for e in ev if e["kind"] == "look.run")},
+                      "comparisons_declared": sum(int(e["data"].get("comparisons_declared") or 0) for e in ev if e["kind"] == "look.run"),
+                      **({"sessions": count(ev, "session.started"), "session_versions": count(ev, "session.saved")} if count(ev, "session.started") else {})},
+            **({"sessions": sessions_of(ev)} if sessions_of(ev) else {}),
             "fenced": fence_counts(ev),
             "choices": [{k: e["data"][k] for k in ("id", "choice", "alternatives", "rests_on", "look")} for e in ev if e["kind"] == "choice.recorded"],
             "order": order_of(ev),
@@ -2585,6 +3093,23 @@ def practice_so_what(a) -> bool:
     return bool(getattr(a, "local_practice", False) or sf.Study.default_route == sf.PRACTICE or so_what_declared().get("route") == sf.PRACTICE)
 
 
+def figures_for_the_question(lead: dict, x: Exploration) -> list:
+    """The lead's figures, and the page of each notebook look it rests on, as links from so-what/: an exported notebook page is an
+    interactive figure the person opens in a browser."""
+    figs = [(f["file"], f["shows"]) for f in lead.get("figures") or []]
+    for e in x.events():
+        if e["kind"] == "look.run" and e["data"]["id"] in (lead.get("evidence") or []):
+            figs += [(f["file"], f"the notebook page of {e['data']['id']}: {' '.join(str(e['data'].get('why') or '').split())[:200]}")
+                     for f in e["data"].get("figures") or [] if str(f["file"]).endswith(PAGE) and f["file"] not in [g for g, _ in figs]]
+    if not figs:
+        return []
+    out = ["**Figures to look at.**", ""]
+    for file, shows in figs:
+        out.append(f"- [{shows}](../{file})" + (" (an interactive notebook page: open it in a browser; it loads marimo's page code from a "
+                                                   "public site, and the outputs are inside the file)" if file.endswith(PAGE) else ""))
+    return out + [""]
+
+
 def render_question(lead: dict, q: dict, x: Exploration, verdict: dict) -> str:
     sha = sf.sha_file(x.d / "lead.json")
     rel = os.path.relpath(x.d, Path.cwd()) if x.d.is_relative_to(Path.cwd()) else str(x.d)
@@ -2592,6 +3117,7 @@ def render_question(lead: dict, q: dict, x: Exploration, verdict: dict) -> str:
         f"# The so what: is lead version {lead['version']} of {lead['exploration']} worth confirming?", "",
         "An agent drafted this question; the answer is a person's, and no agent records it. The lead was reviewed "
         f"(verdict `{verdict['data']['verdict']}`, `{verdict['data']['file']}`). Read the lead (`lead.md`) and look at its figures yourself before you answer.", "",
+        *figures_for_the_question(lead, x),
         f"**What the lead shows.** {' '.join(str(q['what_the_lead_shows']).split())}", "",
         f"**Why it might matter.** {' '.join(str(q['why_it_might_matter']).split())}", "",
         f"**What would make it unremarkable.** {' '.join(str(q['what_would_make_it_unremarkable']).split())}", ""]
@@ -2873,7 +3399,8 @@ def cmd_hand_over(x: Exploration, a) -> None:
         f"**How it was found.** {lead['how_it_was_found'].strip()} {lead['tried']['looks']} looks were run, "
         f"{lead['tried']['failed']} failed, {lead['tried']['refused']} were refused at the fence."
         + (f" {lead['fenced']['in_a_scratch_folder_only']} of the looks ran in a scratch folder only, with no kernel fence."
-           if (lead.get("fenced") or {}).get("in_a_scratch_folder_only") else ""), "",
+           if (lead.get("fenced") or {}).get("in_a_scratch_folder_only") else "")
+        + sessions_in_words(lead.get("sessions") or []), "",
         f"**The question proposed for the confirming study.** {stub['question']}", "",
         f"**The difference that matters, as proposed.** {stub['difference_that_matters']}", "",
         "**Already looked at (working data from now on).** " + str(sa["working"].get("description") or "see the exploration log") + "", "",
@@ -3149,6 +3676,10 @@ def stage_of(x: Exploration) -> dict:
                                "standing": so_what_standing(ev, e, so_what_ask_now(x, e)),
                                **({"last_checked": so_what_last_checked(ev, e)} if so_what_last_checked(ev, e) else {})} for e in given]
     counts["looks_by_fence"] = fence_counts(ev)
+    if sessions_of(ev):
+        counts["sessions"] = sessions_of(ev)
+        counts["sessions_say"] = ("a session logs each saved version and never a cell run; nothing a session showed is quotable until "
+                                  "its final notebook has run as a look")
     counts["working_data_declared"] = (start["set_aside"].get("working") or {}).get("places") or []
     counts["fit"] = " ".join(sf.fit_in_words(last(ev, "fit.noted"))[:2])
     return {"way": WAY, "exploration": start["id"], "question": start["question"], **here, **counts,
@@ -3203,6 +3734,8 @@ def check_log(x: Exploration, posted: list | None = None) -> list:
             p.append(f"{d['id']} is missing or was changed (the log keeps its words)")
         elif e["kind"] == "so-what.asked" and sf.sha_file(x.d / d["file"]) != d["sha"]:
             p.append(f"the so-what question {d['file']} is missing or was changed")
+        elif e["kind"] == "session.saved" and sf.sha_file(x.d / d["file"]) != d["sha256"]:
+            p.append(f"version {d['version']} of {d['session']} ({d['file']}) is missing or was changed")
     for e in ev:
         if e["kind"] == "look.run":
             for fig in e["data"].get("figures") or []:
@@ -3219,6 +3752,7 @@ def check_log(x: Exploration, posted: list | None = None) -> list:
     if over and sf.sha_file(x.d / "hand-over/request.md") != over["data"]["request_sha"]:
         p.append("hand-over/request.md is not what was handed over")
     p += [f"set-aside data is in the workspace ({q})" for q in set_aside_present(sa)]
+    p += ipynb_problems(x.d)
     p += [f"set-aside data reached the exploration at {e['data']['look']}: {'; '.join(e['data']['what'][:2])}" for e in breached(ev)]
     for mark in posted or []:
         seq, _, h = str(mark).partition(":")
@@ -3248,6 +3782,10 @@ def remarks(ev: list) -> list:
     if merged:
         r.append(f"{len(merged)} look(s) ({merged[0]} to {merged[-1]}) were logged when the tool kept standard error inside a look's output, "
                  "so a launcher's `warning:` lines may stand in their outputs. `recheck` compares such a look with those lines set aside")
+    open_ = [q["id"] for q in sessions_of(ev) if not q["ended"]]
+    if open_:
+        r.append(f"{', '.join(open_)} has a start and no end in the log: the tool was stopped while the session was open, so its last "
+                 "saves may not be logged. Nothing it showed is quotable unless its notebook ran as a look")
     if any(e["kind"] == "look.run" for e in ev) and not last(ev, "knowledge.read"):
         r.append("looks were run with no page recorded as read. The tool now refuses the first look until a `read` is recorded")
     return r
@@ -3508,7 +4046,8 @@ class A:
                         why_look=None, look=None, alternative=None, evidence=None, file=None, summary=None, comment=None, ref=None,
                         bundle=[], drafts=[], tag=[], takes=None, boundary_from=None, depth=None, old=None, new=None,
                         also_reads=None, variant=None, reviewer=None, working_data=None, read_lead=None, fresh_data=None, answer=None, direction=None,
-                        reason=None, expertise=None, local_practice=None, record_comment=None, report_only=None)
+                        reason=None, expertise=None, local_practice=None, record_comment=None, report_only=None, export=None,
+                        notebook=None, data=None, port=None, idle_minutes=60)
         self.__dict__.update(defaults)
         self.__dict__.update(kw)
 
@@ -3523,6 +4062,7 @@ def _refusal(fn, *args) -> str:
 
 def selftest() -> int:
     import io
+    import urllib.request
     results = []
     sf.Study.default_model = "selftest-model"  # every agent event of this self-test is written under this name, except where a check says otherwise
     sf.PLATFORM_CALL = sf._dead_platform  # no self-test asks a platform; a check that needs an answer puts a stand-in here
@@ -5126,6 +5666,210 @@ def selftest() -> int:
         else:
             ok("a log rewritten with every hash right is caught against the commit (not run: no git here)", True)
 
+        # ================= notebooks: a marimo notebook as a look, a fenced session, Jupyter accepted =================
+        kernel = bool(landlock())
+        nb_head = f'# /// script\n# requires-python = ">=3.11"\n# dependencies = ["{MARIMO}"]\n# ///\nimport marimo\n\napp = marimo.App()\n\n\n'
+        nb_tail = '\n\nif __name__ == "__main__":\n    app.run()\n'
+        reads_rows = ("@app.cell\ndef _():\n    import json\n    import sys\n    rows = json.load(open(sys.argv[1]))['rows']\n    return (rows,)\n\n\n"
+                      "@app.cell\ndef _(rows):\n    print('rows', len(rows), 'mean a', sum(r['a'] for r in rows) / len(rows))\n    return\n")
+        nbx = fresh("E-NB", subject="reach_id=R40,gauge=G40")
+        known(nbx)
+        nb1 = script(nbx, "rows_nb.py", nb_head + reads_rows + nb_tail)
+        ran_nb = said(cmd_look, nbx, A(argv=["--", "uv", "run", nb1, str(data)], why="the rows, in a notebook", export="html"))
+        e = last(nbx.events(), "look.run")["data"]
+        pg = next((f_ for f_ in e["figures"] if f_["file"].endswith(PAGE)), None)
+        ok("a marimo notebook is a look: run in the fence top to bottom as a script, its printed output the look's, with its receipt"
+           + (f" (the look said: {ran_nb[:300]})" if ran_nb else ""),
+           ran_nb == "" and "rows 12 mean a 6.5" in e["out_head"] and e["ran_in"]["notebook"]["kind"] == "marimo" and e["exit_code"] == 0
+           and e["ran_in"]["confined"] == (CONFINED_BY_THE_KERNEL if kernel else SCRATCH_ONLY) and check_log(nbx) == [])
+        ok("with --export html the notebook's page, exported after the run inside the same fence, is kept as a figure by checksum and "
+           "holds the look's own output; marimo's cache of outputs is not kept",
+           pg is not None and sf.sha_file(nbx.d / pg["file"]) == pg["sha256"] and "rows 12 mean a 6.5" in (nbx.d / pg["file"]).read_text()
+           and e["ran_in"]["notebook"]["page"]["file"] == pg["file"] and not list(nbx.d.rglob(MARIMO_CACHE)))
+        asked_figs = "\n".join(figures_for_the_question({"figures": [], "evidence": [e["id"]]}, nbx))
+        ok("the so-what question links the exported page of a notebook look the lead rests on, as an interactive figure",
+           f"](../{pg['file']})" in asked_figs and "interactive notebook page" in asked_figs)
+        ok("a notebook look reproduces: recheck runs the notebook again on the same files and compares what it printed",
+           said(cmd_recheck, nbx, A(look=e["id"])) == "")
+        nb2 = script(nbx, "peek_nb.py", nb_head + "@app.cell\ndef _(rows):\n    later = [r for r in rows if r['time'] >= '2025-06-01']\n    return\n" + nb_tail)
+        sc2 = script(nbx, "peek.py", "import json, sys\nrows = json.load(open(sys.argv[1]))['rows']\nlater = [r for r in rows if r['time'] >= '2025-06-01']\n")
+        r_nb, r_sc = look(nbx, ["uv", "run", nb2, str(data)]), look(nbx, ["uv", "run", sc2, str(data)])
+        ev_ = nbx.events()
+        ok("a notebook look that names set-aside data is refused at the fence and the refusal logged, exactly as a script's is",
+           "set aside" in r_nb and "set aside" in r_sc and [q["kind"] for q in ev_[-2:]] == ["look.refused", "look.refused"]
+           and [q.split("`", 2)[2] for q in ev_[-2]["data"]["refused_because"]] == [q.split("`", 2)[2] for q in ev_[-1]["data"]["refused_because"]])
+        built_nb = (nb_head + "@app.cell\ndef _():\n    import os\n    parts = " + repr(list((held2 / "record-2025.json").parts)) + "\n"
+                    "    try:\n        got = open(os.path.join(*parts)).read()\n        print('READ', got[-300:])\n"
+                    "    except OSError as err:\n        print('kept out', type(err).__name__)\n    return\n" + nb_tail)
+        if kernel:
+            nb3 = script(nbx, "built_nb.py", built_nb)
+            ran3 = said(cmd_look, nbx, A(argv=["--", "uv", "run", nb3], why="a notebook that reaches for set-aside data by a path it builds", export="html"))
+            e = last(nbx.events(), "look.run")["data"]
+            pg = next((f_ for f_ in e["figures"] if f_["file"].endswith(PAGE)), None)
+            ok("with the kernel fence, a notebook that reads set-aside data by a path it builds is kept out, and its exported page cannot "
+               "hold set-aside values: the notebook's process never had them" + (f" (the look said: {ran3[:300]})" if ran3 else ""),
+               ran3 == "" and "kept out PermissionError" in e["out_head"] and pg is not None and not breached(nbx.events())
+               and "kept out PermissionError" in (nbx.d / pg["file"]).read_text() and "2025-12-17" not in (nbx.d / pg["file"]).read_text())
+        else:
+            ok("with the kernel fence, a notebook's export cannot hold set-aside values (not run: no kernel fence on this machine)", True)
+        real_landlock = globals()["landlock"]
+        globals()["landlock"] = lambda: 0
+        try:
+            nbk = fresh("E-NB-OFF", subject="reach_id=R41,gauge=G41")
+            known(nbk)
+            nb4 = script(nbk, "built_nb.py", built_nb)
+            ran4 = said(cmd_look, nbk, A(argv=["--", "uv", "run", nb4], why="the same notebook, with no kernel fence", export="html"))
+            e = last(nbk.events(), "look.run")["data"]
+            ok("with no kernel fence, a notebook that reads set-aside data by a built path and prints it spoils the exploration: its "
+               "output is withheld and its page, which would show the values, is not kept",
+               "spoiled" in ran4 and e["ran_in"]["confined"] == SCRATCH_ONLY and breached(nbk.events()) and "withheld" in e["out_head"]
+               and not [f_ for f_ in e["figures"] if f_["file"].endswith(PAGE)] and not list((nbk.d / "figures").glob("*" + PAGE)))
+        finally:
+            globals()["landlock"] = real_landlock
+        plain = script(nbx, "plain.py", "print('plain')\n")
+        bare = script(nbx, "bare_nb.py", "import marimo\n\napp = marimo.App()\n\n\n" + reads_rows + nb_tail)
+        ok("--export is for a marimo notebook, and a notebook look runs with `uv run` and names marimo in its inline dependencies",
+           "is for a marimo notebook" in said(cmd_look, nbx, A(argv=["--", "uv", "run", plain], why="a page of a script", export="html"))
+           and "name marimo" in look(nbx, ["uv", "run", bare, str(data)]) and "name marimo" in look(nbx, ["{python}", nb1, str(data)]))
+
+        # Jupyter: stripped of what it carries, converted beside itself, and the conversion run as the look
+        old_nb = {"nbformat": 4, "nbformat_minor": 5, "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
+                                                                    "widgets": {"state": {"w": {"value": 3.14}}}},
+                  "cells": [{"cell_type": "markdown", "id": "m1", "metadata": {}, "source": ["# Rows\n"]},
+                            {"cell_type": "code", "id": "c1", "metadata": {"execution": {"iopub.execute_input": "x"}}, "execution_count": 7,
+                             "outputs": [{"output_type": "stream", "name": "stdout", "text": ["an old output 7.7777\n"]}],
+                             "source": ["import json, sys\n", "rows = json.load(open(sys.argv[1]))['rows']\n"]},
+                            {"cell_type": "code", "id": "c2", "metadata": {}, "execution_count": 3, "outputs": [],
+                             "source": ["total = sum(r['a'] for r in rows)\n", "total = total * 2\n", "print('twice the total', total)\n"]}]}
+        (nbx.d / "looks" / "old.ipynb").write_text(json.dumps(old_nb))
+        ran_j = said(cmd_look, nbx, A(argv=["--", "uv", "run", "looks/old.ipynb", str(data)], why="the old Jupyter notebook"))
+        e = last(nbx.events(), "look.run")["data"]
+        conv = (e.get("ran_in") or {}).get("notebook", {}).get("converted_from_jupyter") or {}
+        ok("a Jupyter notebook given as a look is stripped of its outputs, execution counts, timings and widget state in place, converted "
+           "beside itself inside the fence with `marimo convert`, and the conversion runs as the look" + (f" (the look said: {ran_j[:300]})" if ran_j else ""),
+           ran_j == "" and not any(ipynb_left(json.loads((nbx.d / "looks/old.ipynb").read_text())).values())
+           and conv.get("stripped") == {"outputs": 1, "execution_counts": 2, "attachments": 0, "timings": 1, "widget_state": 1}
+           and e["argv"][2] == "looks/old.py" and e["ran_in"]["given_as"][2] == "looks/old.ipynb" and "twice the total 156.0" in e["out_head"]
+           and "7.7777" not in (nbx.d / "looks/old.py").read_text() and marimo_notebook((nbx.d / "looks/old.py").read_text())
+           and last(nbx.events(), "notebook.converted")["data"]["sha256"] == sf.sha_file(nbx.d / "looks/old.py"))
+        again_j = said(cmd_look, nbx, A(argv=["--", "uv", "run", "looks/old.ipynb", str(data)], why="again"))
+        (nbx.d / "looks/old.py").write_text((nbx.d / "looks/old.py").read_text() + "\n# edited\n")
+        ok("given again, the notebook is the same conversion and runs again; a conversion edited by hand is never written over",
+           again_j == "" and "is not this notebook's conversion" in said(cmd_look, nbx, A(argv=["--", "uv", "run", "looks/old.ipynb", str(data)], why="once more")))
+        bad_nb = json.loads(json.dumps(old_nb))
+        bad_nb["cells"][1]["outputs"][0]["text"] = ["2025-06-01 5.1 5.6\n"]
+        (nbx.d / "looks" / "bad.ipynb").write_text(json.dumps(bad_nb))
+        before_bad = sf.sha_file(nbx.d / "looks" / "bad.ipynb")
+        ok("a Jupyter notebook whose outputs carry set-aside data is refused at the fence and logged, and neither stripped nor converted",
+           "neither stripped nor run" in said(cmd_look, nbx, A(argv=["--", "uv", "run", "looks/bad.ipynb"], why="a notebook with set-aside outputs"))
+           and last(nbx.events(), "look.refused")["data"]["argv"][2] == "looks/bad.ipynb" and sf.sha_file(nbx.d / "looks" / "bad.ipynb") == before_bad
+           and not (nbx.d / "looks" / "bad.py").exists())
+        (nbx.d / "looks" / "bad.ipynb").unlink()
+        (nbx.d / "looks" / "kept.ipynb").write_text(json.dumps(old_nb))
+        carries = [q for q in check_log(nbx) if "kept.ipynb carries" in q]
+        (nbx.d / "looks" / "kept.ipynb").unlink()
+        ok("the log check refuses a Jupyter notebook kept in the exploration that still carries outputs (data could hide there)",
+           carries and check_log(nbx) == [])
+        writes_nb = script(nbx, "writes_nb.py", "import json\njson.dump(" + repr(old_nb) + ", open('made.ipynb', 'w'))\nprint('wrote a notebook')\n")
+        said_w = look(nbx, ["uv", "run", writes_nb])
+        kept_nb = json.loads((nbx.d / "made.ipynb").read_text()) if (nbx.d / "made.ipynb").is_file() else {}
+        ok("a Jupyter notebook a look writes is kept only stripped of its outputs, and the receipt says so",
+           said_w == "" and kept_nb and not any(ipynb_left(kept_nb).values()) and check_log(nbx) == []
+           and any(q.get("stripped") for q in last(nbx.events(), "look.run")["data"]["ran_in"]["not_kept"]))
+
+        # a session: marimo's editor in the fence, driven here as a browser would drive it, over the loopback address
+        nbs = fresh("E-NBS", subject="reach_id=R42,gauge=G42")
+        known(nbs)
+        nbs_nb = script(nbs, "session_nb.py", nb_head + reads_rows + nb_tail)
+        ok("a session that would be given data nobody declared as working data is refused, and the refusal is logged",
+           "not opened" in said(cmd_session, nbs, A(by=PERSON, notebook=nbs_nb, data=[str(held2 / "record-2025.json")]))
+           and last(nbs.events(), "look.refused")["data"]["session"] is True)
+        script(nbs, "dated_nb.py", nb_head + "@app.cell\ndef _():\n    when = '2025-06-01'\n    return\n" + nb_tail)
+        ok("a session whose notebook names a set-aside date is refused before it opens",
+           "not opened" in said(cmd_session, nbs, A(by=PERSON, notebook="looks/dated_nb.py")))
+        sh = subprocess.Popen([sys.executable, str(HERE / "explore.py"), "session", "--exploration", str(nbs.d), "--by", PERSON, "--notebook", nbs_nb,
+                               "--data", str(data), "--idle-minutes", "5"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        told, got_ = [], {}
+        threading.Thread(target=lambda: [told.append(ln) for ln in sh.stdout], daemon=True).start()
+        try:
+            for _ in range(600):
+                m_ = re.search(r"http://127\.0\.0\.1:(\d+)/\?access_token=(\S+) .*?Its folder is (\S+)\.\n", "".join(told), re.S)
+                if m_ or sh.poll() is not None:
+                    break
+                time.sleep(0.25)
+            if m_:
+                port_, token_, folder_ = m_.group(1), m_.group(2), Path(m_.group(3))
+
+                def browse() -> None:
+                    with contextlib.suppress(OSError, ValueError):
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port_}/sse?session_id=s-selftest&access_token={token_}", timeout=120) as r_:
+                            for ln in r_:
+                                if ln.startswith(b"data:") and "id" not in got_ and b'"notebook"' in ln:
+                                    got_["id"] = json.loads(ln[5:])["notebook"]["id"]
+
+                def execute(code: str) -> dict:
+                    req_ = urllib.request.Request(f"http://127.0.0.1:{port_}/api/kernel/execute", data=json.dumps({"code": code}).encode(), method="POST",
+                                                  headers={"Content-Type": "application/json", "Marimo-Client": "marimo-pair-execute",
+                                                           "Marimo-Stable-Session-Id": got_.get("id", ""), "Authorization": f"Bearer {token_}"})
+                    out_, name_ = {"stdout": "", "stderr": ""}, None
+                    with contextlib.suppress(OSError, ValueError):
+                        with urllib.request.urlopen(req_, timeout=120) as r_:
+                            for ln in r_:
+                                ln = ln.decode()
+                                if ln.startswith("event:"):
+                                    name_ = ln[6:].strip()
+                                elif ln.startswith("data:") and name_ in ("stdout", "stderr"):
+                                    out_[name_] += json.loads(ln[5:])["data"]
+                                elif ln.startswith("data:") and name_ == "done":
+                                    return {**out_, "success": json.loads(ln[5:])["success"]}
+                    return out_
+                threading.Thread(target=browse, daemon=True).start()
+                for _ in range(120):
+                    if "id" in got_:
+                        break
+                    time.sleep(0.25)
+                inside_ = execute("import json, sys\nprint('rows', len(json.load(open(sys.argv[1]))['rows']), sys.argv[1])")
+                reach_ = execute("import os\ntry:\n    print('READ', len(open(os.path.join(*" + repr(list((held2 / "record-2025.json").parts)) + ")).read()))\n"
+                                 "except OSError as err:\n    print('kept out', type(err).__name__)")
+                ok("while a session is open no other command writes to the exploration: a look is refused",
+                   "is held" in look(nbs, ["uv", "run", nbs_nb, str(data)]))
+                ok("a cell run in the session reads the working data the session declared, given to the notebook as its argument as a look's is",
+                   "rows 12 outside/01-a_b_2024.json" in inside_.get("stdout", ""))
+                if kernel:
+                    ok("a cell run in the session that reads set-aside data by a path it builds fails: the server and its kernel are inside "
+                       "the kernel fence", "kept out PermissionError" in reach_.get("stdout", "") and "READ" not in reach_.get("stdout", ""))
+                else:
+                    ok("a cell in the session cannot read set-aside data (not run: no kernel fence on this machine)", True)
+                text_ = (folder_ / nbs_nb).read_text()
+                for n_, said_ in enumerate(("print('rows seen'", "print('rows now'"), 1):  # an editor saving the notebook, twice
+                    (folder_ / nbs_nb).write_text(text_.replace("print('rows'", said_))
+                    for _ in range(80):
+                        if count(nbs.events(), "session.saved") >= n_:
+                            break
+                        time.sleep(0.25)
+            sh.send_signal(signal.SIGTERM)
+            sh.wait(90)
+        finally:
+            if sh.poll() is None:
+                sh.kill()
+        ev_ = nbs.events()
+        started_, saved_, ended_ = last(ev_, "session.started"), [q for q in ev_ if q["kind"] == "session.saved"], last(ev_, "session.ended")
+        ok("a session logs its start with the notebook's checksum, each saved version (kept under sessions/), and its end, and writes the "
+           "final version back to the notebook" + ("" if sh.returncode == 0 else f" (the session said: {sh.stderr.read()[-400:] if sh.stderr else ''})"),
+           sh.returncode == 0 and started_ and started_["data"]["notebook_sha256"] == sf.sha_text(nb_head + reads_rows + nb_tail)
+           and len(saved_) == 2 and all(sf.sha_file(nbs.d / q["data"]["file"]) == q["data"]["sha256"] for q in saved_)
+           and ended_ and ended_["data"]["versions"] == 2 and ended_["data"]["final_sha256"] == saved_[-1]["data"]["sha256"]
+           and sf.sha_file(nbs.d / nbs_nb) == saved_[-1]["data"]["sha256"] and "'rows now'" in (nbs.d / nbs_nb).read_text()
+           and ended_["data"]["confined"] == (CONFINED_BY_THE_KERNEL if kernel else SCRATCH_ONLY) and check_log(nbs) == [])
+        ok("what was tried in a session is counted as its saved versions, with the note that cell runs are not logged, and its numbers "
+           "are not quotable until its final notebook runs as a look",
+           "2 saved version(s)" in sessions_in_words(sessions_of(ev_)) and "never a cell run" in sessions_in_words(sessions_of(ev_))
+           and "has not run as a look" in sessions_in_words(sessions_of(ev_)) and stage_of(nbs)["sessions"][0]["run_as_a_look"] is None)
+        final_look = said(cmd_look, nbs, A(argv=["--", "uv", "run", nbs_nb, str(data)], why="the session's final notebook, as a look"))
+        ok("once the final notebook has run as a look, the lead may quote what that look printed" + (f" (the look said: {final_look[:300]})" if final_look else ""),
+           sessions_of(nbs.events())[0]["run_as_a_look"] == last(nbs.events(), "look.run")["data"]["id"]
+           and "rows now 12" in last(nbs.events(), "look.run")["data"]["out_head"])
+
         # S1: no option is taken by its first letters
         def parses(words: list) -> bool:
             try:
@@ -5212,8 +5956,17 @@ def build_parser() -> argparse.ArgumentParser:
                (["--also-reads"], {"action": "append", "default": None, "dest": "also_reads",
                                    "help": "a file the script reads without the command naming it (a helper it imports, a "
                                            "settings file); repeatable. It is read by the fence, put in the look's scratch "
-                                           "folder and pinned by checksum like a named file"}))
-    look.add_argument("argv", nargs=argparse.REMAINDER, help="-- LAUNCHER SCRIPT [arguments]")
+                                           "folder and pinned by checksum like a named file"}),
+               (["--export"], {"default": None, "help": "html: for a marimo notebook, its page exported after the run, inside the fence, "
+                                                        "kept as a figure by checksum"}))
+    look.add_argument("argv", nargs=argparse.REMAINDER, help="-- LAUNCHER SCRIPT [arguments], or -- uv run looks/NAME.ipynb [arguments]")
+    add("session", cmd_session, by, (["--notebook"], {"required": True, "help": "the marimo notebook in the exploration, such as looks/NAME.py; "
+                                                                              "made there, empty, if missing"}),
+        (["--data"], {"action": "append", "default": None, "help": "a file of declared working data the notebook reads; repeatable. "
+                                                                   "The notebook is given these and nothing else"}),
+        (["--port"], {"default": None, "help": "the port on 127.0.0.1 (default: a free one)"}),
+        (["--idle-minutes"], {"default": 60, "type": int, "dest": "idle_minutes",
+                              "help": "marimo stops the server after this many minutes with no browser (default 60)"}))
     add("recheck", cmd_recheck, (["--look"], {"required": True, "help": "the look to run again, such as LOOK-003"}),
         (["--variant"], {"default": None, "help": "a script of the reviewer's own in review/, run in the look's place on the same files, "
                                                   "in its scratch folder; logged nowhere, and listed in the review"}))

@@ -86,7 +86,7 @@ KERNEL = "kernel"             # Landlock was applied and tried: the script could
 SCRATCH_ONLY = "scratch-only"  # no kernel fence on this machine: a scratch folder and a built environment, and no more
 MARKS = ("SF_INSIDE_A_LOOK", "SF_INSIDE_A_STEP")  # what the tools put in the environment of a script they run
 # a process above this one that is one of these is a script's keeper or the tool that runs one
-STARTERS = {"explore.py": ("look", "recheck"), "sf.py": ("test", "rehearse", "open-held-out"), "fence.py": ("--inside",)}
+STARTERS = {"explore.py": ("look", "recheck", "session"), "sf.py": ("test", "rehearse", "open-held-out"), "fence.py": ("--inside",)}
 SYSTEM_FOLDERS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/nix", "/sys/devices/system/cpu", "/sys/fs/cgroup",
                   "/proc/cpuinfo", "/proc/meminfo", "/proc/stat", "/proc/filesystems", "/proc/sys/kernel", "/proc/sys/vm",
                   "/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/run/systemd/resolve")
@@ -582,13 +582,15 @@ def children() -> list:
 
 
 def run_fenced(argv: list, cwd: Path, env: dict, scratch: Path, read: list, write: list, never_read: list = (),
-               never_write: list = (), kernel: bool | None = None, merged: bool = False, inherit: bool = False) -> dict:
+               never_write: list = (), kernel: bool | None = None, merged: bool = False, inherit: bool = False,
+               on_start=None) -> dict:
     """Run one command and wait until nothing it started is left. `argv[0]` is an interpreter by its path.
     Returns {code, out, err, ended, left_alive, confined, fence, not_run}: `confined` is `kernel` only when the
     keeper reported that the fence was applied and that every trial against it failed; `fence` is that report, with
     what the script could read and write. `kernel=None` uses the kernel fence when the machine has one; then a fence
     that cannot be applied or does not hold is an exit code of 120 to 123, `not_run` is true and the script did not
-    run. With `inherit` the script prints straight to the caller's own output and nothing is captured."""
+    run. With `inherit` the script prints straight to the caller's own output and nothing is captured. `on_start`, when
+    given, is called with the keeper's process id as soon as it is started (a notebook session uses it to end the server)."""
     use_kernel = bool(landlock()) if kernel is None else kernel
     for q in write:  # a script never gets to write where the tools run from
         for mine in (own_environment(), TOOLS):
@@ -625,6 +627,8 @@ def run_fenced(argv: list, cwd: Path, env: dict, scratch: Path, read: list, writ
                                     start_new_session=True, pass_fds=(w,))
             os.close(w)
             w = None
+            if on_start is not None:
+                on_start(proc.pid)
             with os.fdopen(r, "r") as f:
                 r = None
                 said = f.read()

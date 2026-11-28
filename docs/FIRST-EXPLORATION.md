@@ -91,6 +91,23 @@ con = duckdb.connect()
 print(con.execute(f"SELECT regr_slope(stage, epoch(day) / 86400) FROM read_parquet('{os.path.abspath(sys.argv[1])}')").fetchone())
 ```
 
+## Working in a notebook
+
+A marimo notebook (a plain `.py` file whose `# /// script` header names marimo) is a look like any script, run top to bottom in the order its cells depend on each other. Only what it prints is the look's output, so print each number you will quote. `--export html` keeps its page as a figure, which the so-what question and the lock request link (marimo runs an export's cells, and a session's, in a child process, where DuckDB cannot start inside the fence):
+
+```
+uv run tools/explore.py look --exploration $X --by $ME --why "the gain, in a notebook" --export html \
+  -- uv run looks/gain_nb.py $W/data/record-2024.json
+```
+
+To work in it by hand, open a session: marimo's editor inside the fence, given only the working data you name (as the notebook's arguments, as in a look), at an address only this machine can reach. Each save is kept as a version; a cell run is not logged. End it with Ctrl-C, then run the notebook once as a look: a number seen only in a session is never quotable.
+
+```
+uv run tools/explore.py session --exploration $X --by $ME --notebook looks/gain_nb.py --data $W/data/record-2024.json
+```
+
+A Jupyter notebook is given as `-- uv run looks/NAME.ipynb`: its outputs are stripped in place, it is converted beside itself to `looks/NAME.py`, and that runs. Add the packages its cells import to the new file's header and run it as a look from then on.
+
 ## 6. Record the choice you made
 
 ```

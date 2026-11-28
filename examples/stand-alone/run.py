@@ -30,9 +30,12 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -582,6 +585,48 @@ def main() -> int:
              "the file of the set-aside Item 2025" in tool("explore.py", "look", "--exploration", xg, "--by", me, "--why", "2025",
                                                            "--", "uv", "run", "looks/duck_slope.py", "looks/copy.parquet", expect=2))
         (xg / "looks" / "copy.parquet").unlink()
+        # A marimo notebook as a look; then a short session on it, ended as a person would end it. (Its page is not exported here:
+        # marimo runs an export's cells in a child process, where DuckDB cannot start inside the kernel fence. The self-test
+        # of tools/explore.py exports the page of a notebook that does not use DuckDB.)
+        shutil.copyfile(HERE / "looks" / "gauge_nb.py", xg / "looks" / "gauge_nb.py")
+        said = tool("explore.py", "look", "--exploration", xg, "--by", me, "--why", "the slope of the stage on the day, in a notebook",
+                    "--", "uv", "run", "looks/gauge_nb.py", gauge / "2024.parquet")
+        receipt = json.loads((xg / "receipts" / "LOOK-002.json").read_text())
+        step("a marimo notebook is a look: it runs in the fence top to bottom as a script, with DuckDB over the Parquet working data, and "
+             "prints the slope", "slope of the stage per day: 0.0100" in said and receipt["ran_in"]["notebook"]["kind"] == "marimo")
+        session = subprocess.Popen(["uv", "run", str(ROOT / "tools" / "explore.py"), "session", "--exploration", str(xg), "--by", person,
+                                    "--notebook", "looks/gauge_nb.py", "--data", str(gauge / "2024.parquet"), "--idle-minutes", "5"],
+                                   cwd=ROOT, env=QUIET_ENV, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        told = []
+        threading.Thread(target=lambda: [told.append(line) for line in session.stdout], daemon=True).start()
+        try:
+            for _ in range(600):
+                folder = re.search(r"Its folder is (\S+)\.\n", "".join(told))
+                if folder or session.poll() is not None:
+                    break
+                time.sleep(0.25)
+            if folder:  # an editor saves the notebook once, as a person working in the browser would
+                nb = Path(folder.group(1)) / "looks" / "gauge_nb.py"
+                nb.write_text(nb.read_text().replace('print(f"slope of the stage per day: {slope:.4f} from {n} days")',
+                                                      'print(f"slope of the stage per day: {slope:.4f} from {n} days, in metres")'))
+                for _ in range(80):
+                    if '"session.saved"' in (xg / "exploration-log.jsonl").read_text():
+                        break
+                    time.sleep(0.25)
+            session.send_signal(signal.SIGTERM)  # Ctrl-C, for a script
+            session.wait(90)
+        finally:
+            if session.poll() is None:
+                session.kill()
+        kinds = [json.loads(line)["kind"] for line in (xg / "exploration-log.jsonl").read_text().splitlines()]
+        step("a notebook session opens marimo's editor inside the fence on the declared Parquet file, and the log holds its start, the "
+             "one saved version and its end", session.returncode == 0 and kinds[-3:] == ["session.started", "session.saved", "session.ended"]
+             and (xg / "sessions" / "SESSION-001" / "v001.py").is_file() and "in metres" in (xg / "looks" / "gauge_nb.py").read_text())
+        said = tool("explore.py", "look", "--exploration", xg, "--by", me, "--why", "the session's final notebook, run once as a look",
+                    "--", "uv", "run", "looks/gauge_nb.py", gauge / "2024.parquet")
+        status = json.loads(tool("explore.py", "status", "--exploration", xg, answer=True))
+        step("nothing a session showed is quotable until its final notebook runs as a look; status says which look did",
+             "from 365 days, in metres" in said and status["sessions"][0]["run_as_a_look"] == "LOOK-003" and "never a cell run" in status["sessions_say"])
         step("the registry answers in plain words, as the lock request and the opening will ask it",
              "records no opening of these Items" in tool("openings.py", "check", "--registry", work / "registry", "--proposal", xg / "fresh-data.yaml"))
 
@@ -625,7 +670,8 @@ def main() -> int:
   update-pair/                  a throwaway science factory and a study repository copied from it, pinned, then updated on
                                 a branch by tools/factory_update.py; PULL_REQUEST.md is the description it wrote
   gauge-stac/, registry/        a STAC description of a synthetic gauge record (Parquet), and a shared registry of openings
-  explorations/EXPLORATION-G/   an exploration set aside from that description, with a DuckDB look over Parquet
+  explorations/EXPLORATION-G/   an exploration set aside from that description, with a DuckDB look over Parquet, a marimo
+                                notebook look with its page in figures/, and a notebook session's saved version in sessions/
   data/, request.md             the synthetic record and the request the exploration began with""")
     print(f"stand-alone example: PASS ({len(steps)} of {len(steps)} steps)")
     return 0

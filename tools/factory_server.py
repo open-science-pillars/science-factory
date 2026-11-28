@@ -19,7 +19,8 @@ Read (write nothing):
   lead             the latest lead of an exploration: its summary block, its
                    reviews and their verdicts, and its standing
   figure           a figure, by the look or step that drew it and its checksum,
-                   as a picture the client can show, with its caption
+                   as a picture the client can show, with its caption; a
+                   notebook's exported page as an HTML resource
   report           what a workspace did (report.py), Markdown or JSON
   fit_note         the fit note recorded at intake, or that there is none
   contribution     who did each step (sf.py or explore.py contribution --print-only)
@@ -105,7 +106,7 @@ PASSED_ON = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "T
              "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
              "ssl_cert_file", "ssl_cert_dir", "requests_ca_bundle", "curl_ca_bundle", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE")
 PICTURES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
-DRAWINGS = {".svg": "image/svg+xml", ".pdf": "application/pdf"}
+DRAWINGS = {".svg": "image/svg+xml", ".pdf": "application/pdf", ".html": "text/html"}  # .html: a notebook's exported page
 MOST_BYTES = 10 * 1024 * 1024
 NOT_A_FINDING = "nothing here is a finding unless a study's status says signed; a lead is never a finding"
 
@@ -600,7 +601,10 @@ class Server:
                  "a caption says what the step meant to draw, not what the picture shows.")
         if ext in PICTURES:
             shown = {"type": "image", "data": base64.b64encode(data).decode(), "mimeType": PICTURES[ext]}
-        elif ext == ".svg":
+        elif ext in (".svg", ".html"):
+            if ext == ".html":
+                words += (" It is an interactive notebook page: open it in a browser; it loads marimo's page code from a public site, and "
+                          "the outputs are inside the file.")
             shown = {"type": "resource", "resource": {"uri": f"factory://{ws.name}/{rel}/{f['file']}", "mimeType": DRAWINGS[ext],
                                                       "text": data.decode("utf-8", "replace")}}
         elif ext == ".pdf":
@@ -1019,6 +1023,19 @@ def selftest() -> int:
             sf.cmd_test(s1, SA(what="known-answers", by="agent:analysis"))
             sf.cmd_test(s1, SA(what="working-data", by="agent:analysis"))
             sf.cmd_request_lock(s1, SA(by="agent:coordinating"))
+            # XN: a marimo notebook look whose page was exported, an interactive figure
+            x3 = explore.Exploration(alpha / "explorations" / "XN")
+            explore.cmd_start(x3, A(by="agent:analysis-x", request=str(req), id="XN", subject="record=toy,case=XN",
+                                    set_aside_window="2025-01-01:2025-12-31", working_data=[str(data)], question="How many rows are there?"))
+            explore.cmd_known(x3, A(by="agent:analysis-x", bundle=[]))
+            (x3.d / "looks").mkdir(exist_ok=True)
+            (x3.d / "looks" / "rows_nb.py").write_text(
+                f'# /// script\n# requires-python = ">=3.11"\n# dependencies = ["{explore.MARIMO}"]\n# ///\nimport marimo\n\napp = marimo.App()\n\n\n'
+                "@app.cell\ndef _():\n    import json\n    import sys\n    print('rows', len(json.load(open(sys.argv[1]))['rows']))\n    return\n\n\n"
+                'if __name__ == "__main__":\n    app.run()\n')
+            explore.cmd_look(x3, A(by="agent:analysis-x", argv=["--", "uv", "run", "looks/rows_nb.py", str(data)], why="the rows, in a notebook",
+                                   export="html"))
+            page_sha = next((f["sha256"] for f in explore.last(x3.events(), "look.run")["data"]["figures"] if f["file"].endswith(".html")), "0" * 64)
         (alpha / "data" / "X2").mkdir(parents=True)
         (alpha / "data" / "X2" / "record.json").write_text(data.read_text())
         (alpha / "source").mkdir()
@@ -1067,6 +1084,7 @@ def selftest() -> int:
                  call(14, "lead", workspace="alpha", path="X1"), call(15, "figure", workspace="alpha", path="X1"),
                  call(16, "figure", workspace="alpha", path="X1", look="LOOK-002", sha256=figure_sha[:16]),
                  call(17, "figure", workspace="alpha", path="X1", look="LOOK-002", sha256="0" * 16),
+                 call(47, "figure", workspace="alpha", path="XN", look="LOOK-001", sha256=page_sha[:16]),
                  call(18, "report", workspace="alpha"), call(19, "report", workspace="alpha", format="json"),
                  call(20, "fit_note", workspace="alpha", path="X1"), call(21, "fit_note", workspace="alpha", path="S1"),
                  call(22, "contribution", workspace="alpha", path="X1"), call(23, "contribution", workspace="alpha", path="S1"),
@@ -1261,6 +1279,10 @@ def selftest() -> int:
               len(c16) == 2 and c16[1].get("type") == "image" and c16[1].get("mimeType") == "image/png"
               and base64.b64decode(c16[1].get("data", "")) == PNG and "a picture of one dot" in c16[0].get("text", "") and figure_sha[:12] in c16[0]["text"])
         check("figure refuses a checksum that is not a kept figure's", err(17) and "no figure" in text(17))
+        c47 = (got.get(47, {}).get("result") or {}).get("content") or [{}, {}]
+        check("figure returns a notebook's exported page as an HTML resource, byte for byte, saying it is an interactive page",
+              len(c47) == 2 and (c47[1].get("resource") or {}).get("mimeType") == "text/html" and "interactive notebook page" in c47[0].get("text", "")
+              and hashlib.sha256(((c47[1].get("resource") or {}).get("text") or "").encode()).hexdigest() == page_sha)
         check("report in Markdown and in JSON is report.py's answer", same(re.sub(r"\d+", "#", text(18)), re.sub(r"\d+", "#", said["report"])) and (doc(19).get("answer") or {}).get("schema") == "science-factory/report/v1")
         check("fit_note gives the note as recorded and in the tools' words, and says when none was written",
               (doc(20).get("note_as_recorded") or {}).get("verdict") == "fit-with-a-person-steering" and "fit-with-a-person-steering" in str(doc(20).get("fit"))

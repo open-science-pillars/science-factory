@@ -27,7 +27,7 @@
 
 schemaVersion: science-factory/v1alpha1   # the form of these files; the tool refuses a version it does not know
 name: science-factory
-version: 0.20.1                           # the content of this definition; every change to it is in the change log
+version: 0.21.0                           # the content of this definition; every change to it is in the change log
 description: "Tests claims honestly: a plan locked before the fresh data that checks it is opened, once, with agents doing the labor and a tool keeping the order."
 alias: built-in-example                   # a short name for this factory, for a label such as factory:built-in-example
 product: a signed finding, or a recorded negative result

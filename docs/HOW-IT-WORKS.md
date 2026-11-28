@@ -24,7 +24,7 @@ Plot, compare, try a method, see where it breaks, look again: nothing here is sl
 
 1. **Read what is known**, never data: where the fresh data's boundary falls (a change of processing, a release) comes from a page.
 2. **Set the fresh data aside**, exactly as the agent proposed it from metadata (`tools/fresh_data.py`). The rest is working data.
-3. **Look, as often as you like.** Each look is a script run through the tool, logged by checksum with any figure it draws; one that reaches for what was set aside is refused.
+3. **Look, as often as you like.** Each look is a script or a notebook run through the tool, logged by checksum with any figure it draws; one that reaches for what was set aside is refused. A notebook can also be worked in by hand inside the fence, and is then run once as a look before anything it showed is quoted.
 4. **Record choices and notes as you go**, each choice with its alternatives and how many looks had run when it was written.
 5. **Write up the lead, have it reviewed, ask a person so what.** The lead says what looks true, how many things were tried, and which choices would change it. A reviewer who did none of the work picks holes in it; then a person who knows the field answers worth confirming, try instead, not interesting, or needs an expert. Only `worth-confirming` sends it on. A lead is never a finding.
 

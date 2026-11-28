@@ -6,7 +6,7 @@
 uv run examples/stand-alone/run.py
 ```
 
-It ends with `stand-alone example: PASS (N of N steps)` in about three minutes and prints the path of a scratch folder outside the repository holding what it made; nothing is written into the repository. Look, then delete it, or run with `--remove`.
+It ends with `stand-alone example: PASS (N of N steps)` in about five minutes and prints the path of a scratch folder outside the repository holding what it made; nothing is written into the repository. Look, then delete it, or run with `--remove`.
 
 | In the scratch folder | What it is |
 |---|---|
@@ -15,6 +15,7 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 | `studies/STUDY-B/` | a system trial taken through its tests: its plan, log, receipts, a rehearsal figure, `lock-request/` (what a person would approve, the figure among it), a practice lock and `contribution.md` |
 | `factory-copy/` | a scratch copy of the definition, with `methods/gain-with-intercept/` promoted from a look and recorded in its change log |
 | `studies/openings.jsonl`, `studies/held-out.jsonl`, `studies/fresh-data.jsonl` | the records beside the studies: what was set aside and opened, every held-out block a study declared, every proposal of fresh data |
+| `explorations/EXPLORATION-G/` | an exploration set aside from a STAC description: a DuckDB look, a notebook look, and `sessions/SESSION-001/` (the session's saved version) |
 | `knowledge-queue/` | one drafted page waiting for a person, with the queue's index |
 | `waiting.md` | what waited on a person before the practice lock, from `tools/waiting.py` |
 | `report.md`, `report.html` | what the workspace did, counted by stage, outcome and time, from `tools/report.py` |
@@ -39,7 +40,9 @@ It ends with `stand-alone example: PASS (N of N steps)` in about three minutes a
 
 11. Updates a study repository's copy of the factory in a throwaway pair of git repositories: upstream changes an agent's file, the update keeps the repository's name, gives a local version, moves the pin and writes the pull request's description.
 
-12. Writes a report of the workspace (`tools/report.py`), in Markdown and as one HTML page.
+12. Describes a gauge record as STAC, sets 2025 aside from it and looks with DuckDB over Parquet inside the fence; then looks through a marimo notebook (`looks/gauge_nb.py`), opens a short notebook session on it (one save, ended as Ctrl-C ends it) and runs the final notebook once as a look.
+
+13. Writes a report of the workspace (`tools/report.py`), in Markdown and as one HTML page.
 
 Each step prints its refusals. **Practice at the end**, because a scratch folder has no pull request to merge; a practice study never closes as signed. The pull request route is tested in `tools/sf.py selftest` and `factory/harnesses/github/record_act.py --selftest`, in a throwaway git repository.
 

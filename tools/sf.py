@@ -1632,6 +1632,12 @@ def figures_in_words(figs: list, up: str = "../") -> list:
     out = [f"Look at each figure yourself before you approve. Do not take the captions, or anyone's \"good agreement\", for it: "
            f"{len(figs)} figure(s), each bound by checksum in the manifest.", ""]
     for i, f in enumerate(figs, 1):
+        if str(f["file"]).endswith(".html"):  # a notebook's exported page: an interactive figure, opened in a browser
+            out += [f"[Open the notebook page: {f['caption']}]({up}{f['file']})", "",
+                    f"*Figure {i}, an interactive notebook page exported by {f['by']} (sha256 {f['sha256'][:12]}): {f['caption']}. Download it "
+                    "and open it in a browser (GitHub shows its source); it loads marimo's page code from a public site, and the outputs are "
+                    "inside the file.*", ""]
+            continue
         out += [f"![{f['caption']}]({up}{f['file']})", "", f"*Figure {i}, drawn by {f['by']} (sha256 {f['sha256'][:12]}): {f['caption']}*", ""]
     return out
 
@@ -5418,12 +5424,15 @@ def _selftest_figures(tmp: Path, check) -> None:
     ho = tmp / "EXPLORATION-F" / "hand-over"
     (ho / "figures").mkdir(parents=True)
     (ho / "figures" / "LOOK-002-residual.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><text>residual</text></svg>")
+    (ho / "figures" / "LOOK-003-gain_nb-LOOK-003.html").write_text("<!DOCTYPE html><html><body>a notebook page</body></html>\n")
     (ho / "request.md").write_text("# Request\n\nIs the gain within ten percent of one?\n\n**How it was found.** Two looks.\n\n"
                                    "**The review of the lead.** holes-found.\n\n**The so what.** worth-confirming, by human:throwaway-placeholder, "
                                    "on lead version 1; standing: practice.\n")
     (ho / "hand-over.json").write_text("{}\n")
     listing = {"figures": [{"file": "figures/LOOK-002-residual.svg", "sha256": sha_file(ho / "figures" / "LOOK-002-residual.svg"),
-                            "look": "LOOK-002", "caption": "what is left of A after its line on B, coloured by flag"}]}
+                            "look": "LOOK-002", "caption": "what is left of A after its line on B, coloured by flag"},
+                           {"file": "figures/LOOK-003-gain_nb-LOOK-003.html", "sha256": sha_file(ho / "figures" / "LOOK-003-gain_nb-LOOK-003.html"),
+                            "look": "LOOK-003", "caption": "the gain, in a notebook"}]}
     (ho / "figures.json").write_text(json.dumps(listing))
     plan = copy_of(PLAN)
     plan["tests"]["known-answers"]["command"] += ["--figure", "{study}/figures/known-answers.svg"]
@@ -5457,8 +5466,12 @@ def _selftest_figures(tmp: Path, check) -> None:
           and "](../figures/known-answers.svg)" in text and "drawn by the exploration's LOOK-002" in text and "Look at each figure yourself" in text)
     check("the lock request shows the person's so what that came with the hand-over",
           "A person's so what on the lead (is it worth confirming?): worth-confirming, by human:throwaway-placeholder" in text)
+    check("the lock request links an exported notebook page as an interactive figure, with its caption and checksum",
+          "[Open the notebook page: the gain, in a notebook](../exploration-figures/LOOK-003-gain_nb-LOOK-003.html)" in text
+          and "an interactive notebook page exported by the exploration's LOOK-003" in text)
     check("the manifest binds the figures, so a picture changed after the request shows on the pull request's check",
-          set(manifest["figures"]) == {"exploration-figures/LOOK-002-residual.svg", "figures/known-answers.svg"} and not request_problems(study, "lock", FACTORY))
+          set(manifest["figures"]) == {"exploration-figures/LOOK-002-residual.svg", "exploration-figures/LOOK-003-gain_nb-LOOK-003.html",
+                                       "figures/known-answers.svg"} and not request_problems(study, "lock", FACTORY))
     (study.d / "figures" / "known-answers.svg").write_text("<svg>another picture</svg>")
     check("a figure changed after the request is a difference the check names, and the lock is refused until the step runs again",
           any("figures" in q for q in request_problems(study, "lock", FACTORY)) and "not the picture that was kept" in _refusal(cmd_lock, study, A(by="human:throwaway-placeholder", evidence=URL)))

@@ -113,7 +113,8 @@ def _source_spec(name, path):
 KEYS = ("description", "may_call", "must_never_see", "reads", "writes", "hands_on")
 ACTS_OF_PEOPLE = ("tools/sf.py lock", "tools/sf.py signature", "tools/sf.py void-unread", "tools/explore.py so-what")
 SAME_WORDS = {  # a role, the label that begins a paragraph of its file, and the skills that carry the same paragraph
-    "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"]},
+    "analysis": {"**The order.**": ["explore-a-record"], "**When to end.**": ["explore-a-record", "write-up-a-lead"],
+                 "**Notebooks.**": ["explore-a-record", "write-up-a-lead"]},
     "review": {"**Where you write.**": ["review-work"]},
     "curating": {"**When you start.**": ["draft-a-knowledge-page"]},
 }
@@ -506,6 +507,9 @@ def selftest(root: Path) -> int:
         case("the role file and a skill disagree on when to call end",
              lambda d: edit(d, "factory/agents/analysis/skills/write-up-a-lead/SKILL.md", "do not call `end`: status names the review agent", "call `end`: status then names the review agent"),
              "do not say the same thing under **When to end.**")
+        case("a skill lets an agent quote a number seen only in a notebook session",
+             lambda d: edit(d, "factory/agents/analysis/skills/write-up-a-lead/SKILL.md", "is quoted only once the session's final notebook has run as a look and printed it",
+                            "may be quoted as it was seen"), "do not say the same thing under **Notebooks.**")
         case("the role file drops the paragraph the skills must carry",
              lambda d: edit(d, "factory/agents/analysis/agent.md", "**When to end.** After", "After"), "no paragraph beginning **When to end.**")
         case("the review skill says another place to write than the role file",
