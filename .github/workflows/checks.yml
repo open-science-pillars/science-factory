@@ -96,6 +96,10 @@ jobs:
       # From definition 0.16.0 (R4): the checks named "A4-" in sf.py, explore.py, fresh_data.py, check_factory.py, scorers.py and
       # verify_acts.py: a standing asked of GitHub where it is used, no bytecode read or bound, the random draw at the lock, the
       # so what for every study from an exploration, and dates read row by row.
+      # From definition 0.21.0: explore.py's notebook checks (a marimo notebook as a look and its exported page, a Jupyter notebook
+      # stripped and converted, a notebook session driven over the loopback address as a browser drives it, a cell in it kept out of
+      # set-aside data by the kernel fence), sf.py's notebook page at the lock, factory_server.py's page as a figure and check_roles's
+      # **Notebooks.** paragraph. They fetch marimo 0.26.0 through uv. The example also opens a short notebook session.
       # The example also shows, in practice mode, a fit note, the overclaiming check, a person's so what, figures at the lock, a
       # look promoted to a method in a scratch copy of the definition, and a contribution statement.
       - name: The stand-alone example, end to end (both loops, then a study taken to a lock request and a practice lock), in a scratch folder
