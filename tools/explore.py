@@ -3377,8 +3377,9 @@ def cmd_contribution(x: Exploration, a) -> None:
     live = {e["hash"]: v for e in ev if e["kind"] == "so-what.recorded" for v in [so_what_ask_now(x, e)] if v}
     c = sf.contribution([(f"the exploration {start['data']['id']}", ev)], sf.roles_of(sf.FACTORY), extra, live)
     lines = sf.contribution_lines(c, f"{start['data']['id']} ({WAY}; a lead, not a finding)")
-    (x.d / "contribution.md").write_text("\n".join(lines))
-    write_json(x.d / "contribution.json", c)
+    if not getattr(a, "print_only", False):  # --print-only: the same statement, and no file written (the factory server's read tool)
+        (x.d / "contribution.md").write_text("\n".join(lines))
+        write_json(x.d / "contribution.json", c)
     print("\n".join(lines))
 
 
@@ -5052,7 +5053,8 @@ def build_parser() -> argparse.ArgumentParser:
     add("status", cmd_status)
     add("check-log", cmd_check_log, (["--anchor"], {"action": "append", "default": None, "help": "SEQ:HASH posted outside the workspace; repeatable"}))
     add("fingerprint", cmd_fingerprint)
-    add("contribution", cmd_contribution)
+    add("contribution", cmd_contribution, (["--print-only"], {"action": "store_true", "dest": "print_only",
+                                                            "help": "print the statement and write no file"}))
     sub.add_parser("selftest", allow_abbrev=False)
     return ap
 

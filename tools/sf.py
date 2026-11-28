@@ -4334,8 +4334,9 @@ def cmd_contribution(study: Study, a) -> None:
     and contribution.json in the study: a paragraph a scientist can paste into a paper, and what the logs cannot show."""
     c = study_contribution(study, Path(getattr(a, "factory", None) or FACTORY))
     lines = contribution_lines(c, study.d.name)
-    (study.d / "contribution.md").write_text("\n".join(lines))
-    (study.d / "contribution.json").write_text(json.dumps(c, indent=1) + "\n")
+    if not getattr(a, "print_only", False):  # --print-only: the same statement, and no file written (the factory server's read tool)
+        (study.d / "contribution.md").write_text("\n".join(lines))
+        (study.d / "contribution.json").write_text(json.dumps(c, indent=1) + "\n")
     print("\n".join(lines))
 
 
@@ -8069,7 +8070,8 @@ def build_parser() -> argparse.ArgumentParser:
         (["--change-log"], {"default": None, "dest": "change_log", "help": "the change log, to check this study's change records against"}))
     add("fit", cmd_fit, by, (["--file"], {"required": True, "help": "the fit note (YAML): " + ", ".join(FIT_KEYS)}))
     add("scorecard", cmd_scorecard, proc, anchor)
-    add("contribution", cmd_contribution, proc)
+    add("contribution", cmd_contribution, proc, (["--print-only"], {"action": "store_true", "dest": "print_only",
+                                                                    "help": "print the statement and write no file"}))
     add("log-change", cmd_log_change, by, proc, (["--log"], {"required": True, "help": "the path of the change log"}),
         (["--problem"], {"required": True}), (["--change"], {"required": True}), (["--rationale"], {"required": True}),
         (["--predicted"], {"required": True}), (["--observed"], {"default": None}), (["--model"], {"default": None}))
