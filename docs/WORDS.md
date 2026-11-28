@@ -91,6 +91,7 @@ Today's words, one line each, in groups. What a word used to be is in [history/R
 - **change log**: `factory/change-log.jsonl`, every change to the definition with its prediction and what it did.
 - **factory pin**: `factory-pin.yaml` in a study repository: where its factory came from, by version, commit and checksum; `tools/factory_update.py` moves it.
 - **waiting on a person**: what `tools/waiting.py` lists: everything in a workspace that wants a person, or is stuck, with its next step.
+- **factory server**: `tools/factory_server.py`, the factory's read and intake tools for a person's own Claude session; it makes no person's act.
 
 ## Measuring
 

@@ -30,6 +30,7 @@ To use it, in this order:
 2. [Define your own factory](docs/CREATE-A-FACTORY.md): copy the definition, name it, validate it.
 3. [Your first exploration](docs/FIRST-EXPLORATION.md), by hand or with an agent.
 4. [Your first confirming study](docs/FIRST-STUDY.md), with the fresh data proposed and a real lock.
+5. [Using it from Claude](docs/USING-IT-FROM-CLAUDE.md): ask the factory in plain words, from Claude Code or Claude Desktop.
 
 To decide whether to trust it:
 
@@ -43,7 +44,7 @@ Reference: [the words](docs/WORDS.md), [compared with Warp Factories](docs/WARP-
 | Folder | What is in it |
 |---|---|
 | `factory/` | the definition: `factory.yaml`, the agents, skills, harnesses, runners, checks, benchmarks, templates and change log |
-| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py`, `waiting.py` (what waits on a person), `factory_update.py` (a study repository's copy, updated), `report.py` (what a workspace did) |
+| `tools/` | the programs you run: `check_factory.py`, `sf.py` (a study), `explore.py` (an exploration), `fresh_data.py`, `knowledge.py`, `scorers.py`, `benchmark.py`, `check_roles.py`, `waiting.py` (what waits on a person), `factory_update.py` (a study repository's copy, updated), `report.py` (what a workspace did), `factory_server.py` (the factory from Claude) |
 | `methods/` | the built-in method the trials and examples use |
 | `compute/` | the contract any runner keeps, and its test |
 | `openwiki/` | this repository's knowledge base, a wiki |
