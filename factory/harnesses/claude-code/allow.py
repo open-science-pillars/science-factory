@@ -670,6 +670,9 @@ def selftest() -> int:
     ok("every role may search and read the wiki through the two read-only tools",
        not any(blocked(r, "mcp__openwiki__openwiki_search", query="x") or blocked(r, "mcp__openwiki__openwiki_read", path="a.md") for r in ("coordinating", "analysis", "review", "curating")))
     ok("any other tool of a server is blocked, a writing one included", blocked("curating", "mcp__openwiki__openwiki_write", path="a.md") and blocked("analysis", "mcp__other__fetch", url="x"))
+    ok("no agent may call the factory server's tools, which are for a person's own session",
+       all(blocked(r, f"mcp__factory__{t}", path="explorations/X") for r in ("coordinating", "analysis", "review", "curating")
+           for t in ("waiting", "lead", "submit_request", "start_exploration", "propose_fresh_data")))
     ok("a role with no file gets nothing", blocked("auditing", "Read", file_path="README.md"))
     # each role has its own place for its account, and the review role has no route to the author's
     ok("each role may write its account in its own place",

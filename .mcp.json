@@ -9,6 +9,18 @@
     "--wiki",
     "openwiki"
    ]
+  },
+  "factory": {
+   "command": "uv",
+   "args": [
+    "run",
+    "--script",
+    "tools/factory_server.py",
+    "--workspace",
+    ".",
+    "--wiki",
+    "openwiki"
+   ]
   }
  }
 }
