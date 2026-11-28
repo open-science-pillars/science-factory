@@ -1,0 +1,63 @@
+# The report, published as one page on GitHub Pages. A template: copy it to .github/workflows/report.yml in the
+# repository where the studies live, with tools/ and factory/ of the science factory in that repository, and turn on
+# Pages for that repository with "GitHub Actions" as the source. This workflow has never run on GitHub;
+# `tools/report.py --selftest` tests the report it builds, on scratch workspaces.
+#
+# Once a week, on every push to the protected branch, and by hand, it runs `tools/report.py` on the repository, writes
+# the report in plain words to the job summary, and publishes the same report as one self-contained page (no
+# JavaScript, nothing it links to). The report reads the logs and nothing else; it asks GitHub nothing and needs no
+# token beyond what Pages needs to publish.
+#
+# Who can see the page. On a public repository the page is public. The report names every study and exploration, its
+# stage, the time it spent waiting on a person, the models used, and, once fresh data has been opened, the outcome
+# (supported, refuted, inconclusive). If a study's outcome must not be public before you choose to say it, keep this
+# workflow off, keep the repository private, or use Pages with access control where your plan offers it. The job
+# summary is visible to whoever can see the repository's Actions.
+name: report
+
+on:
+  schedule:
+    - cron: "41 7 * * 1"        # Mondays
+  push:
+    branches: [main]            # the protected branch that factory.yaml names
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: report-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: The report, in plain words, to the job summary, and as one page
+        run: |
+          mkdir -p "$RUNNER_TEMP/site"
+          uv run tools/report.py --workspace . | tee -a "$GITHUB_STEP_SUMMARY"
+          uv run tools/report.py --workspace . --html "$RUNNER_TEMP/site/index.html"
+          touch "$RUNNER_TEMP/site/.nojekyll"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write              # to publish the page, and nothing else
+      id-token: write           # Pages proves the publishing job's identity this way
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
