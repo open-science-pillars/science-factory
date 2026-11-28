@@ -5685,6 +5685,9 @@ def selftest() -> int:
            "holds the look's own output; marimo's cache of outputs is not kept",
            pg is not None and sf.sha_file(nbx.d / pg["file"]) == pg["sha256"] and "rows 12 mean a 6.5" in (nbx.d / pg["file"]).read_text()
            and e["ran_in"]["notebook"]["page"]["file"] == pg["file"] and not list(nbx.d.rglob(MARIMO_CACHE)))
+        asked_figs = "\n".join(figures_for_the_question({"figures": [], "evidence": [e["id"]]}, nbx))
+        ok("the so-what question links the exported page of a notebook look the lead rests on, as an interactive figure",
+           f"](../{pg['file']})" in asked_figs and "interactive notebook page" in asked_figs)
         ok("a notebook look reproduces: recheck runs the notebook again on the same files and compares what it printed",
            said(cmd_recheck, nbx, A(look=e["id"])) == "")
         nb2 = script(nbx, "peek_nb.py", nb_head + "@app.cell\ndef _(rows):\n    later = [r for r in rows if r['time'] >= '2025-06-01']\n    return\n" + nb_tail)
