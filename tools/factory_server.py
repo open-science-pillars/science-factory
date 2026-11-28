@@ -116,7 +116,8 @@ NOT_A_FINDING = "nothing here is a finding unless a study's status says signed; 
 ALLOW = {
     ("waiting.py", None): {"options": {"--workspace", "--factory"}, "flags": {"--json"}, "reads": True},
     ("report.py", None): {"options": {"--workspace", "--factory"}, "flags": {"--json"}, "reads": True},
-    ("check_factory.py", None): {"options": set(), "flags": {"--checksum"}, "positional": 1, "reads": True},
+    ("check_factory.py", None): {"options": {"--repository"}, "fixed": {"--repository": str(PACKAGE)}, "flags": {"--checksum"}, "positional": 1,
+                                 "reads": True},
     ("sf.py", "status"): {"options": {"--study", "--factory"}, "reads": True},
     ("sf.py", "contribution"): {"options": {"--study", "--factory"}, "flags": {"--print-only"}, "required_flags": {"--print-only"}, "reads": True},
     ("explore.py", "status"): {"options": {"--exploration"}, "reads": True},
@@ -171,6 +172,8 @@ def allowed(argv: list) -> str | None:
                     return f"{name} is not an option this server passes to {tool} {cmd or ''}".rstrip()
                 if name == "--by" and not AGENT.fullmatch(value):
                     return "--by is always an agent's name (agent:<id>) here"
+                if name in entry.get("fixed", {}) and value != entry["fixed"][name]:
+                    return f"{name} is always {entry['fixed'][name]} here"
             elif name in entry.get("flags", set()):
                 flags.add(name)
             else:
@@ -209,7 +212,24 @@ def run_tool(argv: list, cwd: Path) -> dict:
     return {"command": as_typed(argv), "exit": done.returncode, "stdout": done.stdout, "stderr": stderr.strip()}
 
 
+def code_of(tree: Path) -> dict:
+    """Every file of a definition tree that a tool could run or load (a .py file, a shell script, bytecode, anything
+    executable), by path, with its checksum; a link counts, as a link."""
+    out = {}
+    for f in sorted(tree.rglob("*")):
+        rel = f.relative_to(tree).as_posix()
+        if f.is_symlink():
+            out[rel] = "a link"
+        elif f.is_file() and (f.suffix in (".py", ".sh", ".pyc") or "__pycache__" in f.parts or os.access(f, os.X_OK)):
+            out[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
+    return out
+
+
 class Workspace:
+    """A folder the server reaches. Its own definition (factory/) is used when it has one, and only when every file of it a
+    tool could run or load is this server's own, byte for byte: the tools load a definition's harness code (the verifier),
+    so a workspace's own code would otherwise run in the server's name."""
+
     def __init__(self, folder: Path):
         self.root = Path(folder).resolve()
         self.name = self.root.name
@@ -217,6 +237,13 @@ class Workspace:
         self.own_factory = (not own.is_symlink() and own.is_dir() and not (own / "factory.yaml").is_symlink()
                             and (own / "factory.yaml").is_file())
         self.factory = own if self.own_factory else (PACKAGE / "factory").resolve()
+        if self.own_factory and self.factory.resolve() != (PACKAGE / "factory").resolve():
+            mine, theirs = code_of((PACKAGE / "factory").resolve()), code_of(self.factory)
+            differ = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
+            if differ:
+                raise Refusal(f"the workspace {self.name} has its own definition whose code is not this server's ({', '.join(differ[:4])}"
+                              f"{' and more' if len(differ) > 4 else ''}): this server would run that code in its name. Start a server from "
+                              "that workspace's own tools to reach it")
 
 
 def inside(root: Path, rel, what: str) -> Path:
@@ -375,7 +402,10 @@ TOOL_NAMES = [t["name"] for t in TOOLS]
 
 class Server:
     def __init__(self, workspaces: list, wiki: Path | None):
-        self.workspaces = [Workspace(w) for w in workspaces]
+        try:
+            self.workspaces = [Workspace(w) for w in workspaces]
+        except Refusal as r:
+            raise SystemExit(f"factory_server: {r}")
         names = [w.name for w in self.workspaces]
         if not self.workspaces or len(set(names)) != len(names):
             raise SystemExit("factory_server: give each workspace once, with folders of different names (" + ", ".join(names) + ")")
@@ -609,8 +639,8 @@ class Server:
         chosen = [self.ws(a)] if a.get("workspace") else self.workspaces
         runs, out = [], []
         for w in chosen:
-            v = run_tool(["check_factory.py", str(w.factory)], w.root)
-            c = run_tool(["check_factory.py", str(w.factory), "--checksum"], w.root)
+            v = run_tool(["check_factory.py", str(w.factory), f"--repository={PACKAGE}"], w.root)
+            c = run_tool(["check_factory.py", str(w.factory), f"--repository={PACKAGE}", "--checksum"], w.root)
             runs += [v, c]
             try:
                 stamp = json.loads(c["stdout"])
@@ -622,7 +652,7 @@ class Server:
                         "validity": last.removeprefix("check-factory: "), "problems": [ln for ln in v["stdout"].splitlines()
                                                                                        if ln.startswith("check-factory: ") and ln != last
                                                                                        and "cannot check" not in ln]})
-        return runs, {"answer": {"factories": out, "tools": f"every command runs from {HERE}, this server's own tools, never a workspace's"},
+        return runs, {"answer": {"factories": out, "tools": f"every command runs from {HERE}, this server's own tools, never a workspace's; a definition is validated against them"},
                       "composed": True}
 
     # -- the intake tools
@@ -853,7 +883,407 @@ def main(argv=None) -> int:
     return Server(a.workspace, a.wiki).serve()
 
 
-# SELFTEST
+# ---------------------------------------------------------------- the self-test
+
+AUDIT_DRIVER = r'''
+import json, os, sys
+log = open(sys.argv[1], "w")
+def hook(event, args):
+    if event == "open" and isinstance(args[0], (str, bytes, os.PathLike)):
+        log.write(json.dumps(["open", os.path.abspath(os.fsdecode(args[0]))]) + "\n")
+    elif event == "subprocess.Popen":
+        log.write(json.dumps(["run", [os.fsdecode(w) for w in (args[1] or [args[0]])]]) + "\n")
+    elif event in ("os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.startfile", "ctypes.dlopen"):
+        log.write(json.dumps([event, repr(args)[:300]]) + "\n")
+    log.flush()
+sys.addaudithook(hook)
+import importlib.util
+spec = importlib.util.spec_from_file_location("factory_server_under_audit", sys.argv[2])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.exit(mod.main(sys.argv[3:]))
+'''
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+SECRET = "SECRET-LINE-OUTSIDE-EVERY-ROOT"
+STAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+
+def selftest() -> int:
+    import contextlib
+    import io
+    import shutil
+    import tempfile
+    results = []
+
+    def check(name: str, good) -> None:
+        results.append((name, bool(good)))
+
+    explore = _source_module("explore", HERE / "explore.py")
+    sf = explore.sf
+    sf.Study.default_model = "selftest-model"
+    sf.Study.default_route = sf.PRACTICE
+    sf.PLATFORM_CALL = sf._dead_platform
+    A, SA = explore.A, sf.A
+    tmp = Path(tempfile.mkdtemp(prefix="factory-server-")).resolve()
+    quiet = contextlib.redirect_stdout(io.StringIO())
+    try:
+        alpha, beta, crafted, wiki = tmp / "alpha", tmp / "beta", tmp / "crafted", tmp / "wiki"
+        for w in (alpha, beta, crafted):
+            (w / "studies").mkdir(parents=True)
+            (w / "explorations").mkdir()
+        (tmp / "secret.md").write_text(f"# outside\n\n{SECRET}\n")
+        wiki.mkdir()
+        (wiki / "index.md").write_text('---\nokf_version: "0.2"\n---\n\n# toy\n')
+        (wiki / "the-toy-record.md").write_text("---\ntype: dataset\nstatus: draft\n---\n\n# The toy record of y against x\n\nMonthly; "
+                                                "2025 is a new year of the same record.\n\n## Where it changes\n\nNowhere known.\n")
+        shutil.copytree(sf.FACTORY, beta / "factory", ignore=shutil.ignore_patterns("__pycache__"))
+        # alpha: an exploration taken to a reviewed lead, with a fit note and a figure, and a study with a lock request
+        with quiet:
+            x = explore.Exploration(alpha / "explorations" / "X1")
+            data = alpha / "data" / "X1" / "record.json"
+            data.parent.mkdir(parents=True)
+            data.write_text(json.dumps({"window": {"start": "2024-01-01", "end": "2024-12-31"},
+                                        "rows": [{"time": f"2024-{m:02d}-15T00:00:00Z", "x": m * 1.0, "y": m * 2.0} for m in range(1, 13)]}))
+            req = tmp / "request-x1.md"
+            req.write_text("# Request\n\nDoes y follow x, and where does it not?\n")
+            explore.cmd_start(x, A(by="agent:analysis-x", request=str(req), id="X1", subject="record=toy,case=X1",
+                                   set_aside_window="2025-01-01:2025-12-31", working_data=[str(data)], question="Does y follow x?"))
+            fit = tmp / "fit.yaml"
+            fit.write_text("answer_is: checkable\ndata_at_hand: 'yes'\nmostly: computation\nperson_must_supply: the difference that matters\n"
+                           "verdict: fit-with-a-person-steering\nwhy: a ratio a rule can test, on a toy record\ntaste_needed: which months to trust\n")
+            explore.cmd_fit(x, A(by="agent:coordinating-x", file=str(fit)))
+            explore.cmd_reviewer(x, A(by="agent:coordinating-x", reviewer="agent:review-x"))
+            explore.cmd_known(x, A(by="agent:analysis-x", bundle=[]))
+            (x.d / "looks").mkdir(exist_ok=True)
+            (x.d / "looks" / "ratio.py").write_text("import json, sys\nrows = json.load(open(sys.argv[1]))['rows']\nprint('rows', len(rows))\n")
+            (x.d / "looks" / "picture.py").write_text("import base64, os\nos.makedirs('figures', exist_ok=True)\nopen('figures/dot.png', 'wb').write("
+                                                      f"base64.b64decode({base64.b64encode(PNG).decode()!r}))\nprint('drawn')\n")
+            explore.cmd_look(x, A(by="agent:analysis-x", argv=["--", "{python}", "looks/ratio.py", str(data)], why="how many rows there are"))
+            explore.cmd_look(x, A(by="agent:analysis-x", argv=["--", "{python}", "looks/picture.py"], why="a picture of one dot, for the self-test"))
+            lead = {"summary": {"looks_true": "In 2024 y seems to follow x over twelve months.", "how_strong": "One look at one year of working data.",
+                                "cannot_settle": "Whether it holds in 2025, which was set aside."},
+                    "what_looks_true": "y looks as if it follows x over the 2024 rows.", "how_it_was_found": "One look at the rows.",
+                    "evidence": ["LOOK-001"], "choices_that_would_change_it": [], "choices_that_would_not": [], "pitfalls": ["one year only"],
+                    "proposed_plan": {"question": "Over 2025, does y follow x within five percent?", "quantity_estimated": "the ratio of y to x",
+                                      "difference_that_matters": "five percent, proposed", "rule_sketch": "supported if the interval lies inside the band"}}
+            lf = tmp / "lead.yaml"
+            lf.write_text(json.dumps(lead))
+            explore.cmd_lead(x, A(by="agent:analysis-x", file=str(lf)))
+            rv = tmp / "review.md"
+            rv.write_text("# Review (exploring)\n\nChecked the log and the look. One hole: one year only.\n")
+            explore.cmd_review(x, A(by="agent:review-x", verdict="holes-found", file=str(rv), read_lead=sf.sha_file(x.d / "lead.json")))
+            s1 = sf._fresh(alpha / "studies", "S1", start=SA(id="S1", question=sf.PLAN["question"], by="agent:coordinating"))
+            sf.cmd_test(s1, SA(what="known-answers", by="agent:analysis"))
+            sf.cmd_test(s1, SA(what="working-data", by="agent:analysis"))
+            sf.cmd_request_lock(s1, SA(by="agent:coordinating"))
+        (alpha / "data" / "X2").mkdir(parents=True)
+        (alpha / "data" / "X2" / "record.json").write_text(data.read_text())
+        (alpha / "source").mkdir()
+        (alpha / "source" / "series.csv").write_text("Source,Date,Value\n" + "".join(
+            f"A,{y}-{m:02d},{m / 10:.2f}\n" for y in (2024, 2025) for m in range(1, 13)))
+        figure_sha = sf.sha_file(x.d / "figures" / "dot.png")
+        # crafted: a workspace made to trick the server
+        marks = tmp / "marks"
+        marks.mkdir()
+        (crafted / "tools").mkdir()
+        for t in ("sf.py", "explore.py", "waiting.py", "report.py", "check_factory.py", "fresh_data.py"):
+            (crafted / "tools" / t).write_text(f"open({str(marks / ('tools-' + t))!r}, 'w').write('ran')\n")
+        evil = crafted / "evil.sh"
+        evil.write_text(f"#!/bin/sh\ntouch {marks / 'git-ran'}\n")
+        evil.chmod(0o755)
+        if shutil.which("git"):
+            subprocess.run(["git", "init", "-q", str(crafted)], capture_output=True)
+            for k, v in (("core.fsmonitor", str(evil)), ("core.hooksPath", str(crafted)), ("core.pager", str(evil)), ("diff.external", str(evil)),
+                         ("core.sshCommand", str(evil)), ("core.askPass", str(evil))):
+                subprocess.run(["git", "-C", str(crafted), "config", k, v], capture_output=True)
+            for hook in ("pre-commit", "post-checkout", "reference-transaction", "fsmonitor-watchman"):
+                shutil.copyfile(evil, crafted / hook)
+                (crafted / hook).chmod(0o755)
+        shutil.copytree(sf.FACTORY, crafted / "factory", ignore=shutil.ignore_patterns("__pycache__"))
+        (crafted / "explorations" / "LINKED").symlink_to(alpha / "explorations" / "X1")
+        (crafted / "explorations" / "X9").mkdir()
+        (crafted / "explorations" / "X9" / "exploration-log.jsonl").symlink_to(tmp / "secret.md")
+        shutil.copytree(x.d, crafted / "explorations" / "X8")
+        (crafted / "explorations" / "X8" / "lead.md").unlink()
+        (crafted / "explorations" / "X8" / "lead.md").symlink_to(tmp / "secret.md")
+        (crafted / "explorations" / "X8" / "figures" / "dot.png").unlink()
+        (crafted / "explorations" / "X8" / "figures" / "dot.png").symlink_to(tmp / "secret.md")
+        (crafted / "requests").symlink_to(tmp)
+
+        def snapshot() -> dict:
+            return {p.as_posix(): (p.read_bytes() if p.is_file() and not p.is_symlink() else str(os.readlink(p)) if p.is_symlink() else "")
+                    for p in tmp.rglob("*") if "marks" not in p.parts and ".git" not in p.parts and p.name != "audit.jsonl"}
+
+        def call(i, tool_, **kw):
+            return {"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": tool_, "arguments": kw}}
+
+        reads = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}},
+                 {"jsonrpc": "2.0", "method": "notifications/initialized"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                 call(10, "waiting"), call(11, "waiting", format="json", workspace="alpha"),
+                 call(12, "status", workspace="alpha", path="explorations/X1"), call(13, "status", workspace="alpha", path="S1"),
+                 call(14, "lead", workspace="alpha", path="X1"), call(15, "figure", workspace="alpha", path="X1"),
+                 call(16, "figure", workspace="alpha", path="X1", look="LOOK-002", sha256=figure_sha[:16]),
+                 call(17, "figure", workspace="alpha", path="X1", look="LOOK-002", sha256="0" * 16),
+                 call(18, "report", workspace="alpha"), call(19, "report", workspace="alpha", format="json"),
+                 call(20, "fit_note", workspace="alpha", path="X1"), call(21, "fit_note", workspace="alpha", path="S1"),
+                 call(22, "contribution", workspace="alpha", path="X1"), call(23, "contribution", workspace="alpha", path="S1"),
+                 call(24, "knowledge", query="Is 2025 a new year of the toy record?"), call(25, "knowledge", page="the-toy-record.md", section="Where it changes"),
+                 call(26, "knowledge", page="../secret.md"), call(27, "factory_summary"),
+                 call(30, "status", workspace="alpha", path="../beta/explorations/X1"), call(31, "status", workspace="alpha", path="/etc"),
+                 call(32, "status", workspace="alpha", path="explorations/X1/../../.."), call(33, "status", workspace="crafted", path="LINKED"),
+                 call(34, "status", workspace="crafted", path="explorations/X9"), call(35, "lead", workspace="crafted", path="X8"),
+                 call(36, "figure", workspace="crafted", path="X8", look="LOOK-002", sha256=figure_sha[:16]),
+                 call(37, "status", workspace="gamma", path="X1"), call(38, "status", path="X1"),
+                 call(39, "status", workspace="alpha", path="X1", factory="/etc"), call(40, "status", workspace="alpha", path=".git"),
+                 call(41, "status", workspace="crafted", path="X8"), call(42, "report", workspace="crafted"), call(43, "factory_summary", workspace="crafted"),
+                 call(44, "contribution", workspace="crafted", path="X8"), call(45, "waiting", workspace="crafted"),
+                 call(46, "status", workspace="alpha", path="explorations/--by=human:throwaway-placeholder"),
+                 *[call(100 + n, name, workspace="alpha", path="X1") for n, name in enumerate(
+                     ("so_what", "lock", "sign", "signature", "verify_acts", "open_held_out", "promote", "log_change", "run_command", "look", "openwiki_write"))]]
+        people = "human:throwaway-placeholder"
+        req_words = dict(what_i_want_to_know="Does y follow x in 2025, as in 2024?", already_looked_at="2024, every month",
+                         if_it_holds="use x for y", by="agent:coordinating-s", model="selftest-model")
+        intake = [call(60, "submit_request", workspace="alpha", name="R1", **req_words), call(61, "submit_request", workspace="alpha", name="R1", **req_words),
+                  call(62, "submit_request", workspace="alpha", name="../R2", **req_words),
+                  call(63, "submit_request", workspace="alpha", name="R3", **{**req_words, "by": people}),
+                  call(64, "submit_request", workspace="crafted", name="R4", **req_words),
+                  call(65, "submit_request", workspace="alpha", name="R5", **{**req_words, "by": "platform:github"}),
+                  call(66, "submit_request", workspace="alpha", name="R6", **{**req_words, "by": "agent:x --local-practice"}),
+                  call(67, "submit_request", workspace="alpha", name="R7", **{**req_words, "model": "m\n--by=" + people}),
+                  call(70, "propose_fresh_data", workspace="alpha", step="describe", csv="source/series.csv", date_column="Date", series_column="Source",
+                       period="month", subject="record=toy,case=X2", what="a toy monthly series of y against x", out="metadata/series.yaml"),
+                  call(71, "propose_fresh_data", workspace="alpha", step="propose", metadata="metadata/series.yaml", kind="later-period", **{"from": "2025-01-01"},
+                       until="2025-12-31", what="the whole of 2025", why="only 2024 has been looked at", unfair="a change of the record at the new year",
+                       by="agent:analysis-s", model="selftest-model", out="proposals/X2-fresh-data.yaml"),
+                  call(72, "propose_fresh_data", workspace="alpha", step="propose", metadata="metadata/series.yaml", kind="later-period", **{"from": "2025-01-01"},
+                       what="w", why="w", unfair="w", by=people, model="m", out="proposals/X3.yaml"),
+                  call(73, "propose_fresh_data", workspace="alpha", step="describe", csv="../secret.md", date_column="Date", subject="a=b", what="w", out="m2.yaml"),
+                  call(74, "propose_fresh_data", workspace="alpha", step="propose", metadata="metadata/series.yaml", kind="later-period", **{"from": "2025-01-01"},
+                       what="w", why="w", unfair="w", by="agent:analysis-s", model="m", out="proposals/X2-fresh-data.yaml"),
+                  call(80, "start_exploration", workspace="alpha", id="X2", question="Does y follow x over 2024?", request="requests/R1.md",
+                       subject="record=toy,case=X2", how="a later period", set_aside_window="2025-01-01:2025-12-31",
+                       fresh_data="proposals/X2-fresh-data.yaml", why="the following year --by=" + people + " --local-practice",
+                       working="the 2024 record", working_data=["data/X2"], working_window="2024-01-01:2024-12-31",
+                       boundary_from=["the-toy-record.md"], by="agent:analysis-s", model="selftest-model"),
+                  call(81, "start_exploration", workspace="alpha", id="X2", question="Again?", request="requests/R1.md", subject="a=b",
+                       set_aside_window="2025-01-01:2025-12-31", why="w", working="w", working_data=["data/X2"], by="agent:analysis-s", model="m"),
+                  call(82, "start_exploration", workspace="alpha", id="X3", question="Nothing set aside?", request="requests/R1.md", subject="a=b",
+                       why="w", working="w", working_data=["data/X2"], by="agent:analysis-s", model="m"),
+                  call(83, "start_exploration", workspace="alpha", id="X4", question="q?", request="requests/R1.md", subject="a=b", why="w", working="w",
+                       working_data=["data/X2"], by="agent:analysis-s", model="m", nothing_set_aside="none"),
+                  call(84, "start_exploration", workspace="alpha", id="X5", question="q?", request="requests/R1.md", subject="a=b",
+                       set_aside_window="2025-01-01:2025-12-31", why="w", working="w", working_data=["data/X2"], by=people, model="m"),
+                  call(85, "start_exploration", workspace="alpha", id="X6", question="q?", request="requests/R1.md", subject="a=b",
+                       set_aside_window="2025-01-01:2025-12-31", why="w", working="w", working_data=["/etc"], by="agent:analysis-s", model="m"),
+                  call(86, "start_exploration", workspace="alpha", id="X7", question="q?", request="requests/R1.md", subject="a=b",
+                       set_aside_window="2025-01-01:2025-12-31", why="w", working="w", working_data=["data/X2"], by="agent:analysis-s", model="m",
+                       local_practice=True)]
+        audit = tmp / "audit.jsonl"
+        env = {k: v for k, v in os.environ.items() if k not in TOKENS}
+        before = snapshot()
+        driver = [sys.executable, "-I", "-B", "-c", AUDIT_DRIVER, str(audit), str(Path(__file__).resolve()),
+                  "--workspace", str(alpha), "--workspace", str(beta), "--workspace", str(crafted), "--wiki", str(wiki)]
+        done = subprocess.run(driver, input="\n".join(json.dumps(m) for m in reads) + "\n", capture_output=True, text=True, env=env, timeout=1800)
+        after_reads = snapshot()
+        got = {r["id"]: r for r in (json.loads(ln) for ln in done.stdout.splitlines() if ln.strip())}
+
+        def cli(*argv):
+            d = subprocess.run([sys.executable, str(HERE / argv[0]), *argv[1:]], capture_output=True, text=True, env=environment(True), cwd=str(alpha))
+            return d.stdout
+
+        own_factory = str((PACKAGE / "factory").resolve())
+        said = {"waiting": [cli("waiting.py", f"--workspace={w}", f"--factory={f}") for w, f in
+                            ((alpha, own_factory), (beta, (beta / "factory").resolve()), (crafted, (crafted / "factory").resolve()))],
+                "report": cli("report.py", f"--workspace={alpha}", f"--factory={own_factory}"),
+                "x1": cli("explore.py", "status", f"--exploration={x.d}"), "s1": cli("sf.py", "status", f"--study={s1.d}", f"--factory={own_factory}"),
+                "cx": cli("explore.py", "contribution", f"--exploration={x.d}", "--print-only"),
+                "cs": cli("sf.py", "contribution", f"--study={s1.d}", f"--factory={own_factory}", "--print-only"),
+                "sum": cli("check_factory.py", own_factory, f"--repository={PACKAGE}", "--checksum")}
+        done2 = subprocess.run(driver, input="\n".join(json.dumps(m) for m in intake) + "\n", capture_output=True, text=True, env=env, timeout=1800)
+        got.update({r["id"]: r for r in (json.loads(ln) for ln in done2.stdout.splitlines() if ln.strip())})
+        after = snapshot()
+
+        def text(i, n=0):
+            r = got.get(i, {}).get("result") or {}
+            c = r.get("content") or [{}]
+            return c[n].get("text", "") if len(c) > n else ""
+
+        def doc(i):
+            try:
+                return json.loads(text(i))
+            except ValueError:
+                return {}
+
+        def err(i):
+            r = got.get(i, {})
+            return "error" in r or (r.get("result") or {}).get("isError") is True
+
+        def same(a_, b_):
+            return STAMP.sub("T", a_) == STAMP.sub("T", b_)
+
+        # the protocol and the list
+        check("it answers the handshake, stays silent on a notification, and answers every request of both sessions",
+              got.get(1, {}).get("result", {}).get("protocolVersion") == PROTOCOL and len(got) == len([m for m in reads + intake if "id" in m]))
+        names = [t["name"] for t in got.get(2, {}).get("result", {}).get("tools", [])]
+        check("it offers exactly the nine read tools and three intake tools", names == TOOL_NAMES and len(names) == 12)
+        bad_words = ("lock", "sign", "so_what", "verify", "open", "promote", "change", "approve", "merge", "run", "shell", "exec", "look")
+        check("no tool's name is a person's act, an opening, a promotion, a change to the definition or a command",
+              not [n for n in names if any(w in n for w in bad_words)])
+        check("every forbidden name is no tool: the act is unreachable by name",
+              all("error" in got.get(100 + n, {}) and "no such tool" in got[100 + n]["error"]["message"] for n in range(11)))
+        check("every tool takes only the arguments it lists", all(t["inputSchema"].get("additionalProperties") is False for t in TOOLS))
+        # the allow list
+        check("the allow list is exactly the ten commands the tools wrap",
+              set(ALLOW) == {("waiting.py", None), ("report.py", None), ("check_factory.py", None), ("sf.py", "status"), ("sf.py", "contribution"),
+                             ("explore.py", "status"), ("explore.py", "contribution"), ("fresh_data.py", "describe"), ("fresh_data.py", "propose"),
+                             ("explore.py", "start")})
+        check("no entry of the allow list is a forbidden command or carries a forbidden option",
+              not {c for _, c in ALLOW} & FORBIDDEN_COMMANDS and not set().union(*(e["options"] | e.get("flags", set()) for e in ALLOW.values())) & FORBIDDEN_OPTIONS)
+        refused_lists = [["sf.py", "lock", "--study=/s", f"--by={people}", "--local-practice"], ["explore.py", "so-what", "--exploration=/x"],
+                         ["sf.py", "verify-acts", "--study=/s"], ["sf.py", "open-held-out", "--study=/s"], ["explore.py", "promote", "--exploration=/x"],
+                         ["sf.py", "log-change", "--study=/s"], ["explore.py", "look", "--exploration=/x", "--", "python3", "x.py"],
+                         ["fresh_data.py", "reveal", "--proposal=/p"], ["explore.py", "start", f"--by={people}"],
+                         ["explore.py", "start", "--by=platform:github"], ["explore.py", "start", "--local-practice"],
+                         ["explore.py", "start", "--why", "x"], ["explore.py", "start", "--nothing-set-aside=none"],
+                         ["sf.py", "status", "--study=/s", "--by=agent:a"], ["sf.py", "contribution", "--study=/s"],
+                         ["check_factory.py", "--summary=a"], ["check_factory.py", "relative/path"], ["../sf.py", "status"], ["bash", "-c", "x"],
+                         ["factory_update.py", "update"], ["waiting.py", "--workspace=/w", "--selftest"], ["sf.py", "status", "--study=/s\x00"]]
+        check("the allow check refuses every list of words that would make an act, run a script or pass a forbidden option",
+              all(allowed(w) for w in refused_lists))
+        try:
+            run_tool(["sf.py", "lock", "--study=/s"], tmp)
+            check("run_tool refuses what the allow check refuses, before starting anything", False)
+        except Refusal:
+            check("run_tool refuses what the allow check refuses, before starting anything", True)
+        own = Path(__file__).read_text().split("# ---------------------------------------------------------------- the self-test")[0]
+        check("the server starts a process in one place, run_tool, and nowhere calls a shell or exec",
+              own.count("subprocess.run(") == 1 and "Popen" not in own and "os.system" not in own and "shell=True" not in own
+              and "exec(" not in own.replace("exec_module(", ""))
+        # what ran, and what was opened, under the audit hook
+        ev = [json.loads(ln) for ln in audit.read_text().splitlines() if ln.strip()] if audit.is_file() else []
+        ran = [e[1] for e in ev if e[0] == "run"]
+        check("every process the server started was one of its own tools on the allow list, and it started some",
+              ran and all(w[0] == sys.executable and w[1].startswith(str(HERE) + os.sep) and allowed([Path(w[1]).name, *w[2:]]) is None for w in ran))
+        check("no command of a person's act, no look and no shell was ever started",
+              not [w for w in ran if set(w[2:3]) & FORBIDDEN_COMMANDS] and not [e for e in ev if e[0] not in ("open", "run", "ctypes.dlopen")])
+        roots = [str(p) for p in (alpha, beta, crafted, wiki, HERE, PACKAGE / "factory")]
+        python = {os.path.realpath(p) for p in (sys.prefix, sys.base_prefix, sys.exec_prefix)} | {os.path.realpath(p) for p in sys.path if p}
+        outside = sorted({p for kind_, p in ev if kind_ == "open" for rp in [os.path.realpath(p)]
+                          if not any(rp == r or rp.startswith(r + os.sep) for r in roots + sorted(python))
+                          and not rp.startswith(("/proc/", "/dev/null")) and rp != str(audit)})
+        check("the server opened no file outside its roots (the workspaces, the wiki, its own tools and factory; Python's own files and "
+              "/proc for the look check apart)", ev and not outside)
+        if outside:
+            print("opened outside the roots:", outside[:8])
+        check("nothing the server returned holds the secret outside every root", SECRET not in done.stdout + done2.stdout)
+        check("no tool in the crafted workspace's tools/ ran, and no git setting of it ran a command",
+              not list(marks.iterdir()))
+        check("the read tools changed no file anywhere", before == after_reads)
+        # each read tool, against the command line
+        check("waiting across three workspaces with their factories is the command line's answer for each, in its words",
+              same(text(10), "\n".join(said["waiting"])) and "so-what-wanted" in text(10))
+        wj = doc(11).get("answer") or {}
+        sw = [i for g in wj.get("groups", []) for i in g["items"] if i["what"] == "so-what-wanted"]
+        lk = [i for g in wj.get("groups", []) for i in g["items"] if i["what"] == "lock-request-not-merged"]
+        check("waiting as JSON gives the so what wanted with the comment's lines, and the lock request with the GitHub page to open",
+              len(sw) == 1 and "exploration: explorations/X1" in sw[0]["next_step"]["do"]
+              and len(lk) == 1 and lk[0]["next_step"]["open"].startswith("https://github.com/") and "standings" in wj)
+        check("status of an exploration is explore.py status's answer, with the so what wanted and the standings in the tools' words",
+              same(json.dumps(doc(12).get("answer")), json.dumps(json.loads(said["x1"])))
+              and [i["what"] for i in doc(12).get("where_a_person_acts", [])] == ["so-what-wanted"] and "not re-checked now" in str(doc(12).get("standings")))
+        check("status of a study is sf.py status's answer, with the lock request waiting and the page to open",
+              same(json.dumps(doc(13).get("answer")), json.dumps(json.loads(said["s1"])))
+              and doc(13).get("where_a_person_acts", [{}])[0].get("next_step", {}).get("open", "").startswith("https://github.com/"))
+        ld = doc(14)
+        check("lead gives the summary block, the lead's first line, the review and its verdict on the lead as it stands, and the person's next step",
+              "In 2024 y seems to follow x" in ld.get("lead", {}).get("summary", "") and "lead, not a finding" in ld.get("lead", {}).get("first_line", "")
+              and ld.get("lead", {}).get("file_is_the_one_recorded") is True
+              and [(r["by"], r["verdict"], r["of_the_lead_as_it_stands"]) for r in ld.get("reviews", [])] == [("agent:review-x", "holes-found", True)]
+              and "One hole" in ld["reviews"][0]["text"] and ld.get("stage") == "so-what"
+              and [i["what"] for i in ld.get("where_a_person_acts", [])] == ["so-what-wanted"] and "never a finding" in ld.get("says", ""))
+        figs = doc(15).get("figures", [])
+        check("figure lists the figures a look kept, by look and checksum, with the look's reason as the caption",
+              figs == [{"look": "LOOK-002", "file": "figures/dot.png", "sha256": figure_sha, "caption": "a picture of one dot, for the self-test"}])
+        c16 = (got.get(16, {}).get("result") or {}).get("content") or [{}, {}]
+        check("figure returns the picture as an image the client can show, byte for byte, with its caption and checksum",
+              len(c16) == 2 and c16[1].get("type") == "image" and c16[1].get("mimeType") == "image/png"
+              and base64.b64decode(c16[1].get("data", "")) == PNG and "a picture of one dot" in c16[0].get("text", "") and figure_sha[:12] in c16[0]["text"])
+        check("figure refuses a checksum that is not a kept figure's", err(17) and "no figure" in text(17))
+        check("report in Markdown and in JSON is report.py's answer", same(re.sub(r"\d+", "#", text(18)), re.sub(r"\d+", "#", said["report"])) and (doc(19).get("answer") or {}).get("schema") == "science-factory/report/v1")
+        check("fit_note gives the note as recorded and in the tools' words, and says when none was written",
+              (doc(20).get("note_as_recorded") or {}).get("verdict") == "fit-with-a-person-steering" and "fit-with-a-person-steering" in str(doc(20).get("fit"))
+              and doc(21).get("note_as_recorded") is None and "No fit note was written" in str(doc(21).get("fit")))
+        check("contribution is the command line's statement, and no contribution file is written",
+              same(text(22), said["cx"])
+              and same(text(23), said["cs"])
+              and "Who did what" in text(22) and not (x.d / "contribution.md").exists() and not (s1.d / "contribution.md").exists())
+        ws_ = _source_module("factory_server_wiki_check", HERE / "wiki_server.py")
+        check("knowledge searches and reads as the wiki server does, and refuses a page outside the wiki",
+              text(24) == ws_.search(wiki, "Is 2025 a new year of the toy record?") and text(24).startswith("the-toy-record.md |")
+              and text(25).startswith("## Where it changes") and "no such page" in text(26))
+        fs = doc(27).get("factories", [])
+        check("factory_summary names each workspace's definition, its version and checksum, and says it is valid, as check_factory.py does",
+              [f["workspace"] for f in fs] == ["alpha", "beta", "crafted"] and [f["the_workspace_s_own"] for f in fs] == [False, True, True]
+              and all(f["validity"].startswith("VALID") for f in fs)
+              and fs[0]["sha256"] == json.loads(said["sum"])["sha256"])
+        # path tricks and the crafted workspace
+        check("a path that leaves the workspace, an absolute path, `..`, a hidden part or an option as a name is refused",
+              all(err(i) and "REFUSED by the factory server" in text(i) for i in (30, 31, 32, 40, 46)))
+        check("a study or exploration that is a link out of the workspace, or whose log is a link, is refused", err(33) and err(34))
+        check("a lead page or a figure that is a link out of the workspace is refused, and the secret is not shown",
+              err(35) and "symbolic link" in text(35) and err(36))
+        check("an unknown workspace, a missing one when several are reached, and an argument no tool lists are refused",
+              err(37) and err(38) and err(39) and "no argument named factory" in text(39))
+        check("on the crafted workspace the server runs its own tools, never the workspace's: status, summary and contribution answer, "
+              "and report and waiting give the tools' own refusal of the linked exploration", not err(41) and not err(43) and not err(44)
+              and all(err(i) and "reached through a symlink" in text(i) for i in (42, 45)))
+        planted = tmp / "planted"
+        shutil.copytree(crafted / "factory", planted / "factory")
+        (planted / "factory" / "harnesses" / "github" / "verify_acts.py").write_text("print('planted')\n")
+        try:
+            Workspace(planted)
+            check("a workspace whose definition carries code other than the server's is refused at the start", False)
+        except Refusal as r:
+            check("a workspace whose definition carries code other than the server's is refused at the start", "verify_acts.py" in str(r))
+        # intake
+        r1 = alpha / "requests" / "R1.md"
+        check("submit_request writes the request from the template, in the person's words, saying who typed it",
+              r1.is_file() and "**What I want to know.** Does y follow x in 2025, as in 2024?" in r1.read_text()
+              and "- If it holds: use x for y" in r1.read_text() and "agent:coordinating-s" in r1.read_text() and not err(60))
+        check("submit_request refuses to write over a request, a name with a path in it, and a requests folder that is a link",
+              err(61) and "already exists" in text(61) and err(62) and err(64) and not list(tmp.glob("R4*")))
+        check("an intake tool refuses a person's name, the platform's, a name with an option in it and a model on two lines",
+              all(err(i) and "REFUSED by the factory server" in text(i) for i in (63, 65, 66, 67)) and not (alpha / "requests" / "R3.md").exists())
+        check("propose_fresh_data describes a CSV from its date column and proposes from that metadata, as fresh_data.py does",
+              not err(70) and (alpha / "metadata" / "series.yaml").is_file() and not err(71) and "proposal written" in text(71)
+              and (alpha / "proposals" / "X2-fresh-data.yaml").is_file())
+        check("propose_fresh_data refuses a person, a file outside the workspace, and a proposal written twice",
+              err(72) and err(73) and err(74) and "already exists" in text(74))
+        x2 = alpha / "explorations" / "X2" / "exploration-log.jsonl"
+        first = json.loads(x2.read_text().splitlines()[0]) if x2.is_file() else {}
+        check("start_exploration starts the exploration as the agent, with its model recorded, setting aside the proposal's window",
+              not err(80) and first.get("actor") == "agent:analysis-s" and first.get("model") == "selftest-model"
+              and first.get("data", {}).get("set_aside", {}).get("window") == {"start": "2025-01-01", "end": "2025-12-31"})
+        check("an option typed inside a value stays a value: the reason is recorded word for word and no practice act appears",
+              first.get("data", {}).get("set_aside", {}).get("why", "").endswith("--local-practice") and people not in json.dumps(
+                  [json.loads(ln).get("actor") for ln in x2.read_text().splitlines()] if x2.is_file() else [people]))
+        check("start_exploration refuses a second start, nothing set aside, a person, working data outside the workspace, and the "
+              "options no tool lists", all(err(i) for i in (81, 82, 83, 84, 85, 86)) and not any((alpha / "explorations" / n).exists() for n in ("X3", "X4", "X5", "X6", "X7")))
+        made = sorted(k for k in set(after) - set(before))
+        check("intake wrote only the request, the metadata, the proposal, the exploration and the record of what is set aside",
+              all(m_.startswith(tuple(str(alpha / p) for p in ("requests", "metadata", "proposals", "explorations/X2", "studies/fresh-data.jsonl"))) for m_ in made)
+              and {k for k in before if before[k] != after.get(k)} <= {str(alpha / "studies" / "openings.jsonl"), str(alpha / "studies" / "fresh-data.jsonl")})
+        check("serving left no bytecode folder beside the tools", not (HERE / "__pycache__").exists())
+        if done.stderr.strip() or done2.stderr.strip():
+            print("server said on standard error:", (done.stderr + done2.stderr)[-600:])
+    finally:
+        sf.Study.default_model = None
+        shutil.rmtree(tmp, ignore_errors=True)
+    failed = [n for n, good in results if not good]
+    for n in failed:
+        print("FAIL:", n)
+    print(f"selftest: {'PASS' if not failed else 'FAIL'} ({len(results) - len(failed)} of {len(results)})")
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":
