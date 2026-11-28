@@ -2122,6 +2122,25 @@ def fresh_data_of(study: Study, plan: dict) -> dict | None:
             "seed_sha256": None, "record": tool.on_record(f, study.d.parent), "to_be_drawn_at_the_lock": prop["kind"] == "random"}
 
 
+def openings_tool():
+    """tools/openings.py: the shared registry of openings. It loads this tool by the name `sf`, so it is given this one."""
+    if "openings" not in sys.modules:
+        sys.modules.setdefault("sf", sys.modules[__name__])
+    return _beside("openings")
+
+
+def ask_registry(registry, proposal: dict | None, lock_at: str | None, study_id: str) -> dict:
+    """The registry of openings, asked about a plan's fresh data (tools/openings.py `check`); a refusal there is one here."""
+    if not proposal or not proposal.get("stac"):
+        raise Refused("`--registry` checks fresh data proposed from a STAC description, and this plan's proposal is not one")
+    try:
+        return openings_tool().check(registry, proposal, lock_at, study_id)
+    except Exception as e:  # noqa: BLE001  the registry tool's refusal, raised in its own name
+        if type(e).__name__ != "Refused":
+            raise
+        raise Refused(str(e))
+
+
 def explore_tool():
     """tools/explore.py, for the fence's own reading of dates. Loading it loads its own copy of this tool under the name
     `sf`; whatever stood under that name before is put back."""
@@ -3235,6 +3254,15 @@ def lock_evidence(study: Study, a) -> dict:
                "request and the proposal's checksum: nobody can choose them" if fresh.get("to_be_drawn_at_the_lock") else ""))
     else:
         say("the fresh data: the plan names no proposal (`data.held_out.fresh_data`), so nothing records who chose it or why")
+    if getattr(a, "registry", None):
+        said = ask_registry(a.registry, (fresh or {}).get("proposal"), None, plan["study"])
+        if said["before"]:
+            raise Refused("the lock is refused, and nothing was written: " + said["words"])
+        registry = {"asked": said["registry"], "openings_read": said["openings_read"], "words": said["words"]}
+    else:
+        registry = {"asked": None, "words": "No registry of openings was named (`--registry`): whether another factory has opened this "
+                                            "data was not checked."}
+    say("the registry of openings: " + registry["words"])
     say("what is held out, and every change to it this study's log knows:")
     for line in held_out_in_words(held_out_block(plan)["block"]):
         say("  now: " + line[2:])
@@ -3257,7 +3285,7 @@ def lock_evidence(study: Study, a) -> dict:
             "definition": {k: definition[k] for k in ("path", "sha256", "files", "version", "models", "skills", "tools", "opening_without_verification")},
             "models_recorded": recorded, "held_out": held_out_block(plan), "held_out_history": history,
             "fresh_data": {k: fresh[k] for k in ("file", "sha256", "kind", "seed_sha256", "revealed_seed", "to_be_drawn_at_the_lock")} if fresh else None,
-            "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {})}
+            "figures": {f["file"]: f["sha256"] for f in figures}, **({"release": release} if release else {}), "registry": registry}
     for line in so_whats:
         say(f"the exploration this study comes from, and its person's so what, asked now: {line}")
     data["so_whats"] = so_whats
@@ -3304,6 +3332,9 @@ def lock_summary(study: Study, got: dict, factory: Path) -> list:
         out += ["The plan names no proposal of the fresh data (`data.held_out.fresh_data`). What it holds out was written into the plan "
                 "by hand, and nothing in the study records who chose it, why, or what would make it unfair. Ask before you approve. "
                 "`tools/fresh_data.py propose` writes such a proposal from metadata only.", ""]
+    if d.get("registry"):
+        out += [f"**The shared registry of openings.** {d['registry']['words']}"
+                + (f" (asked at {d['registry']['asked']}, {d['registry']['openings_read']} opening(s) merged there)" if d["registry"].get("asked") else ""), ""]
     why = ((plan.get("data") or {}).get("held_out") or {}).get("why_this_window")
     out += ["What the plan holds out (the tools call it held-out data):", ""] + held_out_in_words(d["held_out"]["block"])
     out += ([f"- Why this, as the plan says: {' '.join(str(why).split())}"] if why else []) + ["", "Every change to it this study's log knows:", ""]
@@ -3890,6 +3921,12 @@ def cmd_open_held_out(study: Study, a) -> None:
     spec = plan["tests"].get(a.test)
     if not spec:
         raise Refused(f"{a.test} is not in the plan")
+    registry_said = None
+    if getattr(a, "registry", None):  # asked before anything is started: a refusal here uses nothing up
+        lock_ = study.last("lock.recorded")
+        registry_said = ask_registry(a.registry, (fresh_data_of(study, plan) or {}).get("proposal"), lock_["at"] if lock_ else None, plan["study"])
+        if registry_said["before"]:
+            raise Refused("the opening is refused, and nothing is used up: " + registry_said["words"])
     with study.held() as f:
         n, prior, before, data_rel = start_opening(study, plan, a.test, a.by, f, getattr(a, "factory", None),
                                                    bool(getattr(a, "local_practice", False)), getattr(a, "people_not_verified", None))
@@ -3911,7 +3948,8 @@ def cmd_open_held_out(study: Study, a) -> None:
                                                 "figures": figures_drawn(study, spec)[0],
                                                 "env_names": given_names(passes), "ran_in": how_it_ran(mark),
                                                 "outcomes": outcomes, "method_declined": declined,
-                                                **({"release": release} if release else {})})
+                                                **({"release": release} if release else {}),
+                                                **({"registry": {"asked": registry_said["registry"], "words": registry_said["words"]}} if registry_said else {})})
     if (release or {}).get("refused"):
         raise Refused(f"the data fetched is not the release after {rel['cut_off']} that the plan needs: " + "; ".join(release["refused"])
                       + f". The locked analysis was not run. The opening is used up, because the fetched data is in the workspace; this "
@@ -3920,6 +3958,8 @@ def cmd_open_held_out(study: Study, a) -> None:
           + (f". The release after {rel['cut_off']}: {release['first']} to {release['last']}, sha256 {release['sha256']}" if release else ""))
     if prior:
         print(f"this data was already opened by {[x['dir'] for x in prior]}: this study is exploratory")
+    if registry_said:
+        print(registry_said["words"])
     print(f"post this log fingerprint where the workspace cannot rewrite it: {e['seq']}:{e['hash']}")
 
 
@@ -8186,11 +8226,13 @@ def build_parser() -> argparse.ArgumentParser:
     platform_rec = (["--platform-record"], {"default": None, "dest": "platform_record",
                                             "help": "the JSON file the recording job wrote from the platform's record of the pull request. "
                                                     "The names in it are recorded as handed to the tool and verify nothing"})
-    add("request-lock", cmd_request_lock, by, proc)
+    registry = (["--registry"], {"default": None, "help": "a clone of the shared registry of openings (tools/openings.py): asked whether "
+                                                          "another study opened this fresh data; its answer is in the request in words"})
+    add("request-lock", cmd_request_lock, by, proc, registry)
     add("request-signature", cmd_request_signature, by, proc, anchor, (["--decision"], {"required": True, "help": "signed or declined"}))
     add("check-request", cmd_check_request, proc, (["--act"], {"required": True, "help": "lock or signature"}))
     add("lock", cmd_lock, by, evidence, proc, practice, record_merge, platform_rec)
-    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice,
+    add("open-held-out", cmd_open_held_out, held_out, by, proc, practice, registry,
         (["--people-not-verified"], {"default": None, "dest": "people_not_verified", "metavar": "REASON",
                                      "help": "for a place with no network only: open on a lock that is a merge found with git, whose "
                                              "people the platform could not be asked about. Logged with the reason; the study stays at "

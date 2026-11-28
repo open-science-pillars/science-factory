@@ -13,6 +13,7 @@ The lock and the steward's signature are the two acts no agent makes. On one mac
 | `acts.workflow.yml` | the workflow, as a template: copy it to `.github/workflows/acts.yml` of the repository where the studies live |
 | `waiting.workflow.yml` | keeps the label `waiting-on-a-person` in step on each tracking issue, from `tools/waiting.py` |
 | `update.workflow.yml` | weekly, opens a pull request that updates the factory when its source has moved (`tools/factory_update.py`) |
+| `openings.workflow.yml` | after a verified opening, writes it into the shared registry of openings as a STAC Item and opens a pull request there (`tools/openings.py record`); never run on GitHub |
 | `factory-check.workflow.yml` | on a pull request touching `factory/`, validates it and posts the summary of the change; fails on invalid and on not validated |
 | `verify_request.py` | the required check on a pull request that touches a study's `lock-request/` or `signature-request/` |
 | `record_act.py` | the job after the merge: writes the act into the study log as a merge found, then has GitHub asked |

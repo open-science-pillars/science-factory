@@ -722,7 +722,7 @@ def write_index(desc_path, out) -> dict:
                "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point", "Polygon"], "crs": None}}}
         con = duck([tmp, out.parent])
         try:
-            con.execute(f"""COPY (SELECT type, stac_version, stac_extensions, id, collection, from_hex(geometry) AS geometry,
+            con.execute(f"""COPY (SELECT type, stac_version, stac_extensions, id, collection, from_hex(NULLIF(geometry, '')) AS geometry,
                 bbox::STRUCT(xmin DOUBLE, ymin DOUBLE, xmax DOUBLE, ymax DOUBLE) AS bbox,
                 datetime::VARCHAR::TIMESTAMPTZ AS datetime, start_datetime::VARCHAR::TIMESTAMPTZ AS start_datetime,
                 end_datetime::VARCHAR::TIMESTAMPTZ AS end_datetime, "sf:count"::BIGINT AS "sf:count", "sf:series"::VARCHAR AS "sf:series",

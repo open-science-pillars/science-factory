@@ -852,6 +852,18 @@ def cmd_propose(a) -> None:
     studies = Path(os.path.abspath(a.studies))
     got = propose(a)
     p, seed = got["proposal"], got["seed"]
+    if getattr(a, "registry", None):  # the shared registry of openings: data another study opened is not fresh
+        if not p.get("stac"):
+            raise Refused("`--registry` checks a proposal made from a STAC description, and this one is made from the factory's own form")
+        if "openings" not in sys.modules:
+            spec = _source_spec("openings", HERE / "openings.py")
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["openings"] = mod
+            spec.loader.exec_module(mod)
+        said = sys.modules["openings"].check(a.registry, p)
+        if said["before"]:
+            raise Refused("nothing was proposed: " + said["words"])
+        p["registry"] = {"asked": said["registry"], "openings_read": said["openings_read"], "words": said["words"], "at": now()}
     if p.get("stac") and not re.match(r"^https?://", str(p["stac"]["catalog"]), re.I):  # a local catalog, from where the proposal is
         p["stac"]["catalog"] = os.path.relpath(os.path.abspath(p["stac"]["catalog"]), out.parent)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1059,7 +1071,7 @@ class A:
     def __init__(self, **k):  # the arguments of a command, as the parser gives them
         self.__dict__.update({"from_": None, "until": None, "sites": None, "regions": None, "release": None, "fraction": None, "periods": None,
                               "stac": None, "files": None, "lat_column": None, "lon_column": None, "place": None, "collection": None,
-                              "license": None, "ndjson": False, "drop_properties": None, "bbox": None, "catalog": None, "csv": None, "out": None,
+                              "license": None, "ndjson": False, "drop_properties": None, "bbox": None, "catalog": None, "registry": None, "csv": None, "out": None,
                               "series_column": None, "release": None, "cadence": None,
                               "draw_over": None, "model": "selftest-model", "by": "agent:analysis", "studies": None, **k})
 
@@ -1351,6 +1363,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--drop-properties", dest="drop_properties", default=None,
                    help="STAC: properties or asset fields to leave unread, by name, separated by commas (listed in the proposal); any other unknown one is refused")
     p.add_argument("--bbox", default=None, help="STAC, a later period or the next release: west,south,east,north; the fresh Items are those that meet it")
+    p.add_argument("--registry", default=None, help="STAC: a clone of the shared registry of openings, asked whether these Items or this query "
+                   "were opened before; a proposal of opened data is refused")
     p.add_argument("--catalog", default=None, help="STAC: where the catalog is asked at the opening and by `waiting` (a path, or a STAC API's "
                    "https address); default: the description itself")
     p.add_argument("--kind", required=True, help=", ".join(KINDS))
